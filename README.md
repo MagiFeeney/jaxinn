@@ -8,10 +8,13 @@ Jaxinn/
 │  ├─ models/
 │  │  ├─ actor.py
 │  │  ├─ critic.py
-│  │  └─ RSSM.py
+│  │  └─ world.py
 │  ├─ core.py
 │  └─ memory.py
-└─ envs/
+├─ envs/
+│  └─ __init__.py
+├─ README.md
+└─ train.py
 ```
 
 ## Prototyping
