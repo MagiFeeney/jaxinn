@@ -27,7 +27,13 @@ class ValueModel(eqx.Module):
             *,
             key: jax.random.PRNGKey,
     ):  # if action_size is not None, Q fn
-        output_size = 1
+        if head_type == "Isotropic Normal":
+            output_size = 1
+        elif head_type == "Normal":
+            output_size = 2
+        else:
+            raise NotImplementedError
+
         activation = get_activation_fn(activation_function)
 
         keys = jax.random.split(key, 4)
@@ -64,14 +70,11 @@ class ValueModel(eqx.Module):
             mean = out
             std = 1.0
             dist = distrax.Normal(mean, std)
-            return dist
         elif self.head_type == "Normal":
             mean, log_std = jax.split(out, 2, axis=-1)
             std = jax.nn.softplus(log_std) + self.min_std
             dist = distrax.Normal(mean, std)
-            return dist
         else:
             raise ValueError(f"Unknown head type: {self.head_type}")
 
-    def extra_repr(self) -> str:
-        return f"action_size={self.action_size}"
+        return dist
