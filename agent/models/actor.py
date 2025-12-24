@@ -9,31 +9,35 @@ from .utils import get_activation_fn
 
 
 class TanhNormal(distrax.Transformed):
-    """
-    Normal distribution transformed by an Tanh transformation: X -> tanh(X)
-    """
+    """Normal distribution transformed by an Tanh transformation: X ↦ tanh(X)."""
 
     def __init__(self, mean, std):
         _distribution = distrax.Normal(mean, std)
         transform = distrax.Tanh()
         super().__init__(_distribution, transform)
 
-    def mean(self, approximate=False) -> jnp.ndarray:
-        """
-        Approximate mean after Tanh transformation as tanh(base_mean) if `approximate` is set True
-        """
-        if approximate:
-            return jnp.tanh(self.distribution.mean())
-        else:
-            raise NotImplementedError
+    # Approximate mean after Tanh transformation as tanh(base_mean)
+    def mean(self) -> jnp.ndarray:
+        return jnp.tanh(self.distribution.mean())
 
-    def sample(self, key: PRNGKeyArray, sample_shape=()):
+    def sample(self, seed: PRNGKeyArray, sample_shape=()):
         return super().sample(seed=seed, sample_shape=sample_shape)
 
 
+# Patched version: correct the batch_shape when used with vmap
+class PatchedBeta(distrax.Beta):
+    @property
+    def batch_shape(self) -> Tuple[int, ...]:
+      """Shape of batch of distribution samples."""
+      return jax.lax.broadcast_shapes(self._alpha.shape, self._beta.shape)
+
+
 class AffineBeta(distrax.Transformed):
-    """
-    Beta distribution transformed by an affine transformation: X -> loc + scale * X
+    """Beta distribution with an affine transformation: X ↦ loc + scale · X.
+
+    Attributes:
+        loc (jnp.ndarray): Location parameter.
+        scale (jnp.ndarray): Scale parameter.
     """
 
     def __init__(
@@ -41,68 +45,60 @@ class AffineBeta(distrax.Transformed):
             alpha: jnp.ndarray,
             beta: jnp.ndarray,
             loc: jnp.ndarray = 0.0,
-            scale: jnp.ndarray = 1.0
+            scale: jnp.ndarray = 1.0,
     ):
-        _distribution = distrax.Beta(alpha=alpha, beta=beta)
+        _distribution = PatchedBeta(alpha=alpha, beta=beta)
+
+        loc = jnp.broadcast_to(loc, alpha.shape)
+        scale = jnp.broadcast_to(scale, alpha.shape)
         transform = distrax.ScalarAffine(shift=loc, scale=scale)
         super().__init__(_distribution, transform)
 
     def mode(self) -> Optional[jnp.ndarray]:
-        base_mode = super().mode()
-        # In Beta, mode is undefined (NaN) for alpha<=1 or beta<=1
-        if jnp.isnan(base_mode).any():
-            return None
-        return base_mode
+        return super().mode()
 
     def sample(self, seed: PRNGKeyArray, sample_shape=()):
         return super().sample(seed=seed, sample_shape=sample_shape)
 
 
-class SampleDist:
-    def __init__(self, dist: distrax.Distribution, samples: int = 100):
-        self._dist = dist
-        self._samples = samples
+class SampleDist(eqx.Module):
+    dist: distrax.Distribution
+    num_samples: int = eqx.field(static=True)
 
-    @property
-    def name(self) -> str:
-        return "SampleDist"
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._dist, name)
+    def __init__(self, dist, num_samples=100):
+        self.dist = dist
+        self.num_samples = num_samples
 
     def mean(self, seed: PRNGKeyArray) -> Float[Array, "..."]:
-        if hasattr(self._dist, "mean") and self._dist.mean() is not None:
-            return self._dist.mean()
-        samples = self._dist.sample(seed=seed, sample_shape=(samples,))
+        samples = self.dist.sample(
+            seed=seed, sample_shape=(self.num_samples,)
+        )
         return jnp.mean(samples, axis=0)
 
     def mode(self, seed: PRNGKeyArray) -> Float[Array, "..."]:
-        if hasattr(self._dist, "mode") and self._dist.mode() is not None:
-            return self._dist.mode()
-        samples = self._dist.sample(seed=seed, sample_shape=(self._samples,))
-        logprobs = self._dist.log_prob(samples)
+        samples = self.dist.sample(
+            seed=seed, sample_shape=(self.num_samples,)
+        )
+        logprobs = self.dist.log_prob(samples)
 
         indices = jnp.argmax(logprobs, axis=0, keepdims=True)
-        mode = jnp.take_along_axis(samples, indices[..., None], axis=0)
-
+        mode = jnp.take_along_axis(
+            samples, indices[..., None], axis=0
+        )
         return jnp.squeeze(mode, axis=0)
 
     def entropy(self, seed: PRNGKeyArray) -> Float[Array, "..."]:
-        if hasattr(self._dist, "entropy") and self._dist.entropy() is not None:
-            return self._dist.entropy()
-        samples = self._dist.sample(seed=seed, sample_shape=(self._samples,))
-        logprobs = self._dist.log_prob(samples)
-
+        samples = self.dist.sample(
+            seed=seed, sample_shape=(self.num_samples,)
+        )
+        logprobs = self.dist.log_prob(samples)
         return -jnp.mean(logprobs, axis=0)
 
     def sample(self, seed: PRNGKeyArray) -> Float[Array, "..."]:
-        return self._dist.sample(seed=seed)
-
-    def rsample(self, seed: PRNGKeyArray) -> Float[Array, "..."]:
-        return self._dist.sample(seed=seed)
+        return self.dist.sample(seed=seed)
 
     def log_prob(self, value: Float[Array, "..."]) -> Float[Array, "..."]:
-        return self._dist.log_prob(value)
+        return self.dist.log_prob(value)
 
 
 class ActorModel(eqx.Module):
@@ -171,19 +167,35 @@ class ActorModel(eqx.Module):
 
         return distrax.Independent(dist, reinterpreted_batch_ndims=1)
 
+    @eqx.filter_jit
     def get_action(
-        self,
-        input_tensor: Float[Array, "... input_dim"],
-        det: bool = False,
-        *,
-        key: jax.random.PRNGKey,
+            self,
+            input_tensor: Float[Array, "... input_dim"],
+            key: PRNGKeyArray,
+            det: bool = False,      # default to training
     ) -> Float[Array, "... action_dim"]:
-        base_dist = self(input_tensor)
+        base_dist = jax.vmap(self)(input_tensor)
         sample_dist = SampleDist(base_dist)
 
-        if det:
-            return sample_dist.mode(seed=key)
-        else:
-            if key is None:
-                raise ValueError("key must be provided for stochastic sampling")
-            return sample_dist.sample(seed=key)
+        return jax.lax.cond(
+            det,
+            lambda: sample_dist.mode(seed=key),
+            lambda: sample_dist.sample(seed=key),
+        )
+
+
+@eqx.filter_jit
+def get_action(
+        model: ActorModel,
+        input_tensor: Float[Array, "... input_dim"],
+        key: PRNGKeyArray,
+        det: bool = False,      # default to training
+) -> Float[Array, "... action_dim"]:
+    base_dist = jax.vmap(model)(input_tensor)
+    sample_dist = SampleDist(base_dist)
+
+    return jax.lax.cond(
+        det,
+        lambda: sample_dist.mode(seed=key),
+        lambda: sample_dist.sample(seed=key),
+    )
