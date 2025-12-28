@@ -3,9 +3,9 @@ import jax.numpy as jnp
 import equinox as eqx
 import distrax
 
-from typing import Tuple, Union, Any, Optional
+from typing import Tuple, Union, Any, Optional, Callable
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn
+from .utils import get_activation_fn, dx
 
 
 class TanhNormal(distrax.Transformed):
@@ -117,7 +117,7 @@ class ActorModel(eqx.Module):
         hidden_size: int,
         action_size: int,
         head_type: str = "Tanh Normal",
-        activation_function: str = "elu",
+        activation_function: Union[str, Callable] = "elu",
         min_std: float = 1e-4,
         init_std: float = 5.0,
         mean_scale: float = 5.0,
@@ -156,25 +156,24 @@ class ActorModel(eqx.Module):
         if self.head_type == "Beta":
             alpha_beta = jax.nn.softplus(out) + self.min_std
             alpha, beta = jnp.split(alpha_beta, 2, axis=-1)
-            dist = AffineBeta(alpha=alpha, beta=beta)
+            dist = dx(AffineBeta)(alpha=alpha, beta=beta)
         elif self.head_type == "Tanh Normal":
             mean, log_std = jnp.split(out, 2, axis=-1)
             mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
             std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
-            dist = TanhNormal(mean, std)
+            dist = dx(TanhNormal)(mean, std)
         else:
             raise ValueError(f"Unknown head type: {self.head_type}")
 
-        return distrax.Independent(dist, reinterpreted_batch_ndims=1)
+        return dx.Independent(dist, reinterpreted_batch_ndims=1)
 
-    @eqx.filter_jit
     def get_action(
             self,
             input_tensor: Float[Array, "... input_dim"],
             key: PRNGKeyArray,
             det: bool = False,      # default to training
     ) -> Float[Array, "... action_dim"]:
-        base_dist = jax.vmap(self)(input_tensor)
+        base_dist = self(input_tensor)
         sample_dist = SampleDist(base_dist)
 
         return jax.lax.cond(
@@ -182,20 +181,3 @@ class ActorModel(eqx.Module):
             lambda: sample_dist.mode(seed=key),
             lambda: sample_dist.sample(seed=key),
         )
-
-
-@eqx.filter_jit
-def get_action(
-        model: ActorModel,
-        input_tensor: Float[Array, "... input_dim"],
-        key: PRNGKeyArray,
-        det: bool = False,      # default to training
-) -> Float[Array, "... action_dim"]:
-    base_dist = jax.vmap(model)(input_tensor)
-    sample_dist = SampleDist(base_dist)
-
-    return jax.lax.cond(
-        det,
-        lambda: sample_dist.mode(seed=key),
-        lambda: sample_dist.sample(seed=key),
-    )

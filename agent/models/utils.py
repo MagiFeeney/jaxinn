@@ -1,6 +1,11 @@
 import enum
 import jax.nn as jnn
-from typing import Callable, Union
+from typing import Callable, Union, Any
+from jaxtyping import PyTree
+import equinox as eqx
+import distrax
+
+from types import ModuleType
 
 
 ACTIVATIONS = {
@@ -27,3 +32,54 @@ def get_activation_fn(name_or_fn) -> Callable:
         return name_or_fn
     else:
         raise TypeError(f"Expected str or callable, got {type(name_or_fn)}")
+
+
+class FixedDistrax(eqx.Module):
+    cls: Callable = eqx.field(static=True)
+    args: PyTree[Any]
+    kwargs: PyTree[Any]
+
+    def __init__(self, cls: Callable, *args, **kwargs):
+        self.cls = cls
+        self.args = args
+        self.kwargs = kwargs
+
+    def _resolve(self, x):
+        return jax.tree_util.tree_map(
+            lambda leaf: leaf.dist if isinstance(leaf, FixedDistrax) else leaf,
+            x,
+            is_leaf=lambda l: isinstance(l, FixedDistrax)
+        )
+
+    @property
+    def dist(self):
+        resolved_args = self._resolve(self.args)
+        resolved_kwargs = self._resolve(self.kwargs)
+        return self.cls(*resolved_args, **resolved_kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.dist, name)
+
+
+class ProxyDistrax:
+    def __call__(self, module):
+        """
+        Wrap a custom distrax-compatible callable (function or class).
+        """
+        if not callable(module):
+            raise TypeError("ProxyDistrax can only wrap callables")
+
+        return lambda *args, **kwargs: FixedDistrax(module, *args, **kwargs)
+
+    def __getattr__(self, name):
+        """
+        Wrap a distrax method directly.
+        """
+        attr = getattr(distrax, name)
+
+        if callable(attr):
+            return lambda *args, **kwargs: FixedDistrax(attr, *args, **kwargs)
+        return attr
+
+
+dx = ProxyDistrax()

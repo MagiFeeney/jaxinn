@@ -3,9 +3,9 @@ import jax.numpy as jnp
 import equinox as eqx
 import distrax
 
-from typing import Optional
+from typing import Optional, Callable, Union
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn
+from .utils import get_activation_fn, dx
 
 
 class ValueModel(eqx.Module):
@@ -20,7 +20,7 @@ class ValueModel(eqx.Module):
             belief_size: int,
             state_size: int,
             hidden_size: int,
-            activation_function="elu",
+            activation_function: Union[str, Callable] = "elu",
             action_size: Optional[int] = None,
             min_std: float = 0.0,
             head_type="Isotropic Normal",
@@ -64,16 +64,16 @@ class ValueModel(eqx.Module):
         assert (action is None) == (self.action_size is None)
         if action is not None:
             input_tensor = jnp.concatenate([input_tensor, action], axis=-1)
-        out = self(input_tensor)
+        out = self.net(input_tensor)
 
         if self.head_type == "Isotropic Normal":
             mean = out
-            std = 1.0
-            dist = distrax.Normal(mean, std)
+            std = jnp.ones_like(mean)
+            dist = dx.Normal(mean, std)
         elif self.head_type == "Normal":
             mean, log_std = jax.split(out, 2, axis=-1)
             std = jax.nn.softplus(log_std) + self.min_std
-            dist = distrax.Normal(mean, std)
+            dist = dx.Normal(mean, std)
         else:
             raise ValueError(f"Unknown head type: {self.head_type}")
 
