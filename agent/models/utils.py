@@ -1,11 +1,9 @@
-import enum
+import jax
 import jax.nn as jnn
 from typing import Callable, Union, Any
 from jaxtyping import PyTree
 import equinox as eqx
 import distrax
-
-from types import ModuleType
 
 
 ACTIVATIONS = {
@@ -61,6 +59,13 @@ class FixedDistrax(eqx.Module):
         return getattr(self.dist, name)
 
 
+class FixedFactory(eqx.Module):
+    cls: Callable = eqx.field(static=True)
+
+    def __call__(self, *args, **kwargs):
+        return FixedDistrax(self.cls, *args, **kwargs)
+
+
 class ProxyDistrax:
     def __call__(self, module):
         """
@@ -69,7 +74,7 @@ class ProxyDistrax:
         if not callable(module):
             raise TypeError("ProxyDistrax can only wrap callables")
 
-        return lambda *args, **kwargs: FixedDistrax(module, *args, **kwargs)
+        return FixedFactory(module)
 
     def __getattr__(self, name):
         """
@@ -78,7 +83,8 @@ class ProxyDistrax:
         attr = getattr(distrax, name)
 
         if callable(attr):
-            return lambda *args, **kwargs: FixedDistrax(attr, *args, **kwargs)
+            return FixedFactory(attr)
+
         return attr
 
 

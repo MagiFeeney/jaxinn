@@ -3,74 +3,60 @@ import jax.numpy as jnp
 import equinox as eqx
 import distrax
 
-from typing import Optional, Callable, Union
+from typing import Optional, Callable, Union, Dict
 from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx
 
 
-class TransitionModel(jit.ScriptModule):
-    __constants__ = [
-        "min_stddev", "action_size",
-        "belief_size", "state_size",
-        "embedding_size",
-    ]
+class LatentState(eqx.Module):
+    """
+    Combine deterministic history encoding (belief) and the stochastic predictor (state) into a single state.
+    """
+    belief: jax.Array  # h_t
+    state: jax.Array   # s_t
 
-    belief_size: int
-    state_size: int
-    embedding_size: int
-    action_size: int
+    @property
+    def batch_shape(self) -> tuple:
+        return self.belief.shape[:-1]
 
-    def __init__(
-        self,
-        belief_size: int,  # h_t
-        state_size: int,   # s_t
-        action_size: int,
-        hidden_size: int,
-        embedding_size: int,  # enc(o_t)
-        activation_function: Union[str, Callable] = "elu",
-        min_stddev: float = 0.1,
-    ):
-        super().__init__()
-        self.min_stddev = min_stddev
-        self.belief_size = belief_size
-        self.state_size = state_size
-        self.embedding_size = embedding_size
-        self.action_size = action_size
+    @property
+    def feature(self) -> jax.Array:
+        return jnp.concatenate([self.belief, self.state], axis=-1)
 
-        assert (belief_size > 0) and (state_size > 0)
+    def __getitem__(self, index: Any) -> "LatentState":
+        return jax.tree.map(lambda x: x[index], self)
 
-        # x
-        self.state_action_pre_rnn = BottledModule(nn.Sequential(
-            nn.Linear(state_size + action_size, hidden_size),
-            get_activation_module(activation_function),
-        ))                                                  # p(c_{t - 1} | s_{t - 1}, a_{t - 1})
-        self.rnn = nn.GRUCell(hidden_size, belief_size) # p(h_t | c_{t - 1}, h_{t - 1})
+    def flatten(self) -> "LatentState":
+        return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
 
-        self.belief_to_state_prior = BottledModule(nn.Sequential(
-            nn.Linear(belief_size, hidden_size),
-            get_activation_module(activation_function),
-            nn.Linear(hidden_size, 2 * state_size),
-        ))                      # state prior: p(s_t | h_t)
+    def narrow(self, axis: int, start: int, length: int) -> "LatentState": # TODO: delete if not used
+        return jax.tree.map(
+            lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
+            self
+        )
 
-        # posterior
 
-        self.xy_belief_obs_to_state_posterior = BottledModule(nn.Sequential(
-            nn.Linear(
-                belief_size + embedding_size,
-                hidden_size,
-            ),
-            get_activation_module(activation_function),
-            nn.Linear(
-                hidden_size,
-                2 * state_size,
-            ),
-        ))                      # state posterior: p(s_t | h_t, o_t)
+class LatentStateWithParams(eqx.Module):
+    """
+    Store the LatentState along with its parameters
+    """
+    latent_state: LatentState
+    params: Dict[str, jax.Array]
+    dist_cls: Callable[..., Any] = eqx.field(static=True)
+
+    @property
+    def dist(self):
+        return self.dist_cls(**self.params)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.dist, name)
 
 
 class RepresentationModel(eqx.Module):
     """Representation learning of state, inferred from history and the latest observation: p(s_t | h_t, o_t)
     """
     net: eqx.nn.Sequential
+    head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
     min_std: float
@@ -84,36 +70,150 @@ class RepresentationModel(eqx.Module):
             min_std: float = 0.1,
             activation_function="elu",
             head_type: str = "Normal",
+            *,
+            key: jax.random.PRNGKey,
     ):
-        activation = get_activation_fn(activation_function)
-
         if head_type == "Normal":
+            self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
         elif head_type == "Categorical":
-            self.num_variables, self.num_categories = state_size
+            self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unsupported head_type: {head_type}")
+
+        activation = get_activation_fn(activation_function)
+
+        keys = jax.random.split(key, 2)
 
         self.net = eqx.nn.Sequential([
-            eqx.nn.Linear(belief_size + embedding_size, hidden_size),
+            eqx.nn.Linear(belief_size + embedding_size, hidden_size, key=keys[0]),
             eqx.nn.Lambda(activation),
-            eqx.nn.Linear(hidden_size, output_size),
+            eqx.nn.Linear(hidden_size, output_size, key=keys[1]),
         ])
 
         self.min_std = min_std
+        self.head_type = head_type
 
-    def __call__(self, belief, obs):
-        input_tensor = jnp.concatenate([belief, obs], axis=-1)
+    def __call__(
+            self,
+            latent_state: LatentState,
+            obs: Float[Array, "... embedding_size"],
+            key: PRNGKeyArray,
+    ) -> LatentStateWithParams:
+        input_tensor = jnp.concatenate([latent_state.belief, obs], axis=-1)
         out = self.net(input_tensor)
+
         if self.head_type == "Normal":
-            mean, log_std = jax.split(out, 2, axis=-1)
+            mean, log_std = jnp.split(out, 2, axis=-1)
             std = jax.nn.softplus(log_std) + self.min_std
-            dist = dx.Normal(mean, std)
+            params = {"loc": mean, "scale": std}
+            dist_cls = dx.Normal
+            dist = dist_cls(mean, std)
+            state = dist.sample(seed=key)
         elif self.head_type == "Categorical":
-            logit = out.reshape(*out.shape[:-1], self.num_categories, self.num_variables) # TODO: determine order of K and N
-            dist = dx.OneHotCategorical(logits=logit)
-        return dist
+            logit = out.reshape(*out.shape[:-1], self.num_variables, self.num_categories)
+            params = {"logits": logit}
+            dist_cls = dx.OneHotCategorical
+            dist = dist_cls(logits=logit)
+            state = dist.sample(seed=key)
+            state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
+            state = state.reshape(*state.shape[:2], -1) # flatten
+
+        return LatentStateWithParams(
+            latent_state=LatentState(belief=latent_state.belief, state=state),
+            params=params,
+            dist_cls=dist_cls
+        )
+
+
+class TransitionModel(eqx.Module):
+    encoder: eqx.nn.Sequential
+    body: eqx.nn.GRUCell
+    head: eqx.nn.Sequential
+    head_type: str = eqx.field(static=True)
+    num_variables: int = eqx.field(static=True)
+    num_categories: int = eqx.field(static=True)
+    min_std: float
+
+    def __init__(
+            self,
+            belief_size: int,
+            state_size: Union[int, tuple],
+            action_size: int,
+            hidden_size: int,
+            min_std: float = 0.1,
+            activation_function="elu",
+            head_type: str = "Normal",
+            *,
+            key: jax.random.PRNGKey,
+    ):
+        if head_type == "Normal":
+            self.num_variables, self.num_categories = state_size, 0
+            output_size = 2 * state_size
+            input_size = state_size + action_size
+        elif head_type == "Categorical":
+            self.num_variables, self.num_categories = state_size # Unpack the tuple
+            output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
+            input_size = output_size + action_size
+        else:
+            raise NotImplementedError(f"Unsupported head_type: {head_type}")
+
+        activation = get_activation_fn(activation_function)
+
+        keys = jax.random.split(key, 4)
+
+        # p(c_{t - 1} | s_{t - 1}, a_{t - 1})
+        self.encoder = eqx.nn.Sequential([
+            eqx.nn.Linear(input_size, hidden_size, key=keys[0]),
+            eqx.nn.Lambda(activation),
+        ])
+
+        # p(h_t | c_{t - 1}, h_{t - 1})
+        self.body = nn.GRUCell(hidden_size, belief_size, key=keys[1])
+
+        # p(s_t | h_t)
+        self.head = eqx.nn.Sequential([
+            eqx.nn.Linear(belief_size, hidden_size, key=keys[2]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.Linear(hidden_size, output_size, key=keys[3]),
+        ])
+
+        self.min_std = min_std
+        self.head_type = head_type
+
+    def __call__(
+            self,
+            latent_state: LatentState,
+            action: Float[Array, "... action_size"],
+            key: PRNGKeyArray,
+    ) -> LatentStateWithParams:
+        input_tensor = jnp.concatenate([latent_state.state, action], axis=-1)
+        embedding = self.encoder(input_tensor)
+        belief = self.body(embedding, latent_state.belief)
+        out = self.head(belief)
+
+        if self.head_type == "Normal":
+            mean, log_std = jnp.split(out, 2, axis=-1)
+            std = jax.nn.softplus(log_std) + self.min_std
+            params = {"loc": mean, "scale": std}
+            dist_cls = dx.Normal
+            dist = dist_cls(mean, std)
+            state = dist.sample(seed=key)
+        elif self.head_type == "Categorical":
+            logit = out.reshape(*out.shape[:-1], self.num_variables, self.num_categories)
+            params = {"logits": logit}
+            dist_cls = dx.OneHotCategorical
+            dist = dist_cls(logits=logit)
+            state = dist.sample(seed=key)
+            state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
+            state = state.reshape(*state.shape[:2], -1) # flatten
+
+        return LatentStateWithParams(
+            latent_state=LatentState(belief=belief, state=state),
+            params=params,
+            dist_cls=dist_cls
+        )
 
 
 class RewardModel(eqx.Module):
