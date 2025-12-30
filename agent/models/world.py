@@ -123,7 +123,7 @@ class RepresentationModel(eqx.Module):
         return LatentStateWithParams(
             latent_state=LatentState(belief=latent_state.belief, state=state),
             params=params,
-            dist_cls=dist_cls
+            dist_cls=dist_cls,
         )
 
 
@@ -266,13 +266,17 @@ class RewardModel(eqx.Module):
 
     def __call__(
         self,
-        input_tensor: Float[Array, "... input_dim"],
-        action: Optional[Float[Array, "... input_dim"]] = None,
+        latent_state: Union[Float[Array, "... input_dim"], LatentState],
+        action: Optional[Float[Array, "... action_dim"]] = None,
     ) -> distrax.Distribution:
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+
         assert (action is None) == (self.action_size is None)
         if action is not None:
-            input_tensor = jnp.concatenate([input_tensor, action], axis=-1)
-        out = self.net(input_tensor)
+            latent_state = jnp.concatenate([latent_state, action], axis=-1)
+
+        out = self.net(latent_state)
 
         if self.head_type == "Isotropic Normal":
             mean = out

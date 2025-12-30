@@ -2,10 +2,11 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 import distrax
-
 from typing import Tuple, Union, Optional, Callable
 from jaxtyping import Array, Float, PRNGKeyArray
+
 from .utils import get_activation_fn, dx
+from .world import LatentState
 
 
 class Encoder(eqx.Module):
@@ -63,9 +64,9 @@ class Encoder(eqx.Module):
 
     def __call__(
             self,
-            input_tensor: Float[Array, "... input_dim"]
+            obs: Float[Array, "... obs_dim"]
     ) -> Float[Array, "... output_dim"]:
-        feature = self.body(input_tensor)
+        feature = self.body(obs)
         out = self.head(feature)
         return out
 
@@ -123,9 +124,11 @@ class Decoder(eqx.Module):
 
     def __call__(
             self,
-            input_tensor: Float[Array, "... input_dim"]
+            latent_state: Union[Float[Array, "... input_dim"], LatentState],
     ) -> distrax.Distribution:
-        embedding = self.embedding(input_tensor)
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+        embedding = self.embedding(latent_state)
         embedding = embedding[..., None, None] # Reshape the vector to BCHW
         out = self.body(embedding)
         dist = dx.Normal(out, jnp.ones_like(out))

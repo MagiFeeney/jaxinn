@@ -6,6 +6,7 @@ import distrax
 from typing import Tuple, Union, Any, Optional, Callable
 from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx
+from .world import LatentState
 
 
 class TanhNormal(distrax.Transformed):
@@ -149,9 +150,12 @@ class ActorModel(eqx.Module):
 
     def __call__(
         self,
-        input_tensor: Float[Array, "... input_dim"]
+        latent_state: Union[Float[Array, "... input_dim"], LatentState],
     ) -> distrax.Distribution:
-        out = self.net(input_tensor)
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+
+        out = self.net(latent_state)
 
         if self.head_type == "Beta":
             alpha_beta = jax.nn.softplus(out) + self.min_std
@@ -169,11 +173,14 @@ class ActorModel(eqx.Module):
 
     def get_action(
             self,
-            input_tensor: Float[Array, "... input_dim"],
+            latent_state: Union[Float[Array, "... input_dim"], LatentState],
             key: PRNGKeyArray,
             det: bool = False,      # default to training
     ) -> Float[Array, "... action_dim"]:
-        base_dist = self(input_tensor)
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+
+        base_dist = self(latent_state)
         sample_dist = SampleDist(base_dist)
 
         return jax.lax.cond(
