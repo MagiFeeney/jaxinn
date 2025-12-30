@@ -123,7 +123,7 @@ class RepresentationModel(eqx.Module):
         return LatentStateWithParams(
             latent_state=LatentState(belief=latent_state.belief, state=state),
             params=params,
-            dist_cls=dist_cls,
+            dist_cls=dist_cls
         )
 
 

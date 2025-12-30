@@ -1,6 +1,7 @@
 from .actor import ActorModel
 from .critic import ValueModel
-from .world import RewardModel
+from .sensor import Encoder, Decoder
+from .world import RewardModel, TransitionModel, RepresentationModel
 
 
-__all__ = ['ActorModel', 'ValueModel', 'RewardModel']
+__all__ = ['ActorModel', 'ValueModel', 'RewardModel', 'Encoder', 'Decoder', 'RewardModel', 'TransitionModel', 'RepresentationModel']
