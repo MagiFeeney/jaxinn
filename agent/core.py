@@ -42,7 +42,7 @@ class Learner(eqx.Module):
         updates, new_optimizer_state = self.optimizer.update(
             grads, self.optimizer_state, self.model
         )
-        new_model = optax.apply_updates(self.model, updates)
+        new_model = eqx.apply_updates(self.model, updates)
         return eqx.tree_at(
             lambda x: (x.model, x.optimizer_state),
             self,
@@ -151,12 +151,6 @@ class Agent(eqx.Module):
             kl_loss = ...
 
             return reward_loss + observation_loss + kl_loss
-
-        def make_step():
-            loss, grads = model_loss()
-            updates, opt_state = optim.update(grads, opt_state)
-            model = eqx.apply_updates(model, updates)
-            return loss, model, opt_state
 
         lambda_return = self.plan(posterior, key_planning)
         actor_loss = -lambda_return.mean()
