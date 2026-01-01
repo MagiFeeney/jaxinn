@@ -9,7 +9,7 @@ from .utils import get_activation_fn, dx
 from .world import LatentState
 
 
-class ValueModel(eqx.Module):
+class Critic(eqx.Module):
     net: eqx.nn.Sequential
     action_size: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)

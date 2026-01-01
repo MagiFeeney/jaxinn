@@ -5,7 +5,7 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 import optax
 
-from .models import World, Value, Actor
+from .models import World, Critic, Actor, LatentState, LatentStateWithParams
 from .memory import Memory
 
 
@@ -53,7 +53,7 @@ class Learner(eqx.Module):
 class Agent(eqx.Module):
     world: Learner[World]
     actor: Learner[Actor]
-    value: Learner[Value]
+    critic: Learner[Critic]
     memory: Memory
 
     def __init__(
@@ -63,10 +63,10 @@ class Agent(eqx.Module):
             *,
             key: PRNGKeyArray,
     ):
-        key_world, key_actor, key_value = jax.random.split(key, 3)
+        key_world, key_actor, key_critic = jax.random.split(key, 3)
         self.world = Learner.create(World, config.world, key=key_world)
         self.actor = Learner.create(Actor, config.actor, key=key_actor)
-        self.value = Learner.create(Value, config.value, key=key_value)
+        self.critic = Learner.create(Critic, config.critic, key=key_critic)
         self.memory = Memory(**config.memory)
 
     def act():
@@ -86,7 +86,7 @@ class Agent(eqx.Module):
         prior = predict(latent_state, action, key_prior)
         embedding = Encoder(observation)
         posterior = Representation(prior.latent_state, embedding, key_posterior)
-        return posterior
+        return prior, posterior
 
     def reason(self, data, key):
         """
@@ -101,16 +101,16 @@ class Agent(eqx.Module):
             action, obs = inputs
 
             key, subkey = jax.random.split(key)
-            posterior = self.perceive(latent_state, action, obs, subkey)
+            prior, posterior = self.perceive(latent_state, action, obs, subkey)
 
-            return (posterior.latent_state, key), posterior
+            return (posterior.latent_state, key), (prior, posterior)
 
-        _, posteriors = jax.lax.scan(
+        _, (priors, posteriors) = jax.lax.scan(
             step_fn,
             (init_latent_state, key_scan),
             (data.action, data.observation)
         )
-        return posteriors           # posterior with params for KL div loss
+        return priors, posteriors
 
     def plan(self, posterior: LatentStateWithParams):
         """
@@ -131,36 +131,44 @@ class Agent(eqx.Module):
             kl_loss(posterior.params)
           lambda_return ← plan(posterior, key_planning)
             actor_loss
-            value_loss
+            critic_loss
         """
 
         key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
         data = self.memory.sample(self.batch_size, key_memory)
-        posterior = self.reason(data, key_reasoning)
+        prior, posterior = self.reason(data, key_reasoning)
 
         # TODO: update function modulize
-        @eqx.filter_value_and_grad
-        def model_loss():           # TODO: abstract the loss function for three different considerations
+        @eqx.filter_critic_and_grad
+        def world_loss_fn(
+                world: Learner,
+                prior: LatentStateWithParams,
+                posterior: LatentStateWithParams,
+                data
+        ):           # TODO: abstract the loss function for three different considerations
             # reward
-            reward_loss = -self.reward_model(posterior.latent_state).log_prob(data.reward)
+            reward_loss = -world.model.reward(posterior.latent_state).log_prob(data.reward).mean()
 
             # observation
-            observation_loss = -self.observation_model(posterior.latent_state).log_prob(data.observation)
+            observation_loss = -world.model.observation(posterior.latent_state).log_prob(data.observation).mean()
 
             # KL divergence
-            kl_loss = ...
+            kl_loss = posterior.kl_divergence(prior.dist).mean()
 
             return reward_loss + observation_loss + kl_loss
 
+        critic, grads = world_loss_fn(self.world, prior, posterior, data)
+        new_world = self.world.update(grads)
+
         lambda_return = self.plan(posterior, key_planning)
         actor_loss = -lambda_return.mean()
-        value_loss = -self.value_model(posterior.latent_state).log_prob(lambda_return).mean() # TODO: add PG
+        critic_loss = -self.critic_model(posterior.latent_state).log_prob(lambda_return).mean() # TODO: add PG
 
         loss_terms = {
             "model/reward": reward_loss,
             "model/observation": observation_loss,
             "model/kl": kl_loss,
             "actor": actor_loss,
-            "value": value_loss,
+            "critic": critic_loss,
         }
         return loss_terms, key

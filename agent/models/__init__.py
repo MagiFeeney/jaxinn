@@ -1,12 +1,11 @@
 from .actor import Actor
-from .critic import Value
+from .critic import Critic
 from .world import Encoder, Decoder, Representation, Transition, Reward, World
 
 
 __all__ = [
     'Actor',
-    'Value',
-    'Reward',
+    'Critic',
     'Encoder',
     'Decoder',
     'Representation',
