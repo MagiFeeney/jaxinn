@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import equinox as eqx
 import distrax
 
-from typing import Optional, Callable, Union, Dict
+from typing import Optional, Callable, Union, Dict, Tuple
 from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx
 
@@ -52,14 +52,143 @@ class LatentStateWithParams(eqx.Module):
         return getattr(self.dist, name)
 
 
-class RepresentationModel(eqx.Module):
+# Perception
+class Encoder(eqx.Module):
+    body: eqx.nn.Sequential
+    head: Union[eqx.nn.Linear, eqx.nn.Identity]
+    shape: Tuple[int, int, int] = eqx.field(static=True)
+    kernel_size: int = eqx.field(static=True)
+    depth: int = eqx.field(static=True)
+    stride: int = eqx.field(static=True)
+    embedding_size: Optional[int] = eqx.field(static=True)
+
+    def __init__(
+            self,
+            shape: Tuple[int, int, int],
+            kernel_size: int = 4,
+            depth: int = 48,
+            stride: int = 2,
+            embedding_size: Optional[int] = 1024,
+            activation_function: Union[str, Callable] = "elu",
+            *,
+            key: jax.random.PRNGKey
+    ):
+        activation = get_activation_fn(activation_function)
+
+        if embedding_size is not None:
+            keys = jax.random.split(key, 5)
+        else:
+            keys = jax.random.split(key, 4)
+
+        self.body = eqx.nn.Sequential([
+            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, key=keys[0]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, key=keys[1]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, key=keys[2]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, key=keys[3]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.Lambda(jnp.ravel),
+        ])
+
+        feature_map_shape = self.get_feature_map_shape(shape)
+        feature_map_size = int(jnp.prod(feature_map_shape)) # flattened
+        if embedding_size is not None:
+            self.embedding_size = embedding_size
+            self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=keys[4])
+        else:
+            self.embedding_size = feature_map_size
+            self.head = eqx.nn.Identity()
+
+        self.shape = shape
+        self.kernel_size = kernel_size
+        self.depth = depth
+        self.stride = stride
+
+    def __call__(
+            self,
+            obs: Float[Array, "... obs_dim"]
+    ) -> Float[Array, "... output_dim"]:
+        feature = self.body(obs)
+        out = self.head(feature)
+        return out
+
+    def get_feature_map_shape(self, shape) -> Tuple[int, int, int]:
+        dummy_input = jnp.zeros(shape)
+        out_shape_struct = jax.eval_shape(self.body, dummy_input)
+        out_shape = jnp.array(out_shape_struct.shape)
+        return out_shape
+
+
+class Decoder(eqx.Module):
+    embedding: eqx.nn.Linear
+    body: eqx.nn.Sequential
+    shape: Tuple[int, int, int] = eqx.field(static=True)
+    kernel_size: int = eqx.field(static=True)
+    depth: int = eqx.field(static=True)
+    stride: int = eqx.field(static=True)
+    embedding_size: int = eqx.field(static=True)
+
+    def __init__(
+            self,
+            belief_size: int,
+            state_size: int,
+            shape: Tuple[int, int, int],
+            kernel_size: int = 4,
+            depth: int = 48,
+            stride: int = 2,
+            activation_function: Union[str, Callable] = "elu",
+            embedding_size: int = 1024,
+            *,
+            key: jax.random.PRNGKey
+    ):
+        activation = get_activation_fn(activation_function)
+
+        keys = jax.random.split(key, 5)
+
+        self.embedding = eqx.nn.Linear(belief_size + state_size, embedding_size, key=keys[0])
+
+        self.body = eqx.nn.Sequential([
+            eqx.nn.Lambda(activation),
+            eqx.nn.ConvTranspose2d(embedding_size, 4 * depth, kernel_size=5, stride=stride, key=keys[1]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=5, stride=stride, key=keys[2]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=6, stride=stride, key=keys[3]),
+            eqx.nn.Lambda(activation),
+            eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=6, stride=stride, key=keys[4]),
+        ])
+
+        self.shape = shape
+        self.kernel_size = kernel_size
+        self.depth = depth
+        self.stride = stride
+        self.embedding_size = embedding_size
+
+    def __call__(
+            self,
+            latent_state: Union[Float[Array, "... input_dim"], LatentState],
+    ) -> distrax.Distribution:
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+        embedding = self.embedding(latent_state)
+        embedding = embedding[..., None, None] # Reshape the vector to BCHW
+        out = self.body(embedding)
+        dist = dx.Normal(out, jnp.ones_like(out))
+        return dx.Independent(dist, reinterpreted_batch_ndims=len(self.shape))
+
+
+# Representation
+class Representation(eqx.Module):
     """Representation learning of state, inferred from history and the latest observation: p(s_t | h_t, o_t)
     """
     net: eqx.nn.Sequential
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
-    min_std: float
+
+# Motivation    min_std: float
 
     def __init__(
             self,
@@ -127,7 +256,8 @@ class RepresentationModel(eqx.Module):
         )
 
 
-class TransitionModel(eqx.Module):
+# Transition
+class Transition(eqx.Module):
     encoder: eqx.nn.Sequential
     body: eqx.nn.GRUCell
     head: eqx.nn.Sequential
@@ -216,7 +346,8 @@ class TransitionModel(eqx.Module):
         )
 
 
-class RewardModel(eqx.Module):
+# Motivation
+class Reward(eqx.Module):
     net: eqx.nn.Sequential
     action_size: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
@@ -290,3 +421,15 @@ class RewardModel(eqx.Module):
             raise ValueError(f"Unknown head type: {self.head_type}")
 
         return dist
+
+
+class Perception(eqx.Module):
+    encoder: Encoder
+    decoder: Decoder
+
+
+class World(eqx.Module):
+    perception: Perception
+    representation: Representation
+    transition: Transition
+    reward: Reward

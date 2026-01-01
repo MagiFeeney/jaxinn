@@ -16,9 +16,9 @@ class Trainer(eqx.Module):
 
     def __init__(self, config, *, key: PRNGKeyArray):
         self.env, self.env_params = make_env(**config.env)
-        self.agent = Agent(**config.agent, key=key) # TODO: determine useful env_params to pass in
+        self.agent = Agent(config.agent, key=key) # TODO: determine useful env_params to pass in
 
-    def __call__(self, key: jax.random.PRNGKey): # TODO: train loop
+    def __call__(self, key: PRNGKeyArray): # TODO: train loop
         """
         eval_interval
           train_interval
