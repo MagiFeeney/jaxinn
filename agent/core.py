@@ -49,6 +49,12 @@ class Learner(eqx.Module):
             (new_model, new_optimizer_state)
         )
 
+    def __getattr__(self, name):
+        return getattr(self.model, name)
+
+    def __call__(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
+
 
 class Agent(eqx.Module):
     world: Learner[World]
@@ -75,7 +81,7 @@ class Agent(eqx.Module):
     def predict(self, latent_state, action, key):
         """Transition .
         """
-        prior = Transition(latent_state, action, key)
+        prior = self.world.transition(latent_state, action, key)
         return prior
 
     def perceive(self, latent_state, action, observation, key):
@@ -83,9 +89,9 @@ class Agent(eqx.Module):
         Perception is the process of recognizing existing knowledge or deriving new information from sensory inputs based on memory, representations, and predictive models.
         """
         key_prior, key_posterior = jax.random.split(key, 2)
-        prior = predict(latent_state, action, key_prior)
-        embedding = Encoder(observation)
-        posterior = Representation(prior.latent_state, embedding, key_posterior)
+        prior = self.predict(latent_state, action, key_prior)
+        embedding = self.world.perception.encoder(observation)
+        posterior = self.world.representation(prior.latent_state, embedding, key_posterior)
         return prior, posterior
 
     def reason(self, data, key):
@@ -147,10 +153,10 @@ class Agent(eqx.Module):
                 data
         ):           # TODO: abstract the loss function for three different considerations
             # reward
-            reward_loss = -world.model.reward(posterior.latent_state).log_prob(data.reward).mean()
+            reward_loss = -world.reward(posterior.latent_state).log_prob(data.reward).mean()
 
             # observation
-            observation_loss = -world.model.observation(posterior.latent_state).log_prob(data.observation).mean()
+            observation_loss = -world.observation(posterior.latent_state).log_prob(data.observation).mean()
 
             # KL divergence
             kl_loss = posterior.kl_divergence(prior.dist).mean()
@@ -178,7 +184,7 @@ class Agent(eqx.Module):
             imagination = self.plan(posterior, key_planning)
             return_prediction = self.processor(imagination)
             actor_loss = -return_prediction.mean()
-            critic_loss = -self.critic_model(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean() # TODO: add PG
+            critic_loss = -self.critic.model(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean() # TODO: add PG
             total_loss = actor_loss + critic_loss # non-interleaved
 
             return total_loss, {
