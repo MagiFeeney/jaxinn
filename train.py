@@ -10,6 +10,22 @@ from envs import make_env
 from config import Config
 
 
+class Transition(eqx.Module):
+    action: jax.Array
+    next_obs: jax.Array
+    reward: jax.Array
+    done: jax.Array
+
+    @classmethod
+    def init_empty(cls, obs_shape, action_dim):
+        return cls(
+            action=jnp.zeros((action_dim,)),
+            next_obs=jnp.zeros(obs_shape),
+            reward=jnp.array(0.0),
+            done=jnp.array(0.0),
+        )
+
+
 class Trainer(eqx.Module):
     agent: eqx.Module
     env: eqx.Module

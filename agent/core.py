@@ -9,22 +9,6 @@ from .models import World, Critic, Actor, LatentState, LatentStateWithParams
 from .memory import Memory
 
 
-class Transition(eqx.Module):
-    action: jax.Array
-    next_obs: jax.Array
-    reward: jax.Array
-    done: jax.Array
-
-    @classmethod
-    def init_empty(cls, obs_shape, action_dim):
-        return cls(
-            action=jnp.zeros((action_dim,)),
-            next_obs=jnp.zeros(obs_shape),
-            reward=jnp.array(0.0),
-            done=jnp.array(0.0),
-        )
-
-
 class Learner(eqx.Module):
     model: eqx.Module
     optimizer: optax.GradientTransformation = eqx.field(static=True)
@@ -61,6 +45,9 @@ class Agent(eqx.Module):
     actor: Learner[Actor]
     critic: Learner[Critic]
     memory: Memory
+    planning_horizon: int = eqx.field(static=True)
+    discount_factor: float = eqx.field(static=True)
+    uae_lambda: float = eqx.field(static=True)
 
     def __init__(
             self,
@@ -75,8 +62,12 @@ class Agent(eqx.Module):
         self.critic = Learner.create(Critic, config.critic, key=key_critic)
         self.memory = Memory(**config.memory())
 
-    def act():
-        pass
+        self.planning_horizon = config.planning_horizon
+        self.discount_factor = config.discount_factor
+        self.uae_lambda = config.uae_lambda
+
+    def act(self, *args, **kwargs): # TODO: remove or keep
+        return self.actor.get_action(*args, **kwargs)
 
     def predict(self, latent_state, action, key):
         """Transition .
@@ -118,12 +109,60 @@ class Agent(eqx.Module):
         )
         return priors, posteriors
 
-    def plan(self, posterior: LatentStateWithParams):
-        """
-        imagine()
-        return()
-        """
-        return lambda_return
+    def plan(self, posterior: LatentStateWithParams, key):
+        key_scan = key
+
+        # Imagination
+        def imagine_step_fn(carry, _):
+            latent_state, key = carry
+
+            key, key_action, key_predict = jax.random.split(key, 3)
+            action = self.actor.get_action(latent_state, key_action)
+            prior = self.predict(latent_state, action, key_predict)
+
+            return (prior.latent_state, key), (prior.latent_state, action)
+
+        _, (latent_states, actions) = jax.lax.scan(
+            imagine_step_fn,
+            (posterior.latent_state, key_scan),
+            None,
+            self.planning_horizon,
+        )
+
+        # Processing data
+        rewards = self.world.reward(latent_states).mean() # Equivalent to r(s, a, s') instead of r(s, a)
+        next_values = self.critic(latent_states).mean()
+        first_value = self.critic(posterior.latent_states).mean()
+        values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=-1)
+
+        last_value = next_values[-1]
+        dones = jnp.ones_like(values)
+        baselines = jnp.zeros_like(values)
+
+        def uae_step_fn(carry, inputs):
+            uae, next_value = carry
+            reward, value, baseline, done = inputs
+
+            delta = (
+                reward
+                + self.discount_factor * next_value * (1 - done)
+                - baseline
+            )
+            z = value - baseline
+            discounted_uae = self.discount_factor * self.uae_lambda (1 - done) * uae
+            return_prediction = delta + discounted_uae + baseline
+            uae = (delta - z) + discounted_uae
+
+            return (uae, value), return_prediction
+
+        _, return_predictions = jax.lax.scan(
+            get_advantages,
+            (jnp.zeros_like(last_value), last_value),
+            (rewards, values, baselines, dones),
+            reverse=True,
+        )
+
+        return return_predictions
 
     def learn(self, key):
         """
@@ -184,7 +223,7 @@ class Agent(eqx.Module):
             imagination = self.plan(posterior, key_planning)
             return_prediction = self.processor(imagination)
             actor_loss = -return_prediction.mean()
-            critic_loss = -self.critic.model(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean() # TODO: add PG
+            critic_loss = -self.critic(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean() # TODO: add PG
             total_loss = actor_loss + critic_loss # non-interleaved
 
             return total_loss, {
