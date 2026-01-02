@@ -7,6 +7,7 @@ import equinox as eqx
 
 from agent import Agent
 from envs import make_env
+from config import Config
 
 
 class Trainer(eqx.Module):
@@ -31,13 +32,6 @@ class Trainer(eqx.Module):
         """
 
 
-@dataclass
-class Args:
-    # General
-    agent_name: Literal['PSRL', 'EUBRL', 'QLearning', 'RMAX', 'SARSA', 'VBRB', 'BEB'] = 'EUBRL'
-    """the agent you wish to choose"""
-
-
 def main(args):                     # TODO: vectorize Trainer
     key = jax.random.PRNGKey(args.seed)
     key_agent, key_train = jax.random.split(key, 2)
@@ -52,5 +46,5 @@ def main(args):                     # TODO: vectorize Trainer
     # TODO: plot figure or statistics logging
 
 if __name__ == "__main__":
-    args = tyro.cli(Args)
+    args = tyro.cli(Config)
     main(args)

@@ -32,8 +32,8 @@ class Learner(eqx.Module):
 
     @classmethod
     def create(cls, model_cls, config, *, key):
-        model = model_cls(**config, key=key)
-        optimizer = optax.adam(config.lr)
+        model = model_cls(**config(), key=key)
+        optimizer = optax.adam(config.optimizer())
         params = eqx.filter(model, eqx.is_array)
         optimizer_state = optimizer.init(params)
         return cls(model, optimizer, optimizer_state)
@@ -67,7 +67,7 @@ class Agent(eqx.Module):
         self.world = Learner.create(World, config.world, key=key_world)
         self.actor = Learner.create(Actor, config.actor, key=key_actor)
         self.critic = Learner.create(Critic, config.critic, key=key_critic)
-        self.memory = Memory(**config.memory)
+        self.memory = Memory(**config.memory())
 
     def act():
         pass
