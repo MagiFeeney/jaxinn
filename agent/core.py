@@ -94,7 +94,7 @@ class Agent(eqx.Module):
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
         """
         key_init, key_scan = jax.random.split(key, 2)
-        init_latent_state = init_state(key_init)
+        init_latent_state = init_state(key_init) # TODO: Define init_latent_state function
 
         def step_fn(carry, inputs):
             latent_state, key = carry
@@ -135,10 +135,10 @@ class Agent(eqx.Module):
         """
 
         key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
-        data = self.memory.sample(self.batch_size, key_memory)
+        data = self.memory.sample(key_memory) # TODO: batch_size should be a part of memory
         prior, posterior = self.reason(data, key_reasoning)
+        metrics = {}
 
-        # TODO: update function modulize
         @eqx.filter_critic_and_grad
         def world_loss_fn(
                 world: Learner,
@@ -155,20 +155,44 @@ class Agent(eqx.Module):
             # KL divergence
             kl_loss = posterior.kl_divergence(prior.dist).mean()
 
-            return reward_loss + observation_loss + kl_loss
+            # Total loss
+            total_loss = reward_loss + observation_loss + kl_loss
 
-        critic, grads = world_loss_fn(self.world, prior, posterior, data)
+            return total_loss, {
+                "model/reward": reward_loss,
+                "model/observation": observation_loss,
+                "model/kl": kl_loss,
+                "model/total": total_loss,
+            }
+
+        (loss, aux), grads = world_loss_fn(self.world, prior, posterior, data)
         new_world = self.world.update(grads)
+        metrics.update(**aux)
 
-        lambda_return = self.plan(posterior, key_planning)
-        actor_loss = -lambda_return.mean()
-        critic_loss = -self.critic_model(posterior.latent_state).log_prob(lambda_return).mean() # TODO: add PG
+        @eqx.filter_critic_and_grad
+        def ac_loss_fn(
+                actor: Learner,
+                critic: Learner,
+                posterior: LatentStateWithParams,
+        ):
+            imagination = self.plan(posterior, key_planning)
+            return_prediction = self.processor(imagination)
+            actor_loss = -return_prediction.mean()
+            critic_loss = -self.critic_model(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean() # TODO: add PG
+            total_loss = actor_loss + critic_loss # non-interleaved
 
-        loss_terms = {
-            "model/reward": reward_loss,
-            "model/observation": observation_loss,
-            "model/kl": kl_loss,
-            "actor": actor_loss,
-            "critic": critic_loss,
-        }
-        return loss_terms, key
+            return total_loss, {
+                "actor": actor_loss,
+                "critic": critic_loss,
+            }
+
+        (loss, aux), (actor_grads, critic_grads) = ac_loss_fn(self.actor, self.critic, posterior)
+        new_actor = self.actor.update(actor_grads)
+        new_critic = self.critic.update(critic_grads)
+        metrics.update(**aux)
+
+        return eqx.tree_at(
+            lambda x: (x.world, x.actor, x.critic),
+            self,
+            (new_world, new_actor, new_critic)
+        ), metrics
