@@ -427,9 +427,19 @@ class Perception(eqx.Module):
     encoder: Encoder
     decoder: Decoder
 
+    def __init__(self, encoder, decoder):
+        self.encoder = Encoder(**encoder())
+        self.decoder = Decoder(**decoder())
+
 
 class World(eqx.Module):
     perception: Perception
     representation: Representation
     transition: Transition
     reward: Reward
+
+    def __init__(self, perception, representation, transition, reward):
+        self.perception = Perception(**perception())
+        self.representation = Representation(**representation())
+        self.transition = Transition(**transition())
+        self.reward = Reward(**reward())

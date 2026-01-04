@@ -108,6 +108,11 @@ class Transition(ModelShared):
 
 
 @dataclass
+class Reward(ModelShared):
+    pass
+
+
+@dataclass
 class WorldOptimizer(OptimizerShared):
     """Optimizer exclusive for world model."""
     lr: float = 6e-4            # TODO: add Optimizer(Base) and extra here
@@ -118,6 +123,7 @@ class World(Model):
     perception: Perception = field(default_factory=Perception)
     representation: Representation = field(default_factory=Representation)
     transition: Transition = field(default_factory=Transition)
+    reward: Reward = field(default_factory=Reward)
     optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
 
 
