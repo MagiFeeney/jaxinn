@@ -73,8 +73,7 @@ class Agent(eqx.Module):
         return self.actor.get_action(*args, **kwargs)
 
     def predict(self, latent_state, action, key):
-        """Transition .
-        """
+        """Predict based on the belief without requirement of observation."""
         prior = self.world.transition(latent_state, action, key)
         return prior
 
@@ -136,9 +135,10 @@ class Agent(eqx.Module):
         rewards = self.world.reward(latent_states).mean() # Equivalent to r(s, a, s') instead of r(s, a)
         next_values = self.critic(latent_states).mean()
         first_value = self.critic(posterior.latent_states).mean()
-        values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=-1)
 
+        values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=-1)
         last_value = next_values[-1]
+
         dones = jnp.ones_like(values)
         baselines = jnp.zeros_like(values)
 
@@ -159,7 +159,7 @@ class Agent(eqx.Module):
                 - baseline
             )
             z = value - baseline
-            discounted_uae = self.discount_factor * self.uae_lambda (1 - done) * uae
+            discounted_uae = self.discount_factor * self.uae_lambda * (1 - done) * uae
             return_prediction = delta + discounted_uae + baseline
             uae = (delta - z) + discounted_uae
 
