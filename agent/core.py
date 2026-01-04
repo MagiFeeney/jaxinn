@@ -17,7 +17,7 @@ class Learner(eqx.Module):
     @classmethod
     def create(cls, model_cls, config, *, key):
         model = model_cls(**config(), key=key)
-        optimizer = optax.adam(config.optimizer())
+        optimizer = optax.adam(**config.optimizer())
         params = eqx.filter(model, eqx.is_array)
         optimizer_state = optimizer.init(params)
         return cls(model, optimizer, optimizer_state)
@@ -66,7 +66,7 @@ class Agent(eqx.Module):
         self.discount_factor = config.discount_factor
         self.uae_lambda = config.uae_lambda
 
-    def act(self, *args, **kwargs): # TODO: remove or keep
+    def act(self, *args, **kwargs):
         return self.actor.get_action(*args, **kwargs)
 
     def predict(self, latent_state, action, key):
@@ -140,6 +140,13 @@ class Agent(eqx.Module):
         baselines = jnp.zeros_like(values)
 
         def uae_step_fn(carry, inputs):
+            """
+            Unified advantage estimator (UAE): a generalized version of GAE.
+
+            When baseline function is zero, it reduces to λ-return.
+
+            Reference: https://arxiv.org/pdf/2302.00533
+            """
             uae, next_value = carry
             reward, value, baseline, done = inputs
 
