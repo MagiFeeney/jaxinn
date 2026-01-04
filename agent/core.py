@@ -17,7 +17,10 @@ class Learner(eqx.Module):
     @classmethod
     def create(cls, model_cls, config, *, key):
         model = model_cls(**config(), key=key)
-        optimizer = optax.adam(**config.optimizer())
+        optimizer = optax.chain(
+            optax.clip_by_global_norm(**config.optimizer.extra()),  # TODO: add optimizer extra
+            optax.adam(**config.optimizer())
+        )
         params = eqx.filter(model, eqx.is_array)
         optimizer_state = optimizer.init(params)
         return cls(model, optimizer, optimizer_state)
