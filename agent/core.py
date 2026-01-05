@@ -69,7 +69,7 @@ class Agent(eqx.Module):
         self.discount_factor = config.discount_factor
         self.uae_lambda = config.uae_lambda
 
-    def act(self, *args, **kwargs):
+    def act(self, *args, **kwargs): # TODO: check jax compatibility
         return self.actor.get_action(*args, **kwargs)
 
     def predict(self, latent_state, action, key):
@@ -200,7 +200,7 @@ class Agent(eqx.Module):
                 prior: LatentStateWithParams,
                 posterior: LatentStateWithParams,
                 data
-        ):           # TODO: abstract the loss function for three different considerations
+        ):
             # reward
             reward_loss = -world.reward(posterior.latent_state).log_prob(data.reward).mean()
 
@@ -229,11 +229,11 @@ class Agent(eqx.Module):
                 actor: Learner,
                 critic: Learner,
                 posterior: LatentStateWithParams,
-        ):
+        ):  # TODO: add PG
             imagination = self.plan(posterior, key_planning)
             return_prediction = self.processor(imagination)
             actor_loss = -return_prediction.mean()
-            critic_loss = -self.critic(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean() # TODO: add PG
+            critic_loss = -self.critic(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean()
             total_loss = actor_loss + critic_loss # non-interleaved
 
             return total_loss, {
