@@ -52,13 +52,16 @@ def main(args):                     # TODO: vectorize Trainer
     key = jax.random.PRNGKey(args.seed)
     keys = jax.random.split(key, args.num_seeds)
 
-    def make_trainer(key):
+    @jax.jit
+    @jax.vmap
+    def train(key):
         key_agent, key_train = jax.random.split(key)
         trainer = Trainer(args, key=key_agent)
         return trainer(key_train)
 
     # Parallel agents
-    evaluations = jax.jit(jax.vmap(make_trainer))(keys)
+    evaluations = train(keys)
+    # evaluations = jax.jit(jax.vmap(make_trainer))(keys)
     # evaluations = eqx.filter_jit(eqx.filter_vmap(make_trainer))(keys) # equinox version
 
     # TODO: plot figure or statistics logging
