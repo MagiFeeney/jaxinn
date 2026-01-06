@@ -4,6 +4,7 @@ from typing import Optional, Tuple, Literal, Any
 from jaxtyping import PRNGKeyArray
 
 import equinox as eqx
+from gymnax.environments.environment import Environment
 
 from agent import Agent
 from envs import make_env
@@ -28,7 +29,7 @@ class Transition(eqx.Module):
 
 class Trainer(eqx.Module):
     agent: eqx.Module
-    env: eqx.Module
+    env: Environment = eqx.field(static=True)
     env_params: Any = eqx.field(static=True)
 
     def __init__(self, config, *, key: PRNGKeyArray):
