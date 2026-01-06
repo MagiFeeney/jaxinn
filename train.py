@@ -50,14 +50,16 @@ class Trainer(eqx.Module):
 
 def main(args):                     # TODO: vectorize Trainer
     key = jax.random.PRNGKey(args.seed)
-    key_agent, key_train = jax.random.split(key, 2)
+    keys = jax.random.split(key, args.num_seeds)
 
-    keys = jax.random.split(key_agent, args.num_seeds) # model initialization
-    vmap_trainer = eqx.filter_vmap(lambda k: Trainer(args, key=k))(keys)
+    def make_trainer(key):
+        key_agent, key_train = jax.random.split(key)
+        trainer = Trainer(args, key=key_agent)
+        return trainer(key_train)
 
-    keys = jax.random.split(key_train, args.num_seeds) # training
-    evaluations = jax.jit(jax.vmap(lambda t, k: t(k)))(vmap_trainer, keys)
-    # evaluations = eqx.filter_jit(eqx.filter_vmap(lambda t, k: t(k)))(vmap_trainer, keys) # equinox version
+    # Parallel agents
+    evaluations = jax.jit(jax.vmap(make_trainer))(keys)
+    # evaluations = eqx.filter_jit(eqx.filter_vmap(make_trainer))(keys) # equinox version
 
     # TODO: plot figure or statistics logging
 
