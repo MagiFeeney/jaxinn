@@ -169,6 +169,27 @@ class Env(Base):
     pass
 
 
+# Exploration
+@dataclass
+class Exploration(Base):
+    num_environment_steps: int = 1000000
+    prefill_steps: int = 5000
+    eval_interval: int = 10000
+    train_interval: int = 1000
+    train_iterations: int = 100
+    action_noise: float = 0.3   # TODO: determine whether exists in DreamerV2
+
+
+# Optimization
+@dataclass
+class Optimization(Base):
+    planning_horizon: int = 15
+    discount_factor: float = 0.99
+    uae_lambda: float = 0.95
+    batch_size: int = 50
+    chunk_size: int = 50
+
+
 # Console
 @dataclass
 class Config(Base):
@@ -177,3 +198,8 @@ class Config(Base):
     critic: Critic = field(default_factory=Critic)
     memory: Memory = field(default_factory=Memory)
     env: Env = field(default_factory=Env)
+    exploration: Exploration = field(default_factory=Exploration)    # Trainer particulars
+    optimization: Optimization = field(default_factory=Optimization) # Agent particulars
+
+    seed: int = 42                   # master seed
+    num_seeds: int = 50              # num. of agents

@@ -51,6 +51,8 @@ class Agent(eqx.Module):
     planning_horizon: int = eqx.field(static=True)
     discount_factor: float = eqx.field(static=True)
     uae_lambda: float = eqx.field(static=True)
+    batch_size: int = eqx.field(static=True)
+    chunk_size: int = eqx.field(static=True)
 
     def __init__(
             self,
@@ -65,17 +67,28 @@ class Agent(eqx.Module):
         self.critic = Learner.create(Critic, config.critic, key=key_critic)
         self.memory = Memory(**config.memory())
 
-        self.planning_horizon = config.planning_horizon
-        self.discount_factor = config.discount_factor
-        self.uae_lambda = config.uae_lambda
+        self.__dict__.update(config.optimization()) # extra particulars for agent learning
 
-    def act(self, *args, **kwargs): # TODO: check jax compatibility
-        return self.actor.get_action(*args, **kwargs)
+    def act(self, obs, agent_state, *, key: PRNGKeyArray, eval=False):
+        key_perceive, key_action = jax.random.split(key, 2)
+        _, posterior = self.perceive(agent_state.latent_state, agent_state.action, obs, key_perceive)
+        action = self.actor.get_action(posterior.latent_state, key_action, eval)
+
+        agent_state = eqx.tree_at(
+            lambda x: (x.latent_state, x.action),
+            agent_state,
+            (posterior.latent_state, action)
+        )
+
+        return action, agent_state
 
     def predict(self, latent_state, action, key):
         """Predict based on the belief without requirement of observation."""
         prior = self.world.transition(latent_state, action, key)
         return prior
+
+    def init_state(self, key: PRNGKeyArray):
+        pass
 
     def perceive(self, latent_state, action, observation, key):
         """
@@ -93,7 +106,7 @@ class Agent(eqx.Module):
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
         """
         key_init, key_scan = jax.random.split(key, 2)
-        init_latent_state = init_state(key_init) # TODO: Define init_latent_state function
+        init_latent_state = self.init_state(key_init) # TODO: Define init_latent_state function
 
         def step_fn(carry, inputs):
             latent_state, key = carry

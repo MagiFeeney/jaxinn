@@ -1,6 +1,6 @@
 from .actor import Actor
 from .critic import Critic
-from .world import Encoder, Decoder, Representation, Transition, Reward, World
+from .world import Encoder, Decoder, Representation, Transition, Reward, World, LatentState, LatentStateWithParams
 
 
 __all__ = [
@@ -12,4 +12,6 @@ __all__ = [
     'Transition',
     'Reward',
     'World',
+    'LatentState',
+    'LatentStateWithParams',
 ]
