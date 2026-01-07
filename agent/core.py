@@ -69,18 +69,11 @@ class Agent(eqx.Module):
 
         self.__dict__.update(config.optimization()) # extra particulars for agent learning
 
-    def act(self, obs, agent_state, *, key: PRNGKeyArray, eval=False):
+    def act(self, last_latent_state, last_action, obs, *, key: PRNGKeyArray, eval=False):
         key_perceive, key_action = jax.random.split(key, 2)
-        _, posterior = self.perceive(agent_state.latent_state, agent_state.action, obs, key_perceive)
+        _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
         action = self.actor.get_action(posterior.latent_state, key_action, eval)
-
-        agent_state = eqx.tree_at(
-            lambda x: (x.latent_state, x.action),
-            agent_state,
-            (posterior.latent_state, action)
-        )
-
-        return action, agent_state
+        return posterior.latent_state, action
 
     def predict(self, latent_state, action, key):
         """Predict based on the belief without requirement of observation."""
