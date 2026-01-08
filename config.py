@@ -177,6 +177,7 @@ class Exploration(Base):
     eval_interval: int = 10000
     train_interval: int = 1000
     train_iterations: int = 100
+    num_eval_episodes: int = 10
     action_noise: float = 0.3   # TODO: determine whether exists in DreamerV2
 
 

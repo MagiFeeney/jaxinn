@@ -32,6 +32,7 @@ class Trainer(eqx.Module):
     train_interval: int = eqx.field(static=True)
     train_iterations: int = eqx.field(static=True)
     episode_length: int = eqx.field(static=True) # TODO: change name
+    num_eval_episodes: int = eqx.field(static=True)
 
     def __init__(self, config, *, key: PRNGKeyArray):
         self.env, self.env_params = make_env(**config.env)
@@ -39,26 +40,31 @@ class Trainer(eqx.Module):
         self.__dict__.update(config.exploration())
 
     def __call__(self, key: PRNGKeyArray):
-        """
-        eval_interval
-          train_interval
-            init_state()                        # s_0, a_0, h_0
-            s_1 ← perceive(o_1)                 # o_1
-            loop:
-              a_t ← act(s_t)                    # a_t
-              (o_t+1, r_t) ← env.step           # o_t+1, r_t
-              s_t+1 ← perceive(o_t+1)           # s_t, a_t, h_t → h_t+1 + (o_t+1) → s_t+1
-        """
-        def main_step_fn(agent, _): # Evaluation truck with unit being Training truck
-            agent, _ = jax.lax.scan(self.train, agent, None, self.eval_interval // self.train_interval)
-            evaluation = self.evaluate(agent, key)
-            return (agent, evaluation), None
+        def interleaved_step_fn(carry, _): # Evaluation truck with unit being Training truck
+            agent, key = carry
+            key, key_train, key_evaluate = jax.random.split(key, 3)
+            agent, metrics = jax.lax.scan(
+                self.train,
+                (agent, key_train),
+                None,
+                self.eval_interval // self.train_interval
+            )
+            episodic_returns = self.evaluate(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
+            evaluation = jnp.mean(episodic_returns)
+            return (agent, key), (metrics, evaluation) # TODO: metrics represent multiple trainings, how to aggregate them?
 
-        (final_agent, evaluation), _ = jax.lax.scan(main_step_fn, (self.agent, key), None, self.num_environment_steps // self.eval_interval)
-        return final_agent, evaluation
+        (final_agent, _), (metrics, evaluation) = jax.lax.scan(
+            interleaved_step_fn,
+            (self.agent, key),
+            None,
+            self.num_environment_steps // self.eval_interval
+        )
 
-    def train(self, agent: Agent, key: PRNGKeyArray):                # data + learn()
-        key_init, key_reset, key_scan = jax.random.split(key, 3)
+        return final_agent, (metrics, evaluation)
+
+    @eqx.filter_vmap(in_axis=(None, None, 0)) # TODO: more serious consideration of parallel train
+    def train(self, agent: Agent, key: PRNGKeyArray):
+        key_init, key_reset, key_interact, key_learn = jax.random.split(key, 4)
         obs, env_state = self.env.reset(key_reset, self.env_params)
 
         transition_init = Transition(
@@ -70,16 +76,23 @@ class Trainer(eqx.Module):
             done=jnp.array(0.0),
         )
 
-        evaluate_step_fn = self.make_interact_step_fn(eval=False)
+        train_interact_step_fn = self.make_interact_step_fn(eval=False)
 
         _, transitions = jax.lax.scan(
-            evaluate_step_fn,
-            (transition_init, key_scan),
+            train_interact_step_fn,
+            (transition_init, key_interact),
             None,
-            self.episode_length, # TODO: while loop compatibility
+            self.episode_length, # TODO: handle parallel training envs
         )
 
-        agent = self.agent.add_experience(transitions)
+        agent = self.agent.add_experience(
+            action=transitions.action,
+            reward=transitions.reward,
+            next_obs=(
+                transitions.observation_before_reset if transitions.done else transitions.next_observation # TODO: real observation after auto-reset?
+            ),
+            done=transitions.done,
+        ) # Add experience at once to reduce the number of callback of replacement
 
         def learn_step_fn(carry, _):
             agent, key = carry
@@ -89,14 +102,15 @@ class Trainer(eqx.Module):
 
         (agent, _), metrics = jax.lax.scan(
             learn_step_fn,
-            agent,
+            (agent, key_learn),
             None,
             self.train_iterations
         )
 
-        return agent, metrics   # TODO: aggregate metrics
+        avg_metrics = jax.tree.map(jnp.mean, metrics)
+        return agent, avg_metrics
 
-    @eqx.filter_vmap
+    @eqx.filter_vmap(in_axis=(None, None, 0))
     def evaluate(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_scan = jax.random.split(key, 3)
         obs, env_state = self.env.reset(key_reset, self.env_params)
@@ -110,26 +124,18 @@ class Trainer(eqx.Module):
             done=jnp.array(0.0),
         )
 
-        evaluate_step_fn = self.make_interact_step_fn(eval=True)
+        evaluate_interact_step_fn = self.make_interact_step_fn(eval=True)
 
         _, transitions = jax.lax.scan(
-            evaluate_step_fn,
+            evaluate_interact_step_fn,
             (transition_init, key_scan),
             None,
-            self.episode_length, # TODO: while loop compatibility
+            self.episode_length,
         )
 
-        # cond_fn = lambda x: jnp.logical_and(
-        #     x.length < self.episode_length, jnp.logical_not(x.done)
-        # )
-
-        # state = jax.lax.while_loop(
-        #     cond_fn,
-        #     step,
-        #     state,
-        # )
-
-        return jnp.sum(transitions.reward, axis=-1) # TODO: Evaluate Datastructure
+        masks = 1 - jnp.maximum.accumulate(transitions.done)
+        cumulative_rewards = jnp.sum(transitions.reward * masks) # Return up to the first termination
+        return cumulative_rewards
 
     def make_interact_step_fn(self, eval=False):
         def interact_step_fn(carry, _)
@@ -137,7 +143,6 @@ class Trainer(eqx.Module):
             last_latent_state, last_action, obs, env_state, agent_state, *_ = transition
             key, key_action, key_step = jax.random.split(key, 3)
 
-            # action, next_agent_state = agent.act(obs, latent_state, key=key_action)
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_action, eval=eval)
             next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action, self.env_params)
 
@@ -173,17 +178,17 @@ def main(args):                     # TODO: vectorize Trainer
     key = jax.random.PRNGKey(args.seed)
     keys = jax.random.split(key, args.num_seeds)
 
-    @jax.jit
-    @jax.vmap
+    @eqx.filter_jit
+    @eqx.filter_vmap
     def train(key):
         key_agent, key_train = jax.random.split(key)
         trainer = Trainer(args, key=key_agent)
         return trainer(key_train)
 
     # Parallel agents
-    evaluations = train(keys)
-    # evaluations = jax.jit(jax.vmap(make_trainer))(keys)
-    # evaluations = eqx.filter_jit(eqx.filter_vmap(make_trainer))(keys) # equinox version
+    final_agent, (metrics, evaluation) = train(keys)
+    final_eval_return = evaluation[:, -1]
+    print(f"{args.num_seeds} num. of agents (multiple seeds) training done!\nAchieved return:\n {final_eval_return}")
 
     # TODO: plot figure or statistics logging
 
