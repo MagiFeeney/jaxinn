@@ -31,7 +31,7 @@ class Trainer(eqx.Module):
     eval_interval: int = eqx.field(static=True)
     train_interval: int = eqx.field(static=True)
     train_iterations: int = eqx.field(static=True)
-    episode_length: int = eqx.field(static=True) # TODO: change name
+    episode_length: int = eqx.field(static=True)
     num_eval_episodes: int = eqx.field(static=True)
 
     def __init__(self, config, *, key: PRNGKeyArray):
@@ -44,7 +44,7 @@ class Trainer(eqx.Module):
         self.__dict__.update(config.exploration())
 
     def __call__(self, key: PRNGKeyArray):
-        def interleaved_step_fn(carry, _): # Evaluation truck with unit being Training truck
+        def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
             agent, key = carry
             key, key_train, key_evaluate = jax.random.split(key, 3)
             agent, metrics = jax.lax.scan(
@@ -55,13 +55,34 @@ class Trainer(eqx.Module):
             )
             episodic_returns = self.evaluate(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
             evaluation = jnp.mean(episodic_returns)
+
+            jax.debug.print(    # Callback
+                """Step {k}: Train
+
+            --- Model Loss ---
+            reward:       {model/reward}
+            observation:  {model/observation}
+            kl:           {model/kl}
+            total:        {model/total}
+
+            --- Actor and Critic Loss ---
+            actor:  {actor}
+            critic: {critic}
+
+            --- Evaluation ({self.num_eval_episodes} episodes) ---
+            {e}
+                """,
+                k=(iteration + 1) * self.eval_interval,
+                **metrics,
+                e=evaluation,
+            )
+
             return (agent, key), (metrics, evaluation) # TODO: metrics represent multiple trainings, how to aggregate them?
 
         (final_agent, _), (metrics, evaluation) = jax.lax.scan(
             interleaved_step_fn,
             (self.agent, key),
-            None,
-            self.num_environment_steps // self.eval_interval
+            jnp.arange(self.num_environment_steps // self.eval_interval),
         )
 
         return final_agent, (metrics, evaluation)
