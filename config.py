@@ -59,7 +59,7 @@ class Base:
 @dataclass
 class Model(Base):
     def __call__(self):
-	models = {k: v for k, v in vars(self).items() if isinstance(v, Model)}
+        models = {k: v for k, v in vars(self).items() if isinstance(v, Model)}
         if len(models) == 0:
             return super().__call__()
         return ConfigNamespace(**models) # Dot notation compatibility
@@ -82,13 +82,13 @@ class OptimizerShared(Base):
 
 # World Model
 @dataclass
-class Encoder(ModelShared):
-    pass
+class Encoder(ModelShared):     # TODO: [shape, embedding_size] shared
+    activation_function: str: "elu"
 
 
 @dataclass
 class Decoder(ModelShared):
-    pass
+    activation_function: str: "elu"
 
 
 @dataclass
@@ -99,17 +99,25 @@ class Perception(Model):
 
 @dataclass
 class Representation(ModelShared):
-    pass
+    embedding_size: int
+    hidden_size: int
+    activation_function: str: "elu"
+    head_type: str
 
 
 @dataclass
 class Transition(ModelShared):
-    pass
+    hidden_size: int
+    activation_function: str: "elu"
+    head_type: str
 
 
 @dataclass
 class Reward(ModelShared):
-    pass
+    hidden_size: int
+    activation_function: str: "elu"
+    head_type: str = "Isotropic Normal"
+    min_std: float
 
 
 @dataclass
@@ -177,6 +185,7 @@ class Exploration(Base):
     eval_interval: int = 10000
     train_interval: int = 1000
     train_iterations: int = 100
+    episode_length: int = 1000
     num_eval_episodes: int = 10
     action_noise: float = 0.3   # TODO: determine whether exists in DreamerV2
 

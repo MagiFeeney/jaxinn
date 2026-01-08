@@ -186,5 +186,5 @@ class ActorModel(eqx.Module):
         return jax.lax.cond(
             det,
             lambda: sample_dist.mode(seed=key),
-            lambda: sample_dist.sample(seed=key),
+            lambda: sample_dist.sample(seed=key), # TODO: add action_noise
         )

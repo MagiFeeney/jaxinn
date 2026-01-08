@@ -36,7 +36,11 @@ class Trainer(eqx.Module):
 
     def __init__(self, config, *, key: PRNGKeyArray):
         self.env, self.env_params = make_env(**config.env)
-        self.agent = Agent(config.agent, key=key) # TODO: determine useful env_params to pass in
+        # Update config with env particulars
+        config.agent.transition.update({"action_size": self.action_dim})
+        config.agent.encoder.update({"shape": self.observation_space.shape})
+        config.agent.decoder.update({"shape": self.observation_space.shape})
+        self.agent = Agent(config.agent, key=key)
         self.__dict__.update(config.exploration())
 
     def __call__(self, key: PRNGKeyArray):
@@ -82,7 +86,7 @@ class Trainer(eqx.Module):
             train_interact_step_fn,
             (transition_init, key_interact),
             None,
-            self.episode_length, # TODO: handle parallel training envs
+            self.episode_length,
         )
 
         agent = self.agent.add_experience(
