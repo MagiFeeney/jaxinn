@@ -199,7 +199,7 @@ class Trainer(eqx.Module):
         return self.env.observation_space(self.env_params)
 
 
-def main(args):                     # TODO: vectorize Trainer
+def main(args):
     key = jax.random.PRNGKey(args.seed)
     keys = jax.random.split(key, args.num_seeds)
 

@@ -18,8 +18,8 @@ class Learner(eqx.Module):
     def create(cls, model_cls, config, *, key):
         model = model_cls(**config(), key=key)
         optimizer = optax.chain(
-            optax.clip_by_global_norm(**config.optimizer.extra()),  # TODO: add optimizer extra
-            optax.adam(**config.optimizer())
+            optax.clip_by_global_norm(config.optimizer.max_norm),
+            optax.adam(config.optimizer.lr, eps=config.optimizer.eps)
         )
         params = eqx.filter(model, eqx.is_array)
         optimizer_state = optimizer.init(params)

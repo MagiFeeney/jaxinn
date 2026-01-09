@@ -122,8 +122,9 @@ class Reward(ModelShared):
 
 @dataclass
 class WorldOptimizer(OptimizerShared):
-    """Optimizer exclusive for world model."""
-    lr: float = 6e-4            # TODO: add Optimizer(Base) and extra here
+    """Optimizer for world model."""
+    lr: float = 6e-4
+    max_norm: int = 100
 
 
 @dataclass
@@ -138,8 +139,9 @@ class World(Model):
 # Actor
 @dataclass
 class ActorOptimizer(OptimizerShared):
-    """Optimizer exclusive for actor."""
+    """Optimizer for actor."""
     lr: float = 8e-5
+    max_norm: int = 100
 
 
 @dataclass
@@ -156,8 +158,9 @@ class Actor(ModelShared):
 # Critic
 @dataclass
 class CriticOptimizer(OptimizerShared):
-    """Optimizer exclusive for actor."""
+    """Optimizer for critic."""
     lr: float = 8e-5
+    max_norm: int = 100
 
 
 @dataclass
