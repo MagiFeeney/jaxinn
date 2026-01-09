@@ -68,8 +68,8 @@ class Model(Base):
 @dataclass
 class ModelShared(Model):
     """Shared parameters across different models."""
-    belief_size: int
-    state_size: int
+    belief_size: int = 200
+    state_size: int = 30
 
 
 @dataclass
@@ -200,16 +200,23 @@ class Optimization(Base):
     chunk_size: int = 50
 
 
-# Console
+# All about agent
 @dataclass
-class Config(Base):
+class Agent:
     world: World = field(default_factory=World)
     actor: Actor = field(default_factory=Actor)
     critic: Critic = field(default_factory=Critic)
     memory: Memory = field(default_factory=Memory)
+    optimization: Optimization = field(default_factory=Optimization)
+    random_init: bool = False   # Whether to initialize the state by following a simple distribution
+
+
+# console
+@dataclass
+class Config(Base):
+    agent: Agent = field(default_factory=Agent)
     env: Env = field(default_factory=Env)
     exploration: Exploration = field(default_factory=Exploration)    # Trainer particulars
-    optimization: Optimization = field(default_factory=Optimization) # Agent particulars
 
     seed: int = 42                   # master seed
     num_seeds: int = 50              # num. of agents

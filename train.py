@@ -77,7 +77,7 @@ class Trainer(eqx.Module):
                 e=evaluation,
             )
 
-            return (agent, key), (metrics, evaluation) # TODO: metrics represent multiple trainings, how to aggregate them?
+            return (agent, key), (metrics, evaluation)
 
         (final_agent, _), (metrics, evaluation) = jax.lax.scan(
             interleaved_step_fn,

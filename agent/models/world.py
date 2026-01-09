@@ -15,6 +15,24 @@ class LatentState(eqx.Module):
     belief: jax.Array  # h_t
     state: jax.Array   # s_t
 
+    @classmethod
+    def initialize(
+            cls,
+            belief_size: int,
+            state_size: int,
+            random_init: bool = False,
+            batch_shape: Tuple[int, ...] = (),
+            *,
+            key: PRNGKeyArray,
+    ) -> "LatentState":
+        key_belief, key_state = jax.random.split(key, 2)
+
+        mask = float(random_init)
+        belief = jax.random.normal(key_belief, batch_shape + (belief_size,)) * mask
+        state  = jax.random.normal(key_state,  batch_shape + (state_size,))  * mask
+
+        return cls(belief=belief, state=state)
+
     @property
     def batch_shape(self) -> tuple:
         return self.belief.shape[:-1]
@@ -29,7 +47,7 @@ class LatentState(eqx.Module):
     def flatten(self) -> "LatentState":
         return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
 
-    def narrow(self, axis: int, start: int, length: int) -> "LatentState": # TODO: delete if not used
+    def narrow(self, axis: int, start: int, length: int) -> "LatentState":
         return jax.tree.map(
             lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
             self
@@ -71,7 +89,7 @@ class Encoder(eqx.Module):
             embedding_size: Optional[int] = 1024,
             activation_function: Union[str, Callable] = "elu",
             *,
-            key: jax.random.PRNGKey
+            key: PRNGKeyArray
     ):
         activation = get_activation_fn(activation_function)
 
@@ -141,7 +159,7 @@ class Decoder(eqx.Module):
             activation_function: Union[str, Callable] = "elu",
             embedding_size: int = 1024,
             *,
-            key: jax.random.PRNGKey
+            key: PRNGKeyArray
     ):
         activation = get_activation_fn(activation_function)
 
@@ -200,7 +218,7 @@ class Representation(eqx.Module):
             activation_function="elu",
             head_type: str = "Normal",
             *,
-            key: jax.random.PRNGKey,
+            key: PRNGKeyArray,
     ):
         if head_type == "Normal":
             self.num_variables, self.num_categories = state_size, 0
@@ -276,7 +294,7 @@ class Transition(eqx.Module):
             activation_function="elu",
             head_type: str = "Normal",
             *,
-            key: jax.random.PRNGKey,
+            key: PRNGKeyArray,
     ):
         if head_type == "Normal":
             self.num_variables, self.num_categories = state_size, 0
@@ -364,7 +382,7 @@ class Reward(eqx.Module):
             min_std: float = 0.0,
             head_type="Isotropic Normal",
             *,
-            key: jax.random.PRNGKey,
+            key: PRNGKeyArray,
     ):  # if action_size is not None, Q fn
         if head_type == "Isotropic Normal":
             output_size = 1

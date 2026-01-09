@@ -53,6 +53,9 @@ class Agent(eqx.Module):
     uae_lambda: float = eqx.field(static=True)
     batch_size: int = eqx.field(static=True)
     chunk_size: int = eqx.field(static=True)
+    random_init: bool = eqx.field(static=True)
+    belief_size: int = eqx.field(static=True)
+    state_size: int = eqx.field(static=True)
 
     def __init__(
             self,
@@ -67,7 +70,13 @@ class Agent(eqx.Module):
         self.critic = Learner.create(Critic, config.critic, key=key_critic)
         self.memory = Memory(**config.memory())
 
-        self.__dict__.update(config.optimization()) # extra particulars for agent learning
+        # For initialization of LatentState
+        self.random_init = config.random_init
+        self.belief_size = config.world.belief_size
+        self.state_size = config.world.state_size
+
+        # Extra particulars for agent learning
+        self.__dict__.update(config.optimization())
 
     def act(self, last_latent_state, last_action, obs, *, key: PRNGKeyArray, eval=False):
         key_perceive, key_action = jax.random.split(key, 2)
@@ -80,8 +89,8 @@ class Agent(eqx.Module):
         prior = self.world.transition(latent_state, action, key)
         return prior
 
-    def init_state(self, key: PRNGKeyArray):
-        pass
+    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
+        return LatentState.initialize(self.belief_size, self.state_size, self.random_init, batch_shape, key=key)
 
     def perceive(self, latent_state, action, observation, key):
         """
@@ -93,13 +102,16 @@ class Agent(eqx.Module):
         posterior = self.world.representation(prior.latent_state, embedding, key_posterior)
         return prior, posterior
 
+    def add_experience(self, transitions):
+        pass
+
     def reason(self, data, key):
         """
         Reason about the relationship among data and to the goal with contexts from predictive models or memory given a fixed belief;
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
         """
         key_init, key_scan = jax.random.split(key, 2)
-        init_latent_state = self.init_state(key_init) # TODO: Define init_latent_state function
+        init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
 
         def step_fn(carry, inputs):
             latent_state, key = carry
@@ -196,7 +208,7 @@ class Agent(eqx.Module):
         """
 
         key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
-        data = self.memory.sample(key_memory) # TODO: batch_size should be a part of memory
+        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory, time_leading=True)
         prior, posterior = self.reason(data, key_reasoning)
         metrics = {}
 

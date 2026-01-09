@@ -28,7 +28,7 @@ class LatentState(eqx.Module):
     def flatten(self) -> "LatentState":
         return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
 
-    def narrow(self, axis: int, start: int, length: int) -> "LatentState": # TODO: delete if not used
+    def narrow(self, axis: int, start: int, length: int) -> "LatentState":
         return jax.tree.map(
             lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
             self
