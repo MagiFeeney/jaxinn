@@ -174,7 +174,7 @@ class Trainer(eqx.Module):
             transition = Transition(
                 latent_state=latent_state,
                 action=action,
-                next_obs=next_obs,
+                next_obs=next_obs, # TODO: need to include the initial obs!
                 next_env_state=next_env_state,
                 reward=reward,
                 done=done,

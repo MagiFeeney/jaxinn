@@ -85,7 +85,7 @@ class Agent(eqx.Module):
         return posterior.latent_state, action
 
     def predict(self, latent_state, action, key):
-        """Predict based on the belief without requirement of observation."""
+        """Predict based on the belief without seeing observation."""
         prior = self.world.transition(latent_state, action, key)
         return prior
 
@@ -131,7 +131,7 @@ class Agent(eqx.Module):
         _, (priors, posteriors) = jax.lax.scan(
             step_fn,
             (init_latent_state, key_scan),
-            (data.action, data.observation)
+            (data.action, data.observation) # TODO: change observation to next_obs / obs
         )
         return priors, posteriors
 
