@@ -73,22 +73,29 @@ class ModelShared(Model):
 
 
 @dataclass
+class PerceptionShared(Model):
+    """Shared parameters across perception modules."""
+    shape: Optional[Tuple[int, int, int]] = None
+    embedding_size: int = 1024
+
+
+@dataclass
 class OptimizerShared(Base):
     """Shared parameters across optimizers."""
     b1: float = 0.9
     b2: float = 0.999
-    eps: float = 1e-8           # TODO: check default value of eps of adam optimizer
+    eps: float = 1e-8
 
 
 # World Model
 @dataclass
-class Encoder(ModelShared):     # TODO: [shape, embedding_size] shared
-    activation_function: str: "elu"
+class Encoder(ModelShared, PerceptionShared):
+    activation_function: str = "elu"
 
 
 @dataclass
-class Decoder(ModelShared):
-    activation_function: str: "elu"
+class Decoder(ModelShared, PerceptionShared):
+    activation_function: str = "elu"
 
 
 @dataclass
@@ -101,21 +108,21 @@ class Perception(Model):
 class Representation(ModelShared):
     embedding_size: int
     hidden_size: int
-    activation_function: str: "elu"
+    activation_function: str = "elu"
     head_type: str
 
 
 @dataclass
 class Transition(ModelShared):
     hidden_size: int
-    activation_function: str: "elu"
+    activation_function: str = "elu"
     head_type: str
 
 
 @dataclass
 class Reward(ModelShared):
     hidden_size: int
-    activation_function: str: "elu"
+    activation_function: str = "elu"
     head_type: str = "Isotropic Normal"
     min_std: float
 
@@ -190,7 +197,7 @@ class Exploration(Base):
     train_iterations: int = 100
     episode_length: int = 1000
     num_eval_episodes: int = 10
-    action_noise: float = 0.3   # TODO: determine whether exists in DreamerV2
+    action_noise: float = 0.3
 
 
 # Optimization

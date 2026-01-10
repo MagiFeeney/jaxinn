@@ -102,8 +102,14 @@ class Agent(eqx.Module):
         posterior = self.world.representation(prior.latent_state, embedding, key_posterior)
         return prior, posterior
 
-    def add_experience(self, transitions):
-        pass
+    def add_experience(self, action, reward, next_obs, done):
+        new_memory = self.memory.add(action, reward, next_obs, done)
+
+        return eqx.tree_at(
+            lambda x: x.memory,
+            self,
+            new_memory
+        )
 
     def reason(self, data, key):
         """

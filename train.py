@@ -114,7 +114,7 @@ class Trainer(eqx.Module):
             action=transitions.action,
             reward=transitions.reward,
             next_obs=(
-                transitions.observation_before_reset if transitions.done else transitions.next_observation # TODO: real observation after auto-reset?
+                transitions.observation_before_reset if transitions.done else transitions.next_observation # TODO: real observation after auto-reset? see jaxinn.org.
             ),
             done=transitions.done,
         ) # Add experience at once to reduce the number of callback of replacement
@@ -216,6 +216,7 @@ def main(args):
     print(f"{args.num_seeds} num. of agents (multiple seeds) training done!\nAchieved return:\n {final_eval_return}")
 
     # TODO: plot figure or statistics logging
+
 
 if __name__ == "__main__":
     args = tyro.cli(Config)
