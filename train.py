@@ -108,6 +108,8 @@ class Trainer(eqx.Module):
             self.episode_length,
         )
 
+        transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transitions_init, transitions) # insert the initial transition
+
         agent = self.agent.add_experience(
             action=transitions.action,
             reward=transitions.reward,

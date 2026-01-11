@@ -131,7 +131,7 @@ class Agent(eqx.Module):
         _, (priors, posteriors) = jax.lax.scan(
             step_fn,
             (init_latent_state, key_scan),
-            (data.action, data.observation) # TODO: change observation to next_obs / obs
+            (data.action, data.next_obs)
         )
         return priors, posteriors
 
@@ -229,7 +229,7 @@ class Agent(eqx.Module):
             reward_loss = -world.reward(posterior.latent_state).log_prob(data.reward).mean()
 
             # observation
-            observation_loss = -world.observation(posterior.latent_state).log_prob(data.observation).mean()
+            observation_loss = -world.observation(posterior.latent_state).log_prob(data.next_obs).mean()
 
             # KL divergence
             kl_loss = posterior.kl_divergence(prior.dist).mean()
