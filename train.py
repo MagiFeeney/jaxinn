@@ -17,7 +17,6 @@ class Transition(eqx.Module):
     latent_state: jax.Array
     action: jax.Array
     next_obs: jax.Array
-    next_env_state: jax.Array
     reward: jax.Array
     done: jax.Array
 
@@ -96,7 +95,6 @@ class Trainer(eqx.Module):
             latent_state=self.agent.init_state(key_init),
             action=jnp.zeros((self.action_dim,)),
             next_obs=obs,
-            next_env_state=env_state,
             reward=jnp.array(0.0),
             done=jnp.array(0.0),
         )
@@ -105,7 +103,7 @@ class Trainer(eqx.Module):
 
         _, transitions = jax.lax.scan(
             train_interact_step_fn,
-            (transition_init, key_interact),
+            (transition_init, env_state, key_interact),
             None,
             self.episode_length,
         )
@@ -117,7 +115,7 @@ class Trainer(eqx.Module):
                 transitions.observation_before_reset if transitions.done else transitions.next_observation # TODO: real observation after auto-reset? see jaxinn.org.
             ),
             done=transitions.done,
-        ) # Add experience at once to reduce the number of callback of replacement
+        )
 
         def learn_step_fn(carry, _):
             agent, key = carry
@@ -144,7 +142,6 @@ class Trainer(eqx.Module):
             latent_state=self.agent.init_state(key_init),
             action=jnp.zeros((self.action_dim,)),
             next_obs=obs,
-            next_env_state=env_state,
             reward=jnp.array(0.0),
             done=jnp.array(0.0),
         )
@@ -153,7 +150,7 @@ class Trainer(eqx.Module):
 
         _, transitions = jax.lax.scan(
             evaluate_interact_step_fn,
-            (transition_init, key_scan),
+            (transition_init, env_state, key_scan),
             None,
             self.episode_length,
         )
@@ -164,8 +161,8 @@ class Trainer(eqx.Module):
 
     def make_interact_step_fn(self, eval=False):
         def interact_step_fn(carry, _)
-            transition, key = carry
-            last_latent_state, last_action, obs, env_state, agent_state, *_ = transition
+            transition, env_state, key = carry
+            last_latent_state, last_action, obs, *_ = transition
             key, key_action, key_step = jax.random.split(key, 3)
 
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_action, eval=eval)
@@ -174,13 +171,12 @@ class Trainer(eqx.Module):
             transition = Transition(
                 latent_state=latent_state,
                 action=action,
-                next_obs=next_obs, # TODO: need to include the initial obs!
-                next_env_state=next_env_state,
+                next_obs=next_obs,
                 reward=reward,
                 done=done,
             )
 
-            return (transition, key), transition
+            return (transition, next_env_state, key), transition
         return interact_step_fn
 
     @property
