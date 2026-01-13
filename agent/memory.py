@@ -16,10 +16,10 @@ class Memory(eqx.Module):
         self.capacity = capacity
         # Pre-allocate
         self.data = Transition(
-            action=jnp.zeros((capacity, action_size)),
-            next_obs=jnp.zeros((capacity, *obs_shape)).astype(jnp.uint8), # For memory efficiency
-            reward=jnp.zeros(capacity),
-            done=jnp.zeros(capacity),
+            action=jnp.empty((capacity, action_size)),
+            next_obs=jnp.empty((capacity, *obs_shape)).astype(jnp.uint8), # For memory efficiency
+            reward=jnp.empty(capacity),
+            done=jnp.empty(capacity),
         )
         self.ptr = jnp.array(0)
         self.size = jnp.array(0)
@@ -85,7 +85,7 @@ class Memory(eqx.Module):
 
         def _get_candidates_not_full():
             # Assumes ptr > chunk_size so have at least one index to sample from.
-            # This holds as we append a trajectories whose size is far larger than required
+            # This holds as we append a trajectory whose size is far larger than required
             return jnp.arange(0, self.ptr - chunk_size + 1)
 
         batch_sample_candidates = jax.lax.cond(
