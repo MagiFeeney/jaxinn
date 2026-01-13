@@ -7,6 +7,7 @@ import optax
 
 from .models import World, Critic, Actor, LatentState, LatentStateWithParams
 from .memory import Memory
+from ..train import Transition
 
 
 class Learner(eqx.Module):
@@ -68,8 +69,11 @@ class Agent(eqx.Module):
         self.world = Learner.create(World, config.world, key=key_world)
         self.actor = Learner.create(Actor, config.actor, key=key_actor)
         self.critic = Learner.create(Critic, config.critic, key=key_critic)
-        self.memory = Memory(**config.memory())
-
+        self.memory = Memory(
+            capacity=config.memory.capacity,
+            obs_shape=config.world.perception.encoder.shape,
+            action_size=config.world.transition.action_size
+        )
         # For initialization of LatentState
         self.random_init = config.random_init
         self.belief_size = config.world.belief_size
@@ -102,8 +106,8 @@ class Agent(eqx.Module):
         posterior = self.world.representation(prior.latent_state, embedding, key_posterior)
         return prior, posterior
 
-    def add_experience(self, action, reward, next_obs, done):
-        new_memory = self.memory.add(action, reward, next_obs, done)
+    def add_experience(self, transitions: Transition):
+        new_memory = self.memory.add(transitions)
 
         return eqx.tree_at(
             lambda x: x.memory,
@@ -119,7 +123,7 @@ class Agent(eqx.Module):
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
 
-        def step_fn(carry, inputs):
+        def reason_step_fn(carry, inputs):
             latent_state, key = carry
             action, obs = inputs
 
@@ -129,7 +133,7 @@ class Agent(eqx.Module):
             return (posterior.latent_state, key), (prior, posterior)
 
         _, (priors, posteriors) = jax.lax.scan(
-            step_fn,
+            reason_step_fn,
             (init_latent_state, key_scan),
             (data.action, data.next_obs)
         )
@@ -214,7 +218,7 @@ class Agent(eqx.Module):
         """
 
         key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
-        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory, time_leading=True)
+        data = self.memory.sample_trajectory(self.batch_size, self.chunk_size, key_memory)
         prior, posterior = self.reason(data, key_reasoning)
         metrics = {}
 

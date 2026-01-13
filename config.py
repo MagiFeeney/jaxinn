@@ -178,7 +178,7 @@ class Critic(ModelShared):
 # Memory
 @dataclass
 class Memory(ModelShared):
-    pass
+    capacity: int = 1000000
 
 
 # Environment

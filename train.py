@@ -14,7 +14,6 @@ from agent.models import LatentState, LatentStateWithParams
 
 
 class Transition(eqx.Module):
-    latent_state: jax.Array
     action: jax.Array
     next_obs: jax.Array
     reward: jax.Array
@@ -36,9 +35,9 @@ class Trainer(eqx.Module):
     def __init__(self, config, *, key: PRNGKeyArray):
         self.env, self.env_params = make_env(**config.env)
         # Update config with env particulars
-        config.agent.transition.update({"action_size": self.action_dim})
-        config.agent.encoder.update({"shape": self.observation_space.shape})
-        config.agent.decoder.update({"shape": self.observation_space.shape})
+        config.agent.world.transition.update({"action_size": self.action_dim})
+        config.agent.world.perception.encoder.update({"shape": self.observation_space.shape})
+        config.agent.world.perception.decoder.update({"shape": self.observation_space.shape})
         self.agent = Agent(config.agent, key=key)
         self.__dict__.update(config.exploration())
 
@@ -90,9 +89,9 @@ class Trainer(eqx.Module):
     def train(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_interact, key_learn = jax.random.split(key, 4)
         obs, env_state = self.env.reset(key_reset, self.env_params)
+        latent_state_init = self.agent.init_state(key_init)
 
         transition_init = Transition(
-            latent_state=self.agent.init_state(key_init),
             action=jnp.zeros((self.action_dim,)),
             next_obs=obs,
             reward=jnp.array(0.0),
@@ -103,7 +102,7 @@ class Trainer(eqx.Module):
 
         _, transitions = jax.lax.scan(
             train_interact_step_fn,
-            (transition_init, env_state, key_interact),
+            (transition_init, latent_state_init, env_state, key_interact),
             None,
             self.episode_length,
         )
@@ -139,9 +138,9 @@ class Trainer(eqx.Module):
     def evaluate(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_scan = jax.random.split(key, 3)
         obs, env_state = self.env.reset(key_reset, self.env_params)
+        latent_state_init = self.agent.init_state(key_init)
 
         transition_init = Transition(
-            latent_state=self.agent.init_state(key_init),
             action=jnp.zeros((self.action_dim,)),
             next_obs=obs,
             reward=jnp.array(0.0),
@@ -152,7 +151,7 @@ class Trainer(eqx.Module):
 
         _, transitions = jax.lax.scan(
             evaluate_interact_step_fn,
-            (transition_init, env_state, key_scan),
+            (transition_init, latent_state_init, env_state, key_scan),
             None,
             self.episode_length,
         )
@@ -163,22 +162,21 @@ class Trainer(eqx.Module):
 
     def make_interact_step_fn(self, eval=False):
         def interact_step_fn(carry, _)
-            transition, env_state, key = carry
-            last_latent_state, last_action, obs, *_ = transition
+            transition, last_latent_state, env_state, key = carry
+            last_action, obs, *_ = transition
             key, key_action, key_step = jax.random.split(key, 3)
 
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_action, eval=eval)
             next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action, self.env_params)
 
             transition = Transition(
-                latent_state=latent_state,
                 action=action,
                 next_obs=next_obs,
                 reward=reward,
                 done=done,
             )
 
-            return (transition, next_env_state, key), transition
+            return (transition, latent_state, next_env_state, key), transition
         return interact_step_fn
 
     @property
@@ -211,7 +209,11 @@ def main(args):
     # Parallel agents
     final_agent, (metrics, evaluation) = train(keys)
     final_eval_return = evaluation[:, -1]
-    print(f"{args.num_seeds} num. of agents (multiple seeds) training done!\nAchieved return:\n {final_eval_return}")
+    print(
+        f"{args.num_seeds} agents (multiple seeds) training completed!\n"
+        f"Achieved return:\n"
+        f"{final_eval_return}"
+    )
 
     # TODO: plot figure or statistics logging
 
