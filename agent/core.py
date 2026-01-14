@@ -218,7 +218,7 @@ class Agent(eqx.Module):
         """
 
         key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
-        data = self.memory.sample_trajectory(self.batch_size, self.chunk_size, key_memory)
+        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory)
         prior, posterior = self.reason(data, key_reasoning)
         metrics = {}
 
