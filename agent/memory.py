@@ -51,11 +51,11 @@ class Uniform(Memory):
     def add(self, transition: Transition):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
-        indices = (self.ptr + jnp.arange(batch_size)) % self.capacity
+        index = (self.ptr + jnp.arange(batch_size)) % self.capacity
 
         # Write new data
         new_data = jax.tree.map(
-            lambda buf, batch: buf.at[indices].set(batch),
+            lambda buf, batch: buf.at[index].set(batch),
             self.data, transition
         )
 
@@ -120,54 +120,58 @@ class Uniform(Memory):
 # Data structure for more efficient sampling w.r.t. priority
 class SumTree(eqx.Module):
     tree: jax.Array
-    capacity: int = eqx.field(static=True)
+    active_leaves: int = eqx.field(static=True)   # Requested capacity; no need to be power of 2
+    capacity: int = eqx.field(static=True)        # Real capacity of power of 2
+    depth: int = eqx.field(static=True)
 
-    def __init__(self, capacity: int):
-        # Ensure capacity is a power of 2 for a perfect binary tree
-        self.capacity = capacity
-        self.tree = jnp.zeros(2 * capacity - 1)
+    def __init__(self, active_leaves: int):
+        self.active_leaves = capacity
+        self.depth = int(jnp.ceil(jnp.log2(capacity)))
+        self.capacity = 2 ** self.depth
 
-    def update(self, idx: int, priority: float):
-        """Returns a NEW SumTree with the updated priority."""
-        tree_idx = idx + self.capacity - 1
-        delta = priority - self.tree[tree_idx]
+        self.tree = jnp.zeros(2 * self.capacity - 1)
 
-        # Use a loop instead of recursion for JAX compatibility
-        new_tree = self.tree.at[tree_idx].set(priority)
+    def update(self, start_index: int, priorities: jax.Array) -> "SumTree":
+        batch_size = priorities.shape[0]
+        leaf_indices = (start_index + jnp.arange(batch_size)) % self.active_leaves
+        tree_indices = leaf_indices + self.capacity - 1
 
-        # Calculate number of levels: log2(capacity)
-        levels = int(jnp.log2(self.capacity))
+        deltas = priorities - self.tree[tree_indices]
+        new_tree = self.tree.at[tree_indices].set(priorities)
 
-        def carry_update(current_tree, _):
-            # This is a bit complex for a simple loop,
-            # so we can just use a standard for loop if levels is small/static
-            pass
-
-        # Simplified loop for JIT:
-        curr = tree_idx
-        for _ in range(levels):
-            curr = (curr - 1) // 2
-            new_tree = new_tree.at[curr].add(delta)
+        curr_index = tree_indices
+        # For small depth, for loop is preferred
+        for _ in range(self.depth):
+            curr_index = (curr_index - 1) // 2
+            new_tree = new_tree.at[curr_index].add(deltas)
 
         return eqx.tree_at(lambda t: t.tree, self, new_tree)
 
-    def sample(self, s: float):
-        """Returns the leaf index."""
-        idx = 0
-        # The number of steps is fixed based on tree depth
-        levels = int(jnp.log2(self.capacity))
+    def sample(self, key: jax.Array, batch_size: int) -> Tuple[jax.Array, jax.Array]:
+        total_priority = self.tree[0]
+        queries = jax.random.uniform(key, shape=(batch_size,)) * total_priority
+        return jax.vmap(self._retrieve)(queries)
 
-        def body_fun(_, val):
-            i, s_val = val
+    def _retrieve(self, s: float) -> Tuple[int, float]:
+        idx = 0
+
+        def body_fn(_, state):
+            i, s_val = state
             left = 2 * i + 1
-            go_right = s_val > self.tree[left]
-            next_i = jnp.where(go_right, left + 1, left)
-            next_s = jnp.where(go_right, s_val - self.tree[left], s_val)
+            right = left + 1
+
+            left_val = self.tree[left]
+
+            go_right = s_val > left_val
+
+            next_i = jnp.where(go_right, right, left)
+            next_s = jnp.where(go_right, s_val - left_val, s_val)
             return (next_i, next_s)
 
-        # Use jax.lax.fori_loop for faster compilation on large trees
-        final_idx, _ = jax.lax.fori_loop(0, levels, body_fun, (0, s))
-        return final_idx - (self.capacity - 1)
+        final_idx, _ = jax.lax.fori_loop(0, self.depth, body_fn, (idx, s))
+        leaf_idx = final_idx - (self.capacity - 1)
+        val = self.tree[final_idx] # priorities For debugging
+        return leaf_idx, val
 
 
 # Memory with prioritized sampling
@@ -182,8 +186,9 @@ class Prioritized(Uniform):
         self.beta = beta
         self.sumtree = SumTree(capacity)
 
-    def add(self, transition: Transition, priority: float = 1.0):
+    def add(self, transition: Transition, priority: jax.Array):
         """Adds a single or a batch of transitions to the buffer."""
+        # Add priority first to use old parameters
         new_tree = self.sumtree.update(self.ptr, priority ** self.alpha)
         new_memory = super().add(transition) # updated with new data, ptr and size
 
