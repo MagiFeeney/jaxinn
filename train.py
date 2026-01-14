@@ -35,11 +35,19 @@ class Trainer(eqx.Module):
     def __init__(self, config, *, key: PRNGKeyArray):
         self.env, self.env_params = make_env(**config.env)
         # Update config with env particulars
-        config.agent.world.transition.update({"action_size": self.action_dim})
-        config.agent.world.perception.encoder.update({"shape": self.observation_space.shape})
-        config.agent.world.perception.decoder.update({"shape": self.observation_space.shape})
+        config.agent.world.transition.update({"action_dim": self.action_dim})
+        observation_space = self.env.observation_space(self.env_params)
+        config.agent.world.perception.encoder.update({"shape": observation_space.shape})
+        config.agent.world.perception.decoder.update({"shape": observation_space.shape})
         self.agent = Agent(config.agent, key=key)
         self.__dict__.update(config.exploration())
+
+    @property
+    def action_dim(self):
+        action_space = self.env.action_space(self.env_params)
+        if isinstance(action_space, gymnax.environments.spaces.Discrete):
+            return action_space.n
+        return jnp.prod(jnp.array(action_space.shape))
 
     def __call__(self, key: PRNGKeyArray):
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
@@ -178,21 +186,6 @@ class Trainer(eqx.Module):
 
             return (transition, latent_state, next_env_state, key), transition
         return interact_step_fn
-
-    @property
-    def action_dim(self):
-        action_space = self.env.action_space(self.env_params)
-        if isinstance(action_space, gymnax.environments.spaces.Discrete):
-            return action_space.n
-        return jnp.prod(jnp.array(action_space.shape))
-
-    @property
-    def action_space(self):
-        return self.env.action_space(self.env_params)
-
-    @property
-    def observation_space(self):
-        return self.env.observation_space(self.env_params)
 
 
 def main(args):
