@@ -84,36 +84,14 @@ class Uniform(Memory):
         return trajectories
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
-        # Prevent overshooting due to wrapping
-        def _get_candidates_full():
-            def _wrap_case():
-                # ptr < chunk_size - 1: can't sample from [0, ptr) without going negative
-                return jnp.arange(self.ptr, self.capacity - (chunk_size - 1 - self.ptr))
-
-            def _normal_case():
-                # ptr >= chunk_size - 1: can sample normally from [0, ptr - chunk_size + 1)
-                # AND from [ptr, capacity) as additional candidates
-                start_range = jnp.arange(0, self.ptr - chunk_size + 1) # Okay to be null
-                extra_range = jnp.arange(self.ptr, self.capacity)
-                return jnp.concatenate([start_range, extra_range])
-
-            return jax.lax.cond(
-                self.ptr < chunk_size - 1,
-                _wrap_case,
-                _normal_case
-            )
-
-        def _get_candidates_not_full():
-            # Assumes ptr > chunk_size so have at least one index to sample from.
-            # This holds as we append a trajectory whose size is far larger than required
-            return jnp.arange(0, self.ptr - chunk_size + 1)
-
-        batch_sample_candidates = jax.lax.cond(
+        start = jax.lax.where(
             self.full,
-            _get_candidates_full,
-            _get_candidates_not_full
+            self.ptr - self.capacity, # Prevent overshooting due to wrapping
+            0
         )
-        batch_index = jax.random.choice(key, batch_sample_candidates, shape=(batch_size,), replace=True)
+        end = self.ptr - chunk_size + 1
+
+        batch_index = jax.random.randint(key, (batch_size,), start, end) % self.capacity # Equivalence between negative interval [-m, -1] to [N - m, N - 1] under modulo
         return batch_index
 
 
