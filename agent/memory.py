@@ -147,7 +147,7 @@ class SumTree(eqx.Module):
 
         return eqx.tree_at(lambda t: t.tree, self, new_tree)
 
-    def sample(self, key: jax.Array, batch_size: int) -> Tuple[jax.Array, jax.Array]:
+    def sample(self, batch_size: int, key: jax.Array) -> Tuple[jax.Array, jax.Array]:
         total_priority = self.tree[0]
         queries = jax.random.uniform(key, shape=(batch_size,)) * total_priority
         return jax.vmap(self._retrieve)(queries)
@@ -199,5 +199,5 @@ class Prioritized(Uniform):
             new_tree
         )
 
-    def sample_batch_index(self): # TODO: redefine
-        pass
+    def sample_batch_index(self, batch_size: int, key: PRNGKeyArray): # TODO: redefine
+        return self.sumtree.sample(batch_size, key) # TODO: fix the overshooting
