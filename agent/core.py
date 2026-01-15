@@ -125,9 +125,14 @@ class Agent(eqx.Module):
 
         def reason_step_fn(carry, inputs):
             latent_state, key = carry
-            action, obs = inputs
+            action, obs, done = inputs
+            mask = 1 - done
 
             key, subkey = jax.random.split(key)
+            # Mask the action and state if the observation results from reset
+            # This happens when the sampled sequence contains multiple trajectories
+            action = action * mask
+            latent_state = jax.tree.map(lambda x: x * mask, latent_state)
             prior, posterior = self.perceive(latent_state, action, obs, subkey)
 
             return (posterior.latent_state, key), (prior, posterior)
@@ -135,7 +140,7 @@ class Agent(eqx.Module):
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
             (init_latent_state, key_scan),
-            (data.action, data.next_obs)
+            (data.action, data.next_obs, data.done)
         )
         return priors, posteriors
 
@@ -143,7 +148,7 @@ class Agent(eqx.Module):
         key_scan = key
 
         # Imagination
-        def imagine_step_fn(carry, _):
+        def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
             latent_state, key = carry
 
             key, key_action, key_predict = jax.random.split(key, 3)

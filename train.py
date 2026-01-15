@@ -117,14 +117,7 @@ class Trainer(eqx.Module):
 
         transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transitions_init, transitions) # insert the initial transition
 
-        agent = self.agent.add_experience(
-            action=transitions.action,
-            reward=transitions.reward,
-            next_obs=(
-                transitions.observation_before_reset if transitions.done else transitions.next_observation # TODO: real observation after auto-reset? see jaxinn.org.
-            ),
-            done=transitions.done,
-        )
+        agent = self.agent.add_experience(transitions)
 
         def learn_step_fn(carry, _):
             agent, key = carry
