@@ -75,7 +75,7 @@ class Uniform(Memory):
 
         batch_index = self.sample_batch_index(batch_size, key, chunk_size=chunk_size)
         offset = jnp.arange(chunk_size)
-        sample_index = offset[:, None] + batch_index[None, :] # T x B
+        sample_index = (offset[:, None] + batch_index[None, :]) % self.capacity # T x B
 
         trajectories = jax.tree.map(
             lambda x: x[sample_index],
