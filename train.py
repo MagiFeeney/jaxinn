@@ -164,10 +164,13 @@ class Trainer(eqx.Module):
     def make_interact_step_fn(self, eval=False):
         def interact_step_fn(carry, _)
             transition, last_latent_state, env_state, key = carry
-            last_action, obs, *_ = transition
+            last_action, obs, _, done = transition
+            mask = 1 - done
             key, key_action, key_step = jax.random.split(key, 3)
 
-            latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_action, eval=eval)
+            last_latent_state = jax.tree.map(lambda x: x * mask, last_latent_state)
+            last_action = last_action * mask
+            latent_state, action = self.agent.act(last_latent_state, last_action, obs, key=key_action, eval=eval)
             next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action, self.env_params)
 
             transition = Transition(
