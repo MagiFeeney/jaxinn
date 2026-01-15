@@ -161,7 +161,16 @@ class Trainer(eqx.Module):
         cumulative_rewards = jnp.sum(transitions.reward * masks) # Return up to the first termination
         return cumulative_rewards
 
-    def make_interact_step_fn(self, eval=False):
+    def make_interact_step_fn(self, eval=False, prefill=False):
+        def random_act_branch(operand):
+            last_state, _, _, key = operand
+            action = self.env.action_space(self.env_params).sample(key) # TODO: vmap for vectorization
+            return last_state, action # For consistency required by branching
+
+        def agent_act_branch(operand):
+            last_state, last_action, obs, key = operand
+            return self.agent.act(last_state, last_action, obs, key=key, eval=eval)
+
         def interact_step_fn(carry, _)
             transition, last_latent_state, env_state, key = carry
             last_action, obs, _, done = transition
@@ -170,7 +179,12 @@ class Trainer(eqx.Module):
 
             last_latent_state = jax.tree.map(lambda x: x * mask, last_latent_state)
             last_action = last_action * mask
-            latent_state, action = self.agent.act(last_latent_state, last_action, obs, key=key_action, eval=eval)
+            latent_state, action = jax.lax.cond(
+                prefill,
+                random_act_branch,
+                agent_act_branch,
+                (last_latent_state, last_action, obs, key_action)
+            )
             next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action, self.env_params)
 
             transition = Transition(
