@@ -84,7 +84,7 @@ class Uniform(Memory):
         return trajectories
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
-        start = jax.lax.where(
+        start = jnp.where(
             self.full,
             self.ptr - self.capacity, # Prevent overshooting due to wrapping; if negative, turn non-contiguous intervals into a contiguous one, facilitating sampling efficiency
             0

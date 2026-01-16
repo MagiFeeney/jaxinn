@@ -6,7 +6,7 @@ import equinox as eqx
 import optax
 
 from .models import World, Critic, Actor, LatentState, LatentStateWithParams
-from .memory import Memory
+from .memory import Memory, Uniform, Prioritized
 from ..train import Transition
 
 
@@ -69,7 +69,11 @@ class Agent(eqx.Module):
         self.world = Learner.create(World, config.world, key=key_world)
         self.actor = Learner.create(Actor, config.actor, key=key_actor)
         self.critic = Learner.create(Critic, config.critic, key=key_critic)
-        self.memory = Memory(
+        if config.memory.type.lower() == "uniform":
+            memory_cls = Uniform
+        else:
+            memory_cls = Prioritized
+        self.memory = memory_cls(
             capacity=config.memory.capacity,
             obs_shape=config.world.perception.encoder.shape,
             action_size=config.world.transition.action_size

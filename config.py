@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict, is_dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 from types import SimpleNamespace
 
 
@@ -177,8 +177,9 @@ class Critic(ModelShared):
 
 # Memory
 @dataclass
-class Memory(ModelShared):
+class Memory(Base):
     capacity: int = 1000000
+    type: Literal['uniform', 'prioritized'] = "uniform"
 
 
 # Environment
