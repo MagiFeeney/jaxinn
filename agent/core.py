@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from typing import Generic, TypeVar
 from jaxtyping import PRNGKeyArray
 
 import equinox as eqx
@@ -10,8 +11,11 @@ from .memory import Memory, Uniform, Prioritized
 from ..train import Transition
 
 
-class Learner(eqx.Module):
-    model: eqx.Module
+ModelType = TypeVar("ModelType", bound=eqx.Module)
+
+
+class Learner(eqx.Module, Generic[ModelType]):
+    model: ModelType
     optimizer: optax.GradientTransformation = eqx.field(static=True)
     optimizer_state: optax.OptState
 
@@ -61,7 +65,6 @@ class Agent(eqx.Module):
     def __init__(
             self,
             config,
-            env_params,
             *,
             key: PRNGKeyArray,
     ):
@@ -76,12 +79,12 @@ class Agent(eqx.Module):
         self.memory = memory_cls(
             capacity=config.memory.capacity,
             obs_shape=config.world.perception.encoder.shape,
-            action_size=config.world.transition.action_size
+            action_dim=config.world.transition.action_dim
         )
         # For initialization of LatentState
         self.random_init = config.random_init
-        self.belief_size = config.world.belief_size
-        self.state_size = config.world.state_size
+        self.belief_size = config.world.transition.belief_size
+        self.state_size = config.world.transition.state_size
 
         # Extra particulars for agent learning
         self.__dict__.update(config.optimization())
