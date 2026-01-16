@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict, is_dataclass
-from typing import Any, Optional, Literal
+from typing import Tuple, Any, Optional, Literal
 from types import SimpleNamespace
 
 
@@ -75,7 +75,7 @@ class ModelShared(Model):
 @dataclass
 class PerceptionShared(Model):
     """Shared parameters across perception modules."""
-    shape: Optional[Tuple[int, int, int]] = None
+    shape: Optional[Tuple[int, ...]] = None
     embedding_size: int = 1024
 
 
@@ -106,25 +106,25 @@ class Perception(Model):
 
 @dataclass
 class Representation(ModelShared):
-    embedding_size: int
-    hidden_size: int
+    embedding_size: int = 1024
+    hidden_size: int = 200
     activation_function: str = "elu"
-    head_type: str
+    head_type: Literal['Normal', 'Categorical'] = "Normal"
 
 
 @dataclass
 class Transition(ModelShared):
-    hidden_size: int
+    hidden_size: int = 200
     activation_function: str = "elu"
-    head_type: str
+    head_type: Literal['Normal', 'Categorical'] = "Normal"
 
 
 @dataclass
 class Reward(ModelShared):
-    hidden_size: int
+    hidden_size: int = 300
     activation_function: str = "elu"
     head_type: str = "Isotropic Normal"
-    min_std: float
+    min_std: float = 0.0
 
 
 @dataclass
@@ -153,7 +153,7 @@ class ActorOptimizer(OptimizerShared):
 
 @dataclass
 class Actor(ModelShared):
-    hidden_size: int
+    hidden_size: int = 300
     activation_function: str = "elu"
     action_dim: Optional[int] = None # Pass from the env params
     min_std: float = 0.0
