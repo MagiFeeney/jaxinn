@@ -205,8 +205,7 @@ class Representation(eqx.Module):
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
-
-# Motivation    min_std: float
+    min_std: float
 
     def __init__(
             self,
@@ -318,7 +317,7 @@ class Transition(eqx.Module):
         ])
 
         # p(h_t | c_{t - 1}, h_{t - 1})
-        self.body = nn.GRUCell(hidden_size, belief_size, key=keys[1])
+        self.body = eqx.nn.GRUCell(hidden_size, belief_size, key=keys[1])
 
         # p(s_t | h_t)
         self.head = eqx.nn.Sequential([
@@ -369,7 +368,6 @@ class Reward(eqx.Module):
     net: eqx.nn.Sequential
     action_dim: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
-
     min_std: float
 
     def __init__(
@@ -445,9 +443,10 @@ class Perception(eqx.Module):
     encoder: Encoder
     decoder: Decoder
 
-    def __init__(self, encoder, decoder):
-        self.encoder = Encoder(**encoder())
-        self.decoder = Decoder(**decoder())
+    def __init__(self, encoder, decoder, *, key: PRNGKeyArray):
+        key_encoder, key_decoder = jax.random.split(key, 2)
+        self.encoder = Encoder(**encoder(), key=key_encoder)
+        self.decoder = Decoder(**decoder(), key=key_decoder)
 
 
 class World(eqx.Module):
@@ -456,8 +455,9 @@ class World(eqx.Module):
     transition: Transition
     reward: Reward
 
-    def __init__(self, perception, representation, transition, reward):
-        self.perception = Perception(**perception())
-        self.representation = Representation(**representation())
-        self.transition = Transition(**transition())
-        self.reward = Reward(**reward())
+    def __init__(self, perception, representation, transition, reward, *, key: PRNGKeyArray):
+        key_perception, key_representation, key_transition, key_reward = jax.random.split(key, 4)
+        self.perception = Perception(**perception(), key=key_perception)
+        self.representation = Representation(**representation(), key=key_representation)
+        self.transition = Transition(**transition(), key=key_transition)
+        self.reward = Reward(**reward(), key=key_reward)

@@ -89,7 +89,7 @@ class OptimizerShared(Base):
 
 # World Model
 @dataclass
-class Encoder(ModelShared, PerceptionShared):
+class Encoder(PerceptionShared):
     activation_function: str = "elu"
 
 
