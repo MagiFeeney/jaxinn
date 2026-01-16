@@ -160,7 +160,7 @@ class SumTree(eqx.Module):
 
         final_idx, _ = jax.lax.fori_loop(0, self.depth, body_fn, (idx, s))
         leaf_idx = final_idx - (self.capacity - 1)
-        val = self.tree[final_idx] # priorities For debugging
+        val = self.tree[final_idx] # Priorities for debugging if needed
         return leaf_idx, val
 
 
@@ -190,5 +190,6 @@ class Prioritized(Uniform):
             new_tree
         )
 
-    def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
-        return self.sumtree.sample(batch_size, key)
+    def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int): # chunk_size not used, just to align with base
+        batch_index, _ = self.sumtree.sample(batch_size, key)
+        return batch_index
