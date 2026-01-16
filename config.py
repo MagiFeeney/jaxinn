@@ -157,7 +157,7 @@ class Actor(ModelShared):
     activation_function: str = "elu"
     action_dim: Optional[int] = None # Pass from the env params
     min_std: float = 0.0
-    head_type: str = "Isotropic Normal"
+    head_type: Literal['Isotropic Normal', 'Normal'] = "Isotropic Normal"
 
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
@@ -172,6 +172,12 @@ class CriticOptimizer(OptimizerShared):
 
 @dataclass
 class Critic(ModelShared):
+    hidden_size: int = 300
+    activation_function: str = "elu"
+    action_dim: Optional[int] = None
+    min_std: float = 0.0
+    head_type: Literal['Isotropic Normal', 'Normal'] = "Isotropic Normal"
+
     optimizer: CriticOptimizer = field(default_factory=CriticOptimizer)
 
 

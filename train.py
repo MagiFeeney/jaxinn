@@ -36,6 +36,7 @@ class Trainer(eqx.Module):
         self.env, self.env_params = make_env(**config.env)
         # Update config with env particulars
         config.agent.world.transition.update({"action_dim": self.action_dim})
+        config.agent.actor.update({"action_dim": self.action_dim})
         observation_space = self.env.observation_space(self.env_params)
         config.agent.world.perception.encoder.update({"shape": observation_space.shape})
         config.agent.world.perception.decoder.update({"shape": observation_space.shape})

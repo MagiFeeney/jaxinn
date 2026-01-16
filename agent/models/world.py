@@ -288,7 +288,7 @@ class Transition(eqx.Module):
             self,
             belief_size: int,
             state_size: Union[int, tuple],
-            action_size: int,
+            action_dim: int,
             hidden_size: int,
             min_std: float = 0.1,
             activation_function="elu",
@@ -299,11 +299,11 @@ class Transition(eqx.Module):
         if head_type == "Normal":
             self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
-            input_size = state_size + action_size
+            input_size = state_size + action_dim
         elif head_type == "Categorical":
             self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
-            input_size = output_size + action_size
+            input_size = output_size + action_dim
         else:
             raise NotImplementedError(f"Unsupported head_type: {head_type}")
 
@@ -333,7 +333,7 @@ class Transition(eqx.Module):
     def __call__(
             self,
             latent_state: LatentState,
-            action: Float[Array, "... action_size"],
+            action: Float[Array, "... action_dim"],
             key: PRNGKeyArray,
     ) -> LatentStateWithParams:
         input_tensor = jnp.concatenate([latent_state.state, action], axis=-1)
@@ -367,7 +367,7 @@ class Transition(eqx.Module):
 # Motivation
 class Reward(eqx.Module):
     net: eqx.nn.Sequential
-    action_size: Optional[int] = eqx.field(static=True)
+    action_dim: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
 
     min_std: float
@@ -378,12 +378,12 @@ class Reward(eqx.Module):
             state_size: int,
             hidden_size: int,
             activation_function="elu",
-            action_size: Optional[int] = None,
+            action_dim: Optional[int] = None,
             min_std: float = 0.0,
             head_type="Isotropic Normal",
             *,
             key: PRNGKeyArray,
-    ):  # if action_size is not None, Q fn
+    ):  # if action_dim is not None, Q fn
         if head_type == "Isotropic Normal":
             output_size = 1
         elif head_type == "Normal":
@@ -397,7 +397,7 @@ class Reward(eqx.Module):
         self.net = eqx.nn.Sequential([
             eqx.nn.Linear(
                 belief_size + state_size + (
-                    0 if action_size is None else int(action_size)
+                    0 if action_dim is None else int(action_dim)
                 ),
                 hidden_size, key=keys[0]
             ),
@@ -410,7 +410,7 @@ class Reward(eqx.Module):
         ])
 
         self.head_type = head_type
-        self.action_size = action_size
+        self.action_dim = action_dim
         self.min_std = min_std
 
     def __call__(
@@ -421,7 +421,7 @@ class Reward(eqx.Module):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 
-        assert (action is None) == (self.action_size is None)
+        assert (action is None) == (self.action_dim is None)
         if action is not None:
             latent_state = jnp.concatenate([latent_state, action], axis=-1)
 

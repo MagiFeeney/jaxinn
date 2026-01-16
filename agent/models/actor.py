@@ -102,9 +102,9 @@ class SampleDist(eqx.Module):
         return self.dist.log_prob(value)
 
 
-class ActorModel(eqx.Module):
+class Actor(eqx.Module):
     net: eqx.nn.Sequential
-    action_size: int = eqx.field(static=True)
+    action_dim: int = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     init_std: float = eqx.field(static=True)
     min_std: float
@@ -116,14 +116,14 @@ class ActorModel(eqx.Module):
         belief_size: int,
         state_size: int,
         hidden_size: int,
-        action_size: int,
+        action_dim: int,
         head_type: str = "Tanh Normal",
         activation_function: Union[str, Callable] = "elu",
         min_std: float = 1e-4,
         init_std: float = 5.0,
         mean_scale: float = 5.0,
         *,
-        key: jax.random.PRNGKey,
+        key: PRNGKeyArray,
     ):
         activation = get_activation_fn(activation_function)
 
@@ -138,11 +138,11 @@ class ActorModel(eqx.Module):
             eqx.nn.Lambda(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[3]),
             eqx.nn.Lambda(activation),
-            eqx.nn.Linear(hidden_size, 2 * action_size, key=keys[4]),
+            eqx.nn.Linear(hidden_size, 2 * action_dim, key=keys[4]),
         ])
 
         self.head_type = head_type
-        self.action_size = action_size
+        self.action_dim = action_dim
         self.min_std = min_std
         self.init_std = init_std
         self.mean_scale = mean_scale
