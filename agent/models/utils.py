@@ -32,6 +32,10 @@ def get_activation_fn(name_or_fn) -> Callable:
         raise TypeError(f"Expected str or callable, got {type(name_or_fn)}")
 
 
+class Static(eqx.Module):
+    value: any = eqx.field(static=True)
+
+
 class FixedDistrax(eqx.Module):
     cls: Callable = eqx.field(static=True)
     args: PyTree[Any]
@@ -44,9 +48,16 @@ class FixedDistrax(eqx.Module):
 
     def _resolve(self, x):
         return jax.tree_util.tree_map(
-            lambda leaf: leaf.dist if isinstance(leaf, FixedDistrax) else leaf,
+            lambda leaf: (
+                leaf.dist if isinstance(leaf, FixedDistrax)
+                else leaf.value if isinstance(leaf, Static)
+                else leaf
+            ),
             x,
-            is_leaf=lambda l: isinstance(l, FixedDistrax)
+            is_leaf=lambda leaf: (
+                isinstance(leaf, FixedDistrax)
+                or isinstance(leaf, Static)
+            ),
         )
 
     @property

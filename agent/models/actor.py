@@ -180,7 +180,14 @@ class Actor(eqx.Module):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 
-        base_dist = self(latent_state)
+        # Get the vmap-ed outputs first to get independent samples with a single key
+        if latent_state.ndim == 3:
+             base_dist = eqx.filter_vmap(eqx.filter_vmap(self))(latent_state)
+        elif latent_state.ndim == 2:
+             base_dist = eqx.filter_vmap(self)(latent_state)
+        else:
+             base_dist = self(latent_state)
+
         sample_dist = SampleDist(base_dist)
 
         return jax.lax.cond(
