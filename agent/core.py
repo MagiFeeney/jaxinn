@@ -97,7 +97,8 @@ class Agent(eqx.Module):
 
     def predict(self, latent_state, action, key):
         """Predict based on the belief without seeing observation."""
-        prior = self.world.transition(latent_state, action, key)
+        params, belief = self.world.transition(latent_state, action)
+        prior = self.world.transition.construct(params, belief, key)
         return prior
 
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
@@ -110,7 +111,8 @@ class Agent(eqx.Module):
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
         embedding = self.world.perception.encoder(observation)
-        posterior = self.world.representation(prior.latent_state, embedding, key_posterior)
+        params, belief = self.world.representation(prior.latent_state, embedding)
+        posterior = self.world.representation.construct(params, belief, key_posterior)
         return prior, posterior
 
     def add_experience(self, transitions: Transition):

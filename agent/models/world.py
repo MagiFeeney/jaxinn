@@ -202,6 +202,7 @@ class Representation(eqx.Module):
     """Representation learning of state, inferred from history and the latest observation: p(s_t | h_t, o_t)
     """
     net: eqx.nn.Sequential
+    dist_cls: str = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
@@ -220,9 +221,11 @@ class Representation(eqx.Module):
             key: PRNGKeyArray,
     ):
         if head_type == "Normal":
+            self.dist_cls = dx.Normal
             self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
         elif head_type == "Categorical":
+            self.dist_cls = dx.OneHotCategorical
             self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
         else:
@@ -246,7 +249,7 @@ class Representation(eqx.Module):
             latent_state: LatentState,
             obs: Float[Array, "... embedding_size"],
             key: PRNGKeyArray,
-    ) -> LatentStateWithParams:
+    ) -> Dict[str, Float[Array, "..."]]:
         input_tensor = jnp.concatenate([latent_state.belief, obs], axis=-1)
         out = self.net(input_tensor)
 
@@ -254,22 +257,30 @@ class Representation(eqx.Module):
             mean, log_std = jnp.split(out, 2, axis=-1)
             std = jax.nn.softplus(log_std) + self.min_std
             params = {"loc": mean, "scale": std}
-            dist_cls = dx.Normal
-            dist = dist_cls(mean, std)
-            state = dist.sample(seed=key)
         elif self.head_type == "Categorical":
             logit = out.reshape(*out.shape[:-1], self.num_variables, self.num_categories)
             params = {"logits": logit}
-            dist_cls = dx.OneHotCategorical
-            dist = dist_cls(logits=logit)
+
+        return params, latent_state.belief
+
+    def construct(
+            self,
+            params: Dict[str, Any],
+            belief: Float[Array, "... belief_dim"],
+            key: PRNGKeyArray,
+    ) -> LatentStateWithParams:
+        dist = dist_cls(**params)
+        if self.head_type == "Normal":
+            state = dist.sample(seed=key)
+        elif self.head_type == "Categorical":
             state = dist.sample(seed=key)
             state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
             state = state.reshape(*state.shape[:2], -1) # flatten
 
         return LatentStateWithParams(
-            latent_state=LatentState(belief=latent_state.belief, state=state),
+            latent_state=LatentState(belief=belief, state=state),
             params=params,
-            dist_cls=dist_cls
+            dist_cls=self.dist_cls
         )
 
 
@@ -278,6 +289,7 @@ class Transition(eqx.Module):
     encoder: eqx.nn.Sequential
     body: eqx.nn.GRUCell
     head: eqx.nn.Sequential
+    dist_cls: str = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
@@ -296,10 +308,12 @@ class Transition(eqx.Module):
             key: PRNGKeyArray,
     ):
         if head_type == "Normal":
+            self.dist_cls = dx.Normal
             self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
             input_size = state_size + action_dim
         elif head_type == "Categorical":
+            self.dist_cls = dx.OneHotCategorical
             self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
             input_size = output_size + action_dim
@@ -334,7 +348,10 @@ class Transition(eqx.Module):
             latent_state: LatentState,
             action: Float[Array, "... action_dim"],
             key: PRNGKeyArray,
-    ) -> LatentStateWithParams:
+    ) -> Tuple[
+        Dict[str, Float[Array, "..."]],
+        Float[Array, "... belief_dim"],
+    ]:
         input_tensor = jnp.concatenate([latent_state.state, action], axis=-1)
         embedding = self.encoder(input_tensor)
         belief = self.body(embedding, latent_state.belief)
@@ -344,14 +361,23 @@ class Transition(eqx.Module):
             mean, log_std = jnp.split(out, 2, axis=-1)
             std = jax.nn.softplus(log_std) + self.min_std
             params = {"loc": mean, "scale": std}
-            dist_cls = dx.Normal
-            dist = dist_cls(mean, std)
-            state = dist.sample(seed=key)
         elif self.head_type == "Categorical":
             logit = out.reshape(*out.shape[:-1], self.num_variables, self.num_categories)
             params = {"logits": logit}
-            dist_cls = dx.OneHotCategorical
-            dist = dist_cls(logits=logit)
+
+        return params, belief
+
+    def construct(
+            self,
+            params: Dict[str, Any],
+            belief: Float[Array, "... belief_dim"],
+            key: PRNGKeyArray,
+    ) -> LatentStateWithParams:
+        dist = self.dist_cls(**params)
+
+        if self.head_type == "Normal":
+            state = dist.sample(seed=key)
+        elif self.head_type == "Categorical":
             state = dist.sample(seed=key)
             state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
             state = state.reshape(*state.shape[:2], -1) # flatten
@@ -359,7 +385,7 @@ class Transition(eqx.Module):
         return LatentStateWithParams(
             latent_state=LatentState(belief=belief, state=state),
             params=params,
-            dist_cls=dist_cls
+            dist_cls=self.dist_cls
         )
 
 
