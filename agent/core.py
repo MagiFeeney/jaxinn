@@ -192,7 +192,7 @@ class Agent(eqx.Module):
         first_value = jax.vmap(self.critic)(init_latent_state).mean()
 
         ## Rearrangement
-        values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=-1)
+        values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=0)
         last_value = next_values[-1]
 
         dones = jnp.ones_like(values)
