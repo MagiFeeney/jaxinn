@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import equinox as eqx
 from typing import Tuple
 from jaxtyping import PRNGKeyArray
-from ..train import Transition
+from train import Transition
 
 
 # Base class

@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import equinox as eqx
 import distrax
 
-from typing import Optional, Callable, Union, Dict, Tuple
+from typing import Optional, Callable, Union, Dict, Tuple, Any
 from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx
 

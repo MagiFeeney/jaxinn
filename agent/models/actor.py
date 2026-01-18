@@ -4,7 +4,7 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from typing import Tuple, Union, Any, Optional, Callable
+from typing import Tuple, Union, Any, Optional, Callable, Dict
 from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx
 from .world import LatentState
