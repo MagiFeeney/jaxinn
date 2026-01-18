@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Generic, TypeVar
+from typing import Tuple, Generic, TypeVar
 from jaxtyping import PRNGKeyArray
 
 import equinox as eqx
