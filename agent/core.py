@@ -92,13 +92,19 @@ class Agent(eqx.Module):
     def act(self, last_latent_state, last_action, obs, *, key: PRNGKeyArray, eval=False):
         key_perceive, key_action = jax.random.split(key, 2)
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
-        action = self.actor.get_action(posterior.latent_state, key_action, eval)
+        params = self.actor(posterior.latent_state)
+        action = self.actor.sample(params, key_action, eval)
         return posterior.latent_state, action
 
     def predict(self, latent_state, action, key):
         """Predict based on the belief without seeing observation."""
         params, belief = self.world.transition(latent_state, action)
-        prior = self.world.transition.construct(params, belief, key)
+        state = self.world.transition.sample(params, key)
+        prior = LatentStateWithParams(
+            latent_state=LatentState(belief=belief, state=state),
+            params=params,
+            dist_cls=self.world.transition.dist_cls
+        )
         return prior
 
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
@@ -111,8 +117,13 @@ class Agent(eqx.Module):
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
         embedding = self.world.perception.encoder(observation)
-        params, belief = self.world.representation(prior.latent_state, embedding)
-        posterior = self.world.representation.construct(params, belief, key_posterior)
+        params, belief = self.world.representation(prior.latent_state.belief, embedding)
+        state = self.world.representation.sample(params, key_posterior)
+        posterior = LatentStateWithParams(
+            latent_state=LatentState(belief=belief, state=state),
+            params=params,
+            dist_cls=self.world.representation.dist_cls
+        )
         return prior, posterior
 
     def add_experience(self, transitions: Transition):

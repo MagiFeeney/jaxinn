@@ -246,11 +246,13 @@ class Representation(eqx.Module):
 
     def __call__(
             self,
-            latent_state: LatentState,
+            belief: Float[Array, "... belief_dim"],
             obs: Float[Array, "... embedding_size"],
-            key: PRNGKeyArray,
-    ) -> Dict[str, Float[Array, "..."]]:
-        input_tensor = jnp.concatenate([latent_state.belief, obs], axis=-1)
+    ) -> Tuple[
+        Dict[str, Float[Array, "..."]],
+        Float[Array, "... belief_dim"],
+    ]:
+        input_tensor = jnp.concatenate([belief, obs], axis=-1)
         out = self.net(input_tensor)
 
         if self.head_type == "Normal":
@@ -261,15 +263,15 @@ class Representation(eqx.Module):
             logit = out.reshape(*out.shape[:-1], self.num_variables, self.num_categories)
             params = {"logits": logit}
 
-        return params, latent_state.belief
+        return params, belief
 
-    def construct(
+    def sample(
             self,
             params: Dict[str, Any],
-            belief: Float[Array, "... belief_dim"],
             key: PRNGKeyArray,
-    ) -> LatentStateWithParams:
-        dist = dist_cls(**params)
+    ) -> Float[Array, "... state_dim"],:
+        dist = self.dist_cls(**params)
+
         if self.head_type == "Normal":
             state = dist.sample(seed=key)
         elif self.head_type == "Categorical":
@@ -277,11 +279,7 @@ class Representation(eqx.Module):
             state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
             state = state.reshape(*state.shape[:2], -1) # flatten
 
-        return LatentStateWithParams(
-            latent_state=LatentState(belief=belief, state=state),
-            params=params,
-            dist_cls=self.dist_cls
-        )
+        return state
 
 
 # Transition
@@ -347,7 +345,6 @@ class Transition(eqx.Module):
             self,
             latent_state: LatentState,
             action: Float[Array, "... action_dim"],
-            key: PRNGKeyArray,
     ) -> Tuple[
         Dict[str, Float[Array, "..."]],
         Float[Array, "... belief_dim"],
@@ -367,12 +364,11 @@ class Transition(eqx.Module):
 
         return params, belief
 
-    def construct(
+    def sample(
             self,
-            params: Dict[str, Any],
-            belief: Float[Array, "... belief_dim"],
+            params: Dict[str, Float[Array, "..."]],
             key: PRNGKeyArray,
-    ) -> LatentStateWithParams:
+    ) -> Float[Array, "... state_dim"]:
         dist = self.dist_cls(**params)
 
         if self.head_type == "Normal":
@@ -382,11 +378,7 @@ class Transition(eqx.Module):
             state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
             state = state.reshape(*state.shape[:2], -1) # flatten
 
-        return LatentStateWithParams(
-            latent_state=LatentState(belief=belief, state=state),
-            params=params,
-            dist_cls=self.dist_cls
-        )
+        return state
 
 
 # Motivation

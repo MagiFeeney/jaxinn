@@ -161,33 +161,27 @@ class Actor(eqx.Module):
         if self.head_type == "Beta":
             alpha_beta = jax.nn.softplus(out) + self.min_std
             alpha, beta = jnp.split(alpha_beta, 2, axis=-1)
-            dist = dx(AffineBeta)(alpha=alpha, beta=beta)
+            params = {"alpha": alpha, "beta": beta}
         elif self.head_type == "Tanh Normal":
             mean, log_std = jnp.split(out, 2, axis=-1)
             mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
             std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
-            dist = dx(TanhNormal)(mean, std)
-        else:
-            raise ValueError(f"Unknown head type: {self.head_type}")
+            params = {"loc": mean, "scale": std}
 
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(1))
+        return params
 
-    def get_action(
+    def sample(
             self,
-            latent_state: Union[Float[Array, "... input_dim"], LatentState],
+            params: Dict[str, Any],
             key: PRNGKeyArray,
             det: bool = False,      # default to training
     ) -> Float[Array, "... action_dim"]:
-        if isinstance(latent_state, LatentState):
-            latent_state = latent_state.feature
+        if self.head_type == "Beta":
+            base_dist = dx(AffineBeta)(**params)
+        elif self.head_type == "Tanh Normal":
+            base_dist = dx(TanhNormal)(**params)
 
-        # Get the vmap-ed outputs first to get independent samples with a single key
-        if latent_state.ndim == 3:
-             base_dist = eqx.filter_vmap(eqx.filter_vmap(self))(latent_state)
-        elif latent_state.ndim == 2:
-             base_dist = eqx.filter_vmap(self)(latent_state)
-        else:
-             base_dist = self(latent_state)
+        base_dist = dx.Independent(dist, reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
 
         sample_dist = SampleDist(base_dist)
 
