@@ -166,7 +166,7 @@ class Actor(eqx.Module):
             mean, log_std = jnp.split(out, 2, axis=-1)
             mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
             std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
-            params = {"loc": mean, "scale": std}
+            params = {"mean": mean, "std": std}
 
         return params
 
