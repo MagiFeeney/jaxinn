@@ -146,13 +146,13 @@ class Agent(eqx.Module):
             latent_state, key = carry
             action, obs, done = inputs
             mask = 1 - done
-            key, subkey = jax.random.split(key)
+            key, key_perceive = jax.random.split(key)
 
             # Mask the action and state if the observation results from reset
             # This happens when the sampled sequence contains multiple trajectories
             latent_state = jax.tree.map(lambda x: x * mask, latent_state)
             action = action * mask
-            prior, posterior = self.perceive(latent_state, action, obs, subkey)
+            prior, posterior = self.perceive(latent_state, action, obs, key_perceive)
 
             return (posterior.latent_state, key), (prior, posterior)
 
@@ -165,13 +165,14 @@ class Agent(eqx.Module):
 
     def plan(self, posterior: LatentStateWithParams, key):
         key_scan = key
+        init_latent_state = posterior.latent_state.flatten()
 
         # Imagination
         def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
             latent_state, key = carry
 
             key, key_action, key_predict = jax.random.split(key, 3)
-            params = jax.vmap(jax.vmap(self.actor))(latent_state)
+            params = jax.vmap(self.actor)(latent_state)
             action = self.actor.sample(params, key_action)
             prior = self.predict(latent_state, action, key_predict)
 
@@ -179,16 +180,18 @@ class Agent(eqx.Module):
 
         _, (latent_states, actions) = jax.lax.scan(
             imagine_step_fn,
-            (posterior.latent_state, key_scan),
+            (init_latent_state, key_scan),
             None,
             self.planning_horizon,
         )
 
         # Processing data
-        rewards = self.world.reward(latent_states).mean() # Equivalent to r(s, a, s') instead of r(s, a)
-        next_values = self.critic(latent_states).mean()
-        first_value = self.critic(posterior.latent_states).mean()
+        ## Inference
+        rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states).mean() # Equivalent to r(s, a, s') instead of r(s, a)
+        next_values = jax.vmap(jax.vmap(self.critic))(latent_states).mean()
+        first_value = jax.vmap(self.critic)(init_latent_state).mean()
 
+        ## Rearrangement
         values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=-1)
         last_value = next_values[-1]
 
