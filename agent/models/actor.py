@@ -177,13 +177,13 @@ class Actor(eqx.Module):
             det: bool = False,      # default to training
     ) -> Float[Array, "... action_size"]:
         if self.head_type == "Beta":
-            base_dist = dx(AffineBeta)(**params)
+            dist = dx(AffineBeta)(**params)
         elif self.head_type == "Tanh Normal":
-            base_dist = dx(TanhNormal)(**params)
+            dist = dx(TanhNormal)(**params)
 
-        base_dist = dx.Independent(dist, reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
+        dist = dx.Independent(dist, reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
 
-        sample_dist = SampleDist(base_dist)
+        sample_dist = SampleDist(dist)
 
         return jax.lax.cond(
             det,
