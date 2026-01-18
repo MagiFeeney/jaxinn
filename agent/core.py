@@ -91,13 +91,13 @@ class Agent(eqx.Module):
     def act(self, last_latent_state, last_action, obs, *, key: PRNGKeyArray, eval=False):
         key_perceive, key_action = jax.random.split(key, 2)
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
-        params = self.actor(posterior.latent_state)
+        params = jax.vmap(self.actor)(posterior.latent_state)
         action = self.actor.sample(params, key_action, eval)
         return posterior.latent_state, action
 
     def predict(self, latent_state, action, key):
         """Predict based on the belief without seeing observation."""
-        params, belief = self.world.transition(latent_state, action)
+        params, belief = jax.vmap(self.world.transition)(latent_state, action)
         state = self.world.transition.sample(params, key)
         prior = LatentStateWithParams(
             latent_state=LatentState(belief=belief, state=state),
@@ -115,8 +115,8 @@ class Agent(eqx.Module):
         """
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
-        embedding = self.world.perception.encoder(observation)
-        params, belief = self.world.representation(prior.latent_state.belief, embedding)
+        embedding = jax.vmap(self.world.perception.encoder)(observation)
+        params, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, embedding)
         state = self.world.representation.sample(params, key_posterior)
         posterior = LatentStateWithParams(
             latent_state=LatentState(belief=belief, state=state),
@@ -171,7 +171,8 @@ class Agent(eqx.Module):
             latent_state, key = carry
 
             key, key_action, key_predict = jax.random.split(key, 3)
-            action = self.actor.get_action(latent_state, key_action)
+            params = jax.vmap(jax.vmap(self.actor))(latent_state)
+            action = self.actor.sample(params, key_action)
             prior = self.predict(latent_state, action, key_predict)
 
             return (prior.latent_state, key), (prior.latent_state, action)

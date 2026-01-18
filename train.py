@@ -18,6 +18,7 @@ class Trainer(eqx.Module):
     env: Environment = eqx.field(static=True)
     env_params: Any = eqx.field(static=True)
 
+    num_envs: int = eqx.field(static=True)
     num_environment_steps: int = eqx.field(static=True)
     eval_interval: int = eqx.field(static=True)
     train_interval: int = eqx.field(static=True)
@@ -106,7 +107,7 @@ class Trainer(eqx.Module):
             train_interact_step_fn,
             (transition_init, latent_state_init, env_state, key_interact),
             None,
-            self.episode_length,
+            self.episode_length // self.num_envs,
         )
 
         transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transitions_init, transitions) # insert the initial transition
@@ -148,7 +149,7 @@ class Trainer(eqx.Module):
             evaluate_interact_step_fn,
             (transition_init, latent_state_init, env_state, key_scan),
             None,
-            self.episode_length,
+            self.episode_length // self.num_envs,
         )
 
         masks = 1 - jnp.maximum.accumulate(transitions.done)
@@ -179,6 +180,7 @@ class Trainer(eqx.Module):
                 agent_act_branch,
                 (last_latent_state, last_action, obs, key_action)
             )
+            key_step = jax.random.split(key_step, self.num_envs)
             next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action, self.env_params)
 
             transition = Transition(
