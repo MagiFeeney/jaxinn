@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
+from equinox._module import Static
 import distrax
 
 from typing import Tuple, Union, Any, Optional, Callable
@@ -169,7 +170,7 @@ class Actor(eqx.Module):
         else:
             raise ValueError(f"Unknown head type: {self.head_type}")
 
-        return dx.Independent(dist, reinterpreted_batch_ndims=1)
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(1))
 
     def get_action(
             self,

@@ -3,6 +3,7 @@ import jax.nn as jnn
 from typing import Callable, Union, Any
 from jaxtyping import PyTree
 import equinox as eqx
+from equinox._module import Static
 import distrax
 
 
@@ -30,10 +31,6 @@ def get_activation_fn(name_or_fn) -> Callable:
         return name_or_fn
     else:
         raise TypeError(f"Expected str or callable, got {type(name_or_fn)}")
-
-
-class Static(eqx.Module):
-    value: any = eqx.field(static=True)
 
 
 class FixedDistrax(eqx.Module):
