@@ -7,8 +7,7 @@ import equinox as eqx
 import optax
 
 from .models import World, Critic, Actor, LatentState, LatentStateWithParams
-from .memory import Memory, Uniform, Prioritized
-from train import Transition
+from .memory import Transition, Memory, Uniform, Prioritized
 
 
 ModelType = TypeVar("ModelType", bound=eqx.Module)

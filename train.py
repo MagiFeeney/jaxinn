@@ -6,18 +6,11 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 from gymnax.environments.environment import Environment
 
-from agent import Agent
+from agent import Agent, Transition
 from envs import make_env
 from config import Config
 
 from agent.models import LatentState, LatentStateWithParams
-
-
-class Transition(eqx.Module):
-    action: jax.Array
-    next_obs: jax.Array
-    reward: jax.Array
-    done: jax.Array
 
 
 class Trainer(eqx.Module):
@@ -172,7 +165,7 @@ class Trainer(eqx.Module):
             last_state, last_action, obs, key = operand
             return self.agent.act(last_state, last_action, obs, key=key, eval=eval)
 
-        def interact_step_fn(carry, _)
+        def interact_step_fn(carry, _):
             transition, last_latent_state, env_state, key = carry
             last_action, obs, _, done = transition
             mask = 1 - done
