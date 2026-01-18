@@ -104,5 +104,5 @@ def test_feature_concatenation(belief_shape, state_shape):
     state = jnp.zeros(state_shape)
     ls = LatentState(belief=belief, state=state)
 
-    expected_dim = belief_shape[-1] + state_shape[-1]
-    assert ls.feature.shape[-1] == expected_dim
+    expected_size = belief_shape[-1] + state_shape[-1]
+    assert ls.feature.shape[-1] == expected_size

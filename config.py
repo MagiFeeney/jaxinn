@@ -155,7 +155,7 @@ class ActorOptimizer(OptimizerShared):
 class Actor(ModelShared):
     hidden_size: int = 300
     activation_function: str = "elu"
-    action_dim: Optional[int] = None # Pass from the env params
+    action_size: Optional[int] = None # Pass from the env params
     min_std: float = 0.0
     head_type: Literal['Tanh Normal', 'Beta'] = "Tanh Normal"
 
@@ -174,7 +174,7 @@ class CriticOptimizer(OptimizerShared):
 class Critic(ModelShared):
     hidden_size: int = 300
     activation_function: str = "elu"
-    action_dim: Optional[int] = None
+    action_size: Optional[int] = None
     min_std: float = 0.0
     head_type: Literal['Isotropic Normal', 'Normal'] = "Isotropic Normal"
 

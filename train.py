@@ -35,8 +35,8 @@ class Trainer(eqx.Module):
     def __init__(self, config, *, key: PRNGKeyArray):
         self.env, self.env_params = make_env(**config.env)
         # Update config with env particulars
-        config.agent.world.transition.update({"action_dim": self.action_dim})
-        config.agent.actor.update({"action_dim": self.action_dim})
+        config.agent.world.transition.update({"action_size": self.action_size})
+        config.agent.actor.update({"action_size": self.action_size})
         observation_space = self.env.observation_space(self.env_params)
         config.agent.world.perception.encoder.update({"shape": observation_space.shape})
         config.agent.world.perception.decoder.update({"shape": observation_space.shape})
@@ -44,7 +44,7 @@ class Trainer(eqx.Module):
         self.__dict__.update(config.exploration())
 
     @property
-    def action_dim(self):
+    def action_size(self):
         action_space = self.env.action_space(self.env_params)
         if isinstance(action_space, gymnax.environments.spaces.Discrete):
             return action_space.n
@@ -101,7 +101,7 @@ class Trainer(eqx.Module):
         latent_state_init = self.agent.init_state(key_init)
 
         transition_init = Transition(
-            action=jnp.zeros((self.action_dim,)),
+            action=jnp.zeros((self.action_size,)),
             next_obs=obs,
             reward=jnp.array(0.0),
             done=jnp.array(0.0),
@@ -143,7 +143,7 @@ class Trainer(eqx.Module):
         latent_state_init = self.agent.init_state(key_init)
 
         transition_init = Transition(
-            action=jnp.zeros((self.action_dim,)),
+            action=jnp.zeros((self.action_size,)),
             next_obs=obs,
             reward=jnp.array(0.0),
             done=jnp.array(0.0),

@@ -71,16 +71,16 @@ dx = ProxyDistrax()
 class Actor(eqx.Module):
     layers: nn.Sequential
 
-    def __init__(self, obs_dim, action_dim, hidden_dim, *, key):
+    def __init__(self, obs_size, action_size, hidden_size, *, key):
         keys = jax.random.split(key, num=4)
         self.layers = nn.Sequential([
-            nn.Linear(obs_dim, hidden_dim, key=keys[0]),
+            nn.Linear(obs_size, hidden_size, key=keys[0]),
             nn.Lambda(jax.nn.relu),
-            nn.Linear(hidden_dim, hidden_dim, key=keys[1]),
+            nn.Linear(hidden_size, hidden_size, key=keys[1]),
             nn.Lambda(jax.nn.relu),
-            nn.Linear(hidden_dim, hidden_dim, key=keys[2]),
+            nn.Linear(hidden_size, hidden_size, key=keys[2]),
             nn.Lambda(jax.nn.relu),
-            nn.Linear(hidden_dim, action_dim * 2, key=keys[3])
+            nn.Linear(hidden_size, action_size * 2, key=keys[3])
         ])
 
     def __call__(self, obs):

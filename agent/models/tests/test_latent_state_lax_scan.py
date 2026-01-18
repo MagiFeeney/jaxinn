@@ -30,7 +30,7 @@ class LatentState(eqx.Module):
 
     def narrow(self, axis: int, start: int, length: int) -> "LatentState":
         return jax.tree.map(
-            lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
+            lambda x: jax.lax.dynamic_slice_in_size(x, start, length, axis),
             self
         )
 
@@ -64,13 +64,13 @@ class MockDist:
 def test_scan_auto_stacking():
     # 1. Setup initial dimensions
     T = 5          # Time steps
-    H_dim = 10     # Belief dim
-    S_dim = 4      # State dim
+    H_size = 10     # Belief dim
+    S_size = 4      # State dim
 
     # 2. Create initial state
     init_latent = LatentState(
-        belief=jnp.zeros((H_dim,)),
-        state=jnp.zeros((S_dim,))
+        belief=jnp.zeros((H_size,)),
+        state=jnp.zeros((S_size,))
     )
     init_swp = LatentStateWithParams(
         latent_state=init_latent,
@@ -82,7 +82,7 @@ def test_scan_auto_stacking():
     dist_cls = MockDist
 
     # Mock inputs for the scan (e.g., actions or observations)
-    inputs = jnp.ones((T, H_dim))
+    inputs = jnp.ones((T, H_size))
 
     # 3. Define the transition function
     def core_step_init_with_params(carry, x):
@@ -154,8 +154,8 @@ def test_scan_auto_stacking():
     # --- VERIFICATIONS ---
 
     # A. Check LatentState stacking
-    assert history.latent_state.belief.shape == (T, H_dim)
-    assert history.latent_state.state.shape == (T, S_dim)
+    assert history.latent_state.belief.shape == (T, H_size)
+    assert history.latent_state.state.shape == (T, S_size)
 
     # B. Check Params dictionary stacking (Nested leaves)
     assert history.params["loc"].shape == (T, 3)

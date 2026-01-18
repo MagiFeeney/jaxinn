@@ -14,11 +14,11 @@ class Memory(eqx.Module):
     size: jax.Array
     capacity: int = eqx.field(static=True)
 
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_dim: int):
+    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
         self.capacity = capacity
         # Pre-allocate
         self.data = Transition(
-            action=jnp.empty((capacity, action_dim)),
+            action=jnp.empty((capacity, action_size)),
             next_obs=jnp.empty((capacity, *obs_shape)).astype(jnp.uint8), # For memory efficiency
             reward=jnp.empty(capacity),
             done=jnp.empty(capacity),
@@ -171,8 +171,8 @@ class Prioritized(Uniform):
     beta: float = eqx.field(static=True)
 
     # Require chunk_size to be given because we want to handle the overshooting during settling priorities
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_dim: int, chunk_size: int, alpha=0.6, beta=0.4):
-        super().__init__(capacity, obs_shape, action_dim)
+    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, chunk_size: int, alpha=0.6, beta=0.4):
+        super().__init__(capacity, obs_shape, action_size)
         self.alpha = alpha
         self.beta = beta
         self.sumtree = SumTree(capacity, chunk_size)

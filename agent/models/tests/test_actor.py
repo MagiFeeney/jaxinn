@@ -10,7 +10,7 @@ batch_size = 4
 belief_size = 3
 state_size = 2
 hidden_size = 16
-action_dim = 3  # action_dim > 1
+action_size = 3  # action_size > 1
 
 
 def test_actor_model_batch():
@@ -29,7 +29,7 @@ def test_actor_model_batch():
             belief_size=belief_size,
             state_size=state_size,
             hidden_size=hidden_size,
-            action_dim=action_dim,
+            action_size=action_size,
             head_type=head_type,
             key=subkey
         )
@@ -48,7 +48,7 @@ def test_actor_model_batch():
             in_axes=0
         )(input_tensor)
         print("Sampled actions shape:", actions.shape)
-        assert actions.shape == (batch_size, action_dim)
+        assert actions.shape == (batch_size, action_size)
 
         # Deterministic actions (mode)
         key, subkey = jax.random.split(key)
@@ -57,7 +57,7 @@ def test_actor_model_batch():
             in_axes=0
         )(input_tensor)
         print("Deterministic actions shape:", det_actions.shape)
-        assert det_actions.shape == (batch_size, action_dim)
+        assert det_actions.shape == (batch_size, action_size)
 
         # Test batch shape
         print(f"batch shape {dist.distribution.distribution.batch_shape}")
@@ -78,13 +78,13 @@ def test_actor_model_batch():
         key, subkey = jax.random.split(key)
         mean_estimate = sample_dist.mean(seed=subkey)
         print("Mean estimate shape:", mean_estimate.shape)
-        assert mean_estimate.shape == (batch_size, action_dim)
+        assert mean_estimate.shape == (batch_size, action_size)
 
         # Test mode via sampling
         key, subkey = jax.random.split(key)
         mode_estimate = sample_dist.mode(seed=subkey)
         print("Mode estimate shape:", mode_estimate.shape)
-        assert mode_estimate.shape == (batch_size, action_dim)
+        assert mode_estimate.shape == (batch_size, action_size)
 
 
 def test_actor_model_jit():
@@ -105,7 +105,7 @@ def test_actor_model_jit():
             belief_size=belief_size,
             state_size=state_size,
             hidden_size=hidden_size,
-            action_dim=action_dim,
+            action_size=action_size,
             head_type=head_type,
             key=subkey
         )

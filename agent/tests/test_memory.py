@@ -3,7 +3,7 @@ from ..memory import Uniform, Prioritized
 
 CAPACITY = 20
 OBS_SHAPE = (4,)
-ACT_DIM = 2
+ACT_SIZE = 2
 BATCH_ADD_SIZE = 5
 BATCH_SAMPLE_SIZE = 20
 CHUNK_SIZE = 4
@@ -13,14 +13,14 @@ def test_uniform():
     print(" --- Testing Uniform Memory --- ")
     key = jax.random.PRNGKey(0)
 
-    memory = Uniform(CAPACITY, OBS_SHAPE, ACT_DIM)
+    memory = Uniform(CAPACITY, OBS_SHAPE, ACT_SIZE)
     print(f"1. Init: Size={memory.size}, Ptr={memory.ptr}, Capacity={memory.capacity}")
 
     # Generate dummy batch data
     def make_dummy_batch(seed, size):
         k = jax.random.PRNGKey(seed)
         return Transition(
-            action=jax.random.uniform(k, (size, ACT_DIM)),
+            action=jax.random.uniform(k, (size, ACT_SIZE)),
             next_obs=jax.random.randint(k, (size, *OBS_SHAPE), 0, 255).astype(jnp.uint8),
             reward=jnp.ones((size,)),
             done=jnp.zeros((size,))
@@ -53,7 +53,7 @@ def test_uniform():
     print(f"   Actual Action shape: {traj.action.shape}")
     print(f"   Actual Reward shape: {traj.reward.shape}")
 
-    assert traj.action.shape == (T, B, ACT_DIM)
+    assert traj.action.shape == (T, B, ACT_SIZE)
     assert traj.reward.shape == (T, B)
 
     # Test Wrapping
@@ -86,14 +86,14 @@ def test_prioritized():
     print("\n\n --- Testing Prioritized Memory --- ")
     key = jax.random.PRNGKey(0)
 
-    memory = Prioritized(CAPACITY, OBS_SHAPE, ACT_DIM, chunk_size=CHUNK_SIZE)
+    memory = Prioritized(CAPACITY, OBS_SHAPE, ACT_SIZE, chunk_size=CHUNK_SIZE)
     print(f"1. Init: Size={memory.size}, Ptr={memory.ptr}, Capacity={memory.capacity}\n   chunk size={memory.sumtree.chunk_size}, alpha={memory.alpha}, beta={memory.beta}")
 
     # Generate dummy batch data
     def make_dummy_batch(seed, size):
         k = jax.random.PRNGKey(seed)
         return Transition(
-            action=jax.random.uniform(k, (size, ACT_DIM)),
+            action=jax.random.uniform(k, (size, ACT_SIZE)),
             next_obs=jax.random.randint(k, (size, *OBS_SHAPE), 0, 255).astype(jnp.uint8),
             reward=jnp.ones((size,)),
             done=jnp.zeros((size,))
@@ -137,7 +137,7 @@ def test_prioritized():
     print(f"   Actual Action shape: {traj.action.shape}")
     print(f"   Actual Reward shape: {traj.reward.shape}")
 
-    assert traj.action.shape == (T, B, ACT_DIM)
+    assert traj.action.shape == (T, B, ACT_SIZE)
     assert traj.reward.shape == (T, B)
 
     # Test Wrapping

@@ -105,7 +105,7 @@ class SampleDist(eqx.Module):
 
 class Actor(eqx.Module):
     net: eqx.nn.Sequential
-    action_dim: int = eqx.field(static=True)
+    action_size: int = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     init_std: float = eqx.field(static=True)
     min_std: float
@@ -117,7 +117,7 @@ class Actor(eqx.Module):
         belief_size: int,
         state_size: int,
         hidden_size: int,
-        action_dim: int,
+        action_size: int,
         head_type: str = "Tanh Normal",
         activation_function: Union[str, Callable] = "elu",
         min_std: float = 1e-4,
@@ -139,11 +139,11 @@ class Actor(eqx.Module):
             eqx.nn.Lambda(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[3]),
             eqx.nn.Lambda(activation),
-            eqx.nn.Linear(hidden_size, 2 * action_dim, key=keys[4]),
+            eqx.nn.Linear(hidden_size, 2 * action_size, key=keys[4]),
         ])
 
         self.head_type = head_type
-        self.action_dim = action_dim
+        self.action_size = action_size
         self.min_std = min_std
         self.init_std = init_std
         self.mean_scale = mean_scale
@@ -151,7 +151,7 @@ class Actor(eqx.Module):
 
     def __call__(
         self,
-        latent_state: Union[Float[Array, "... input_dim"], LatentState],
+        latent_state: Union[Float[Array, "... input_size"], LatentState],
     ) -> distrax.Distribution:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
@@ -175,7 +175,7 @@ class Actor(eqx.Module):
             params: Dict[str, Any],
             key: PRNGKeyArray,
             det: bool = False,      # default to training
-    ) -> Float[Array, "... action_dim"]:
+    ) -> Float[Array, "... action_size"]:
         if self.head_type == "Beta":
             base_dist = dx(AffineBeta)(**params)
         elif self.head_type == "Tanh Normal":

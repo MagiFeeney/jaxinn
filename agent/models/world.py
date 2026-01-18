@@ -126,8 +126,8 @@ class Encoder(eqx.Module):
 
     def __call__(
             self,
-            obs: Float[Array, "... obs_dim"]
-    ) -> Float[Array, "... output_dim"]:
+            obs: Float[Array, "... obs_size"]
+    ) -> Float[Array, "... output_size"]:
         feature = self.body(obs)
         out = self.head(feature)
         return out
@@ -186,7 +186,7 @@ class Decoder(eqx.Module):
 
     def __call__(
             self,
-            latent_state: Union[Float[Array, "... input_dim"], LatentState],
+            latent_state: Union[Float[Array, "... input_size"], LatentState],
     ) -> distrax.Distribution:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
@@ -246,11 +246,11 @@ class Representation(eqx.Module):
 
     def __call__(
             self,
-            belief: Float[Array, "... belief_dim"],
+            belief: Float[Array, "... belief_size"],
             obs: Float[Array, "... embedding_size"],
     ) -> Tuple[
         Dict[str, Float[Array, "..."]],
-        Float[Array, "... belief_dim"],
+        Float[Array, "... belief_size"],
     ]:
         input_tensor = jnp.concatenate([belief, obs], axis=-1)
         out = self.net(input_tensor)
@@ -269,7 +269,7 @@ class Representation(eqx.Module):
             self,
             params: Dict[str, Any],
             key: PRNGKeyArray,
-    ) -> Float[Array, "... state_dim"],:
+    ) -> Float[Array, "... state_size"],:
         dist = self.dist_cls(**params)
 
         if self.head_type == "Normal":
@@ -297,7 +297,7 @@ class Transition(eqx.Module):
             self,
             belief_size: int,
             state_size: Union[int, tuple],
-            action_dim: int,
+            action_size: int,
             hidden_size: int,
             min_std: float = 0.1,
             activation_function="elu",
@@ -309,12 +309,12 @@ class Transition(eqx.Module):
             self.dist_cls = dx.Normal
             self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
-            input_size = state_size + action_dim
+            input_size = state_size + action_size
         elif head_type == "Categorical":
             self.dist_cls = dx.OneHotCategorical
             self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
-            input_size = output_size + action_dim
+            input_size = output_size + action_size
         else:
             raise NotImplementedError(f"Unsupported head_type: {head_type}")
 
@@ -344,10 +344,10 @@ class Transition(eqx.Module):
     def __call__(
             self,
             latent_state: LatentState,
-            action: Float[Array, "... action_dim"],
+            action: Float[Array, "... action_size"],
     ) -> Tuple[
         Dict[str, Float[Array, "..."]],
-        Float[Array, "... belief_dim"],
+        Float[Array, "... belief_size"],
     ]:
         input_tensor = jnp.concatenate([latent_state.state, action], axis=-1)
         embedding = self.encoder(input_tensor)
@@ -368,7 +368,7 @@ class Transition(eqx.Module):
             self,
             params: Dict[str, Float[Array, "..."]],
             key: PRNGKeyArray,
-    ) -> Float[Array, "... state_dim"]:
+    ) -> Float[Array, "... state_size"]:
         dist = self.dist_cls(**params)
 
         if self.head_type == "Normal":
@@ -384,7 +384,7 @@ class Transition(eqx.Module):
 # Motivation
 class Reward(eqx.Module):
     net: eqx.nn.Sequential
-    action_dim: Optional[int] = eqx.field(static=True)
+    action_size: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     min_std: float
 
@@ -394,12 +394,12 @@ class Reward(eqx.Module):
             state_size: int,
             hidden_size: int,
             activation_function="elu",
-            action_dim: Optional[int] = None,
+            action_size: Optional[int] = None,
             min_std: float = 0.0,
             head_type="Isotropic Normal",
             *,
             key: PRNGKeyArray,
-    ):  # if action_dim is not None, Q fn
+    ):  # if action_size is not None, Q fn
         if head_type == "Isotropic Normal":
             output_size = 1
         elif head_type == "Normal":
@@ -413,7 +413,7 @@ class Reward(eqx.Module):
         self.net = eqx.nn.Sequential([
             eqx.nn.Linear(
                 belief_size + state_size + (
-                    0 if action_dim is None else int(action_dim)
+                    0 if action_size is None else int(action_size)
                 ),
                 hidden_size, key=keys[0]
             ),
@@ -426,18 +426,18 @@ class Reward(eqx.Module):
         ])
 
         self.head_type = head_type
-        self.action_dim = action_dim
+        self.action_size = action_size
         self.min_std = min_std
 
     def __call__(
         self,
-        latent_state: Union[Float[Array, "... input_dim"], LatentState],
-        action: Optional[Float[Array, "... action_dim"]] = None,
+        latent_state: Union[Float[Array, "... input_size"], LatentState],
+        action: Optional[Float[Array, "... action_size"]] = None,
     ) -> distrax.Distribution:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 
-        assert (action is None) == (self.action_dim is None)
+        assert (action is None) == (self.action_size is None)
         if action is not None:
             latent_state = jnp.concatenate([latent_state, action], axis=-1)
 
