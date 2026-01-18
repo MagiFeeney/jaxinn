@@ -269,7 +269,7 @@ class Representation(eqx.Module):
             self,
             params: Dict[str, Any],
             key: PRNGKeyArray,
-    ) -> Float[Array, "... state_size"],:
+    ) -> Float[Array, "... state_size"]:
         dist = self.dist_cls(**params)
 
         if self.head_type == "Normal":
