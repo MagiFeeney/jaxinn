@@ -19,6 +19,7 @@ class Batched(eqx.Module):
     def __init__(self, env: Any, env_params: TEnvParams, num_envs: int = 1):
         self.env = env
         self.env_params = env_params
+        self.num_envs = num_envs
 
         self.vmap_reset = jax.vmap(self.env.reset, in_axes=(0, None))
         self.vmap_step = jax.vmap(self.env.step, in_axes=(0, 0, 0, None))
