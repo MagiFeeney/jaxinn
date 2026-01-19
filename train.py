@@ -16,9 +16,7 @@ from agent.models import LatentState, LatentStateWithParams
 class Trainer(eqx.Module):
     agent: eqx.Module
     env: Environment = eqx.field(static=True)
-    env_params: Any = eqx.field(static=True)
 
-    num_envs: int = eqx.field(static=True)
     num_environment_steps: int = eqx.field(static=True)
     eval_interval: int = eqx.field(static=True)
     train_interval: int = eqx.field(static=True)
@@ -27,22 +25,15 @@ class Trainer(eqx.Module):
     num_eval_episodes: int = eqx.field(static=True)
 
     def __init__(self, config, *, key: PRNGKeyArray):
-        self.env, self.env_params = make_env(**config.env)
+        self.env = make_env(**config.env)
         # Update config with env particulars
-        config.agent.world.transition.update({"action_size": self.action_size})
-        config.agent.actor.update({"action_size": self.action_size})
-        observation_space = self.env.observation_space(self.env_params)
-        config.agent.world.perception.encoder.update({"shape": observation_space.shape})
-        config.agent.world.perception.decoder.update({"shape": observation_space.shape})
+        config.agent.world.transition.update({"action_size": self.env.action_size})
+        config.agent.actor.update({"action_size": self.env.action_size})
+        config.agent.world.perception.encoder.update({"shape": self.env.observation_space.shape})
+        config.agent.world.perception.decoder.update({"shape": self.env.observation_space.shape})
         self.agent = Agent(config.agent, key=key)
         self.__dict__.update(config.exploration())
-
-    @property
-    def action_size(self):
-        action_space = self.env.action_space(self.env_params)
-        if isinstance(action_space, gymnax.environments.spaces.Discrete):
-            return action_space.n
-        return jnp.prod(jnp.array(action_space.shape))
+        self.episode_length //= config.env.num_envs # Account for parallel envs
 
     def __call__(self, key: PRNGKeyArray):
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
@@ -91,11 +82,11 @@ class Trainer(eqx.Module):
     @eqx.filter_vmap(in_axis=(None, None, 0)) # TODO: more serious consideration of parallel train
     def train(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_interact, key_learn = jax.random.split(key, 4)
-        obs, env_state = self.env.reset(key_reset, self.env_params)
+        obs, env_state = self.env.reset(key_reset)
         latent_state_init = self.agent.init_state(key_init)
 
         transition_init = Transition(
-            action=jnp.zeros((self.action_size,)),
+            action=jnp.zeros((self.env.action_size,)),
             next_obs=obs,
             reward=jnp.array(0.0),
             done=jnp.array(0.0),
@@ -107,7 +98,7 @@ class Trainer(eqx.Module):
             train_interact_step_fn,
             (transition_init, latent_state_init, env_state, key_interact),
             None,
-            self.episode_length // self.num_envs,
+            self.episode_length,
         )
 
         transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transitions_init, transitions) # insert the initial transition
@@ -133,11 +124,11 @@ class Trainer(eqx.Module):
     @eqx.filter_vmap(in_axis=(None, None, 0))
     def evaluate(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_scan = jax.random.split(key, 3)
-        obs, env_state = self.env.reset(key_reset, self.env_params)
+        obs, env_state = self.env.reset(key_reset)
         latent_state_init = self.agent.init_state(key_init)
 
         transition_init = Transition(
-            action=jnp.zeros((self.action_size,)),
+            action=jnp.zeros((self.env.action_size,)),
             next_obs=obs,
             reward=jnp.array(0.0),
             done=jnp.array(0.0),
@@ -149,7 +140,7 @@ class Trainer(eqx.Module):
             evaluate_interact_step_fn,
             (transition_init, latent_state_init, env_state, key_scan),
             None,
-            self.episode_length // self.num_envs,
+            self.episode_length,
         )
 
         masks = 1 - jnp.maximum.accumulate(transitions.done)
@@ -159,7 +150,7 @@ class Trainer(eqx.Module):
     def make_interact_step_fn(self, eval=False, prefill=False):
         def random_act_branch(operand):
             last_state, _, _, key = operand
-            action = self.env.action_space(self.env_params).sample(key) # TODO: vmap for vectorization
+            action = self.env.action_space.sample(key) # TODO: vmap for vectorization
             return last_state, action # For consistency required by branching
 
         def agent_act_branch(operand):
@@ -180,8 +171,7 @@ class Trainer(eqx.Module):
                 agent_act_branch,
                 (last_latent_state, last_action, obs, key_action)
             )
-            key_step = jax.random.split(key_step, self.num_envs)
-            next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action, self.env_params)
+            next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action)
 
             transition = Transition(
                 action=action,

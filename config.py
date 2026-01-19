@@ -191,7 +191,8 @@ class Memory(Base):
 # Environment
 @dataclass
 class Env(Base):
-    pass
+    env_name: str = "DeepSea"
+    num_envs: int = 1                # num. of envs for collecting data
 
 
 # Exploration
@@ -237,4 +238,3 @@ class Config(Base):
 
     seed: int = 42                   # master seed
     num_seeds: int = 50              # num. of agents
-    num_envs: int = 1                # num. of envs for collecting data
