@@ -1,15 +1,15 @@
 import tyro
-from dataclasses import dataclass
 from typing import Optional, Tuple, Literal, Any
 from jaxtyping import PRNGKeyArray
 
+import jax
+import jax.numpy as jnp
 import equinox as eqx
-from gymnax.environments.environment import Environment
+from gymnax.environments.environment import Environment # TODO: replace with Any or sth else
 
-from agent import Agent, Transition
-from envs import make_env
 from config import Config
-
+from envs import make_env
+from agent import Agent, Transition
 from agent.models import LatentState, LatentStateWithParams
 
 
