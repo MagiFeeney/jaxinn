@@ -79,7 +79,7 @@ class Trainer(eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    @eqx.filter_vmap(in_axis=(None, None, 0)) # TODO: more serious consideration of parallel train
+    @eqx.filter_vmap(in_axes=(None, None, 0)) # TODO: more serious consideration of parallel train
     def train(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_interact, key_learn = jax.random.split(key, 4)
         obs, env_state = self.env.reset(key_reset)
@@ -121,7 +121,7 @@ class Trainer(eqx.Module):
         avg_metrics = jax.tree.map(jnp.mean, metrics)
         return agent, avg_metrics
 
-    @eqx.filter_vmap(in_axis=(None, None, 0))
+    @eqx.filter_vmap(in_axes=(None, None, 0))
     def evaluate(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_scan = jax.random.split(key, 3)
         obs, env_state = self.env.reset(key_reset)
