@@ -25,7 +25,7 @@ class Trainer(eqx.Module):
     num_eval_episodes: int = eqx.field(static=True)
 
     def __init__(self, config, *, key: PRNGKeyArray):
-        self.env = make_env(**config.env)
+        self.env = make_env(**config.env())
         # Update config with env particulars
         config.agent.world.transition.update({"action_size": self.env.action_size})
         config.agent.actor.update({"action_size": self.env.action_size})
