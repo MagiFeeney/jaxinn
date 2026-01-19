@@ -172,7 +172,7 @@ class Trainer(eqx.Module):
             mask = 1 - done
             key, key_action, key_step = jax.random.split(key, 3)
 
-            last_latent_state = jax.tree.map(lambda x: x * mask, last_latent_state)
+            last_latent_state = last_latent_state * mask
             last_action = last_action * mask
             latent_state, action = jax.lax.cond(
                 prefill,

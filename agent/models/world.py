@@ -44,6 +44,12 @@ class LatentState(eqx.Module):
     def __getitem__(self, index: Any) -> "LatentState":
         return jax.tree.map(lambda x: x[index], self)
 
+    def __mul__(self, other):
+        return jax.tree.map(lambda x: x * other, self)
+
+    def __rmul__(self, other):
+        return jax.tree.map(lambda x: other * x, self)
+
     def flatten(self) -> "LatentState":
         return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
 

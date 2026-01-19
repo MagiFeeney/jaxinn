@@ -150,7 +150,7 @@ class Agent(eqx.Module):
 
             # Mask the action and state if the observation results from reset
             # This happens when the sampled sequence contains multiple trajectories
-            latent_state = jax.tree.map(lambda x: x * mask, latent_state)
+            latent_state = latent_state * mask
             action = action * mask
             prior, posterior = self.perceive(latent_state, action, obs, key_perceive)
 
