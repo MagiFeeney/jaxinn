@@ -1,3 +1,4 @@
+import math
 import jax
 import jax.numpy as jnp
 from typing import Any, Callable
@@ -44,4 +45,4 @@ class Batched(eqx.Module):
     def action_size(self):
         if isinstance(self.action_space, Discrete):
             return self.action_space.n
-        return jnp.prod(jnp.array(self.action_space.shape))
+        return math.prod(self.action_space.shape)

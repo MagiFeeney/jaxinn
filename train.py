@@ -149,7 +149,7 @@ class Trainer(eqx.Module):
     def make_interact_step_fn(self, agent, eval=False, prefill=False):
         def random_act_branch(operand):
             last_state, _, _, key = operand
-            action = self.env.action_space.sample(key) # TODO: vmap for vectorization
+            action = self.env.action_space.sample(jax.random.split(key, self.env.num_envs)) # TODO: vmap for vectorization
             return last_state, action # For consistency required by branching
 
         def agent_act_branch(operand):
