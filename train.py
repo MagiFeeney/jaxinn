@@ -86,10 +86,10 @@ class Trainer(eqx.Module):
         latent_state_init = agent.init_state(key_init)
 
         transition_init = Transition(
-            action=jnp.zeros((self.env.action_size,)),
+            action=jnp.zeros((self.env.num_envs, self.env.action_size)),
             next_obs=obs,
-            reward=jnp.array(0.0),
-            done=jnp.array(0.0),
+            reward=jnp.zeros((self.env.num_envs,)),
+            done=jnp.zeros((self.env.num_envs,)),
         )
 
         train_interact_step_fn = self.make_interact_step_fn(agent, eval=False)
@@ -127,10 +127,10 @@ class Trainer(eqx.Module):
         latent_state_init = agent.init_state(key_init)
 
         transition_init = Transition(
-            action=jnp.zeros((self.env.action_size,)),
+            action=jnp.zeros((self.env.num_envs, self.env.action_size)),
             next_obs=obs,
-            reward=jnp.array(0.0),
-            done=jnp.array(0.0),
+            reward=jnp.zeros((self.env.num_envs,)),
+            done=jnp.zeros((self.env.num_envs,)),
         )
 
         evaluate_interact_step_fn = self.make_interact_step_fn(agent, eval=True)
