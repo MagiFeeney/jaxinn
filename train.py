@@ -89,7 +89,7 @@ class Trainer(eqx.Module):
             action=jnp.zeros((self.env.num_envs, self.env.action_size)),
             next_obs=obs,
             reward=jnp.zeros((self.env.num_envs,)),
-            done=jnp.zeros((self.env.num_envs,)),
+            done=jnp.zeros((self.env.num_envs,), dtype=bool),
         )
 
         train_interact_step_fn = self.make_interact_step_fn(agent, eval=False)
@@ -130,7 +130,7 @@ class Trainer(eqx.Module):
             action=jnp.zeros((self.env.num_envs, self.env.action_size)),
             next_obs=obs,
             reward=jnp.zeros((self.env.num_envs,)),
-            done=jnp.zeros((self.env.num_envs,)),
+            done=jnp.zeros((self.env.num_envs,), dtype=bool),
         )
 
         evaluate_interact_step_fn = self.make_interact_step_fn(agent, eval=True)
@@ -149,7 +149,8 @@ class Trainer(eqx.Module):
     def make_interact_step_fn(self, agent, eval=False, prefill=False):
         def random_act_branch(operand):
             last_state, _, _, key = operand
-            action = self.env.action_space.sample(jax.random.split(key, self.env.num_envs)) # TODO: vmap for vectorization
+            keys = jax.random.split(key, self.env.num_envs)
+            action = jax.vmap(self.env.action_space.sample)(keys) # TODO: vmap for vectorization
             return last_state, action # For consistency required by branching
 
         def agent_act_branch(operand):
