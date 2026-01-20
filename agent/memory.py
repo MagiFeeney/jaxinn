@@ -25,7 +25,7 @@ class Memory(eqx.Module):
         # Pre-allocate
         self.data = Transition( # TODO: if there is performance gap, replace with zeros
             action=jnp.empty((capacity, action_size)),
-            next_obs=jnp.empty((capacity, *obs_shape)).astype(jnp.uint8), # For memory efficiency
+            next_obs=jnp.empty((capacity, *obs_shape), dtype=jnp.uint8), # For memory efficiency
             reward=jnp.empty(capacity),
             done=jnp.empty(capacity, dtype=bool),
         )

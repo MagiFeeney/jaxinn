@@ -150,7 +150,7 @@ class Trainer(eqx.Module):
         def random_act_branch(operand):
             last_state, _, _, key = operand
             keys = jax.random.split(key, self.env.num_envs)
-            action = jax.vmap(self.env.action_space.sample)(keys) # TODO: vmap for vectorization
+            action = jax.vmap(self.env.action_space.sample)(keys)
             return last_state, action # For consistency required by branching
 
         def agent_act_branch(operand):
