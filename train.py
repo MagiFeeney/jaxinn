@@ -40,12 +40,12 @@ class Trainer(eqx.Module):
             agent, key = carry
             key, key_train, key_evaluate = jax.random.split(key, 3)
             agent, metrics = jax.lax.scan(
-                self.train,
+                lambda carry, _: jax.vmap(self.train, in_axes=(None, 0))(*carry),
                 (agent, key_train),
                 None,
                 self.eval_interval // self.train_interval
             )
-            episodic_returns = self.evaluate(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
+            episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
             evaluation = jnp.mean(episodic_returns)
 
             jax.debug.print(    # Callback
@@ -79,11 +79,11 @@ class Trainer(eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    @eqx.filter_vmap(in_axes=(None, None, 0)) # TODO: more serious consideration of parallel train
+    # TODO: more serious consideration of parallel train
     def train(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_interact, key_learn = jax.random.split(key, 4)
         obs, env_state = self.env.reset(key_reset)
-        latent_state_init = self.agent.init_state(key_init)
+        latent_state_init = agent.init_state(key_init)
 
         transition_init = Transition(
             action=jnp.zeros((self.env.action_size,)),
@@ -92,7 +92,7 @@ class Trainer(eqx.Module):
             done=jnp.array(0.0),
         )
 
-        train_interact_step_fn = self.make_interact_step_fn(eval=False)
+        train_interact_step_fn = self.make_interact_step_fn(agent, eval=False)
 
         _, transitions = jax.lax.scan(
             train_interact_step_fn,
@@ -103,7 +103,7 @@ class Trainer(eqx.Module):
 
         transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transitions_init, transitions) # insert the initial transition
 
-        agent = self.agent.add_experience(transitions)
+        agent = agent.add_experience(transitions)
 
         def learn_step_fn(carry, _):
             agent, key = carry
@@ -121,11 +121,10 @@ class Trainer(eqx.Module):
         avg_metrics = jax.tree.map(jnp.mean, metrics)
         return agent, avg_metrics
 
-    @eqx.filter_vmap(in_axes=(None, None, 0))
     def evaluate(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_scan = jax.random.split(key, 3)
         obs, env_state = self.env.reset(key_reset)
-        latent_state_init = self.agent.init_state(key_init)
+        latent_state_init = agent.init_state(key_init)
 
         transition_init = Transition(
             action=jnp.zeros((self.env.action_size,)),
@@ -134,7 +133,7 @@ class Trainer(eqx.Module):
             done=jnp.array(0.0),
         )
 
-        evaluate_interact_step_fn = self.make_interact_step_fn(eval=True)
+        evaluate_interact_step_fn = self.make_interact_step_fn(agent, eval=True)
 
         _, transitions = jax.lax.scan(
             evaluate_interact_step_fn,
@@ -147,7 +146,7 @@ class Trainer(eqx.Module):
         cumulative_rewards = jnp.sum(transitions.reward * masks) # Return up to the first termination
         return cumulative_rewards
 
-    def make_interact_step_fn(self, eval=False, prefill=False):
+    def make_interact_step_fn(self, agent, eval=False, prefill=False):
         def random_act_branch(operand):
             last_state, _, _, key = operand
             action = self.env.action_space.sample(key) # TODO: vmap for vectorization
@@ -155,7 +154,7 @@ class Trainer(eqx.Module):
 
         def agent_act_branch(operand):
             last_state, last_action, obs, key = operand
-            return self.agent.act(last_state, last_action, obs, key=key, eval=eval)
+            return agent.act(last_state, last_action, obs, key=key, eval=eval)
 
         def interact_step_fn(carry, _):
             transition, last_latent_state, env_state, key = carry
