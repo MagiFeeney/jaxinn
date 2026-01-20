@@ -40,7 +40,7 @@ class Trainer(eqx.Module):
             agent, key = carry
             key, key_train, key_evaluate = jax.random.split(key, 3)
             agent, metrics = jax.lax.scan(
-                lambda carry, _: jax.vmap(self.train, in_axes=(None, 0))(*carry),
+                lambda carry, _: self.train(*carry),
                 (agent, key_train),
                 None,
                 self.eval_interval // self.train_interval
