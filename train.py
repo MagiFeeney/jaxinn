@@ -161,7 +161,7 @@ class Trainer(eqx.Module):
             transition, last_latent_state, env_state, key = carry
             key, key_action, key_step = jax.random.split(key, 3)
 
-            mask = 1 - transition.done
+            mask = 1 - transition.done[..., None]
             last_latent_state = last_latent_state * mask
             last_action = transition.action * mask
             obs = transition.next_obs
