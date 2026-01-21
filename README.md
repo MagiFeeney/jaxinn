@@ -48,3 +48,4 @@ Jaxinn/
 
 ## TODO
 - [ ] Wrap the env to get the next real obs that is overwritten by the reset one
+- [ ] Handle the last time step being terminated, which is meaningless when sampled

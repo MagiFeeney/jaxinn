@@ -147,7 +147,7 @@ class Agent(eqx.Module):
         def reason_step_fn(carry, inputs):
             latent_state, key = carry
             action, obs, done = inputs
-            mask = 1 - done
+            mask = 1 - done[..., None]
             key, key_perceive = jax.random.split(key)
 
             # Mask the action and state if the observation results from reset
@@ -161,14 +161,11 @@ class Agent(eqx.Module):
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
             (init_latent_state, key_scan),
-            (data.action, data.next_obs, data.done)
+            (data.action, data.next_obs / 255.0 - 0.5, data.done) # TODO: env interaction part may also need to check
         )
         return priors, posteriors
 
-    def plan(self, posterior: LatentStateWithParams, key):
-        key_scan = key
-        init_latent_state = posterior.latent_state.flatten()
-
+    def plan(self, latent_state: LatentState, key):
         # Imagination
         def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
             latent_state, key = carry
@@ -182,20 +179,17 @@ class Agent(eqx.Module):
 
         _, (latent_states, actions) = jax.lax.scan(
             imagine_step_fn,
-            (init_latent_state, key_scan),
+            (latent_state.detach(), key),
             None,
             self.planning_horizon,
         )
 
         # Processing data
-        ## Inference
         rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states).mean() # Equivalent to r(s, a, s') instead of r(s, a)
-        next_values = jax.vmap(jax.vmap(self.critic))(latent_states).mean()
-        first_value = jax.vmap(self.critic)(init_latent_state).mean()
-
-        ## Rearrangement
-        values = jnp.concatenate([first_value[None, ...], next_values[:-1]], axis=0)
-        last_value = next_values[-1]
+        last_value = jax.vmap(self.critic)(latent_states[-1]).mean()
+        latent_states = LatentState.concatenate([latent_state[None, ...], latent_states[:-1]], axis=0) # Shift one step left and concatenate the first step
+        value_dists = jax.vmap(jax.vmap(self.critic))(latent_states)
+        values = value_dists.mean()
 
         dones = jnp.ones_like(values)
         baselines = jnp.zeros_like(values)
@@ -224,13 +218,13 @@ class Agent(eqx.Module):
             return (uae, value), return_prediction
 
         _, return_predictions = jax.lax.scan(
-            get_advantages,
+            uae_step_fn,
             (jnp.zeros_like(last_value), last_value),
             (rewards, values, baselines, dones),
             reverse=True,
         )
 
-        return return_predictions
+        return return_predictions, value_dists
 
     def learn(self, key):
         """
@@ -252,7 +246,7 @@ class Agent(eqx.Module):
         prior, posterior = self.reason(data, key_reasoning)
         metrics = {}
 
-        @eqx.filter_critic_and_grad
+        @eqx.filter_value_and_grad
         def world_loss_fn(
                 world: Learner,
                 prior: LatentStateWithParams,
@@ -260,10 +254,10 @@ class Agent(eqx.Module):
                 data
         ):
             # reward
-            reward_loss = -world.reward(posterior.latent_state).log_prob(data.reward).mean()
+            reward_loss = -jax.vmap(jax.vmap(world.reward))(posterior.latent_state).log_prob(data.reward).mean()
 
             # observation
-            observation_loss = -world.observation(posterior.latent_state).log_prob(data.next_obs).mean()
+            observation_loss = -jax.vmap(jax.vmap(world.observation))(posterior.latent_state).log_prob(data.next_obs).mean()
 
             # KL divergence
             kl_loss = posterior.kl_divergence(prior.dist).mean()
@@ -282,16 +276,15 @@ class Agent(eqx.Module):
         new_world = self.world.update(grads)
         metrics.update(**aux)
 
-        @eqx.filter_critic_and_grad
+        @eqx.filter_value_and_grad
         def ac_loss_fn(
                 actor: Learner,
                 critic: Learner,
                 posterior: LatentStateWithParams,
         ):  # TODO: add PG
-            imagination = self.plan(posterior, key_planning)
-            return_prediction = self.processor(imagination)
+            return_prediction, value_dist = self.plan(posterior.latent_state.flatten(), key_planning) # TODO: keep data as is and add processor for processing
             actor_loss = -return_prediction.mean()
-            critic_loss = -self.critic(posterior.latent_state).log_prob(jax.lax.stop_gradient(return_prediction)).mean()
+            critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction)).mean()
             total_loss = actor_loss + critic_loss # non-interleaved
 
             return total_loss, {

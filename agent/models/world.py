@@ -33,6 +33,14 @@ class LatentState(eqx.Module):
 
         return cls(belief=belief, state=state)
 
+    @classmethod
+    def concatenate(cls, states: list["LatentState"], axis: int = 0) -> "LatentState":
+        return jax.tree.map(lambda *arrays: jnp.concatenate(arrays, axis=axis), *states)
+
+    @property
+    def shape(self):
+        return self.feature.shape
+
     @property
     def batch_shape(self) -> tuple:
         return self.belief.shape[:-1]
@@ -58,6 +66,9 @@ class LatentState(eqx.Module):
             lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
             self
         )
+
+    def detach(self):
+        return jax.tree.map(lambda x: jax.lax.stop_gradient(x), self)
 
 
 class LatentStateWithParams(eqx.Module):
