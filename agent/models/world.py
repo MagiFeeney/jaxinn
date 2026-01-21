@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
+from equinox._module import Static
 import distrax
 
 from typing import Optional, Callable, Union, Dict, Tuple, Any
@@ -81,7 +82,7 @@ class LatentStateWithParams(eqx.Module):
 
     @property
     def dist(self):
-        return self.dist_cls(**self.params)
+        return self.dist_cls(**self.params).dist # FixedDistrax -> distrax.Distribution
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.dist, name)
@@ -211,7 +212,7 @@ class Decoder(eqx.Module):
         embedding = embedding[..., None, None] # Reshape the vector to BCHW
         out = self.body(embedding)
         dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=len(self.shape))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
 
 
 # Representation
@@ -223,7 +224,7 @@ class Representation(eqx.Module):
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
-    min_std: float
+    min_std: float = eqx.field(static=True)
 
     def __init__(
             self,
@@ -308,7 +309,7 @@ class Transition(eqx.Module):
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
-    min_std: float
+    min_std: float = eqx.field(static=True)
 
     def __init__(
             self,
@@ -403,7 +404,7 @@ class Reward(eqx.Module):
     net: eqx.nn.Sequential
     action_size: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
-    min_std: float
+    min_std: float = eqx.field(static=True)
 
     def __init__(
             self,

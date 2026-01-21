@@ -25,11 +25,13 @@ class Learner(eqx.Module, Generic[ModelType]):
             optax.clip_by_global_norm(config.optimizer.max_norm),
             optax.adam(config.optimizer.lr, eps=config.optimizer.eps)
         )
-        params = eqx.filter(model, eqx.is_array)
+        params = eqx.filter(model, eqx.is_inexact_array)
         optimizer_state = optimizer.init(params)
         return cls(model, optimizer, optimizer_state)
 
     def update(self, grads):
+        if isinstance(grads, Learner):
+            grads = grads.model
         updates, new_optimizer_state = self.optimizer.update(
             grads, self.optimizer_state, self.model
         )
@@ -246,7 +248,7 @@ class Agent(eqx.Module):
         prior, posterior = self.reason(data, key_reasoning)
         metrics = {}
 
-        @eqx.filter_value_and_grad
+        @eqx.filter_value_and_grad(has_aux=True)
         def world_loss_fn(
                 world: Learner,
                 prior: LatentStateWithParams,
@@ -257,7 +259,7 @@ class Agent(eqx.Module):
             reward_loss = -jax.vmap(jax.vmap(world.reward))(posterior.latent_state).log_prob(data.reward).mean()
 
             # observation
-            observation_loss = -jax.vmap(jax.vmap(world.observation))(posterior.latent_state).log_prob(data.next_obs).mean()
+            observation_loss = -jax.vmap(jax.vmap(world.perception.decoder))(posterior.latent_state).log_prob(data.next_obs).mean()
 
             # KL divergence
             kl_loss = posterior.kl_divergence(prior.dist).mean()
@@ -276,7 +278,7 @@ class Agent(eqx.Module):
         new_world = self.world.update(grads)
         metrics.update(**aux)
 
-        @eqx.filter_value_and_grad
+        @eqx.filter_value_and_grad(has_aux=True)
         def ac_loss_fn(
                 actor: Learner,
                 critic: Learner,

@@ -13,7 +13,7 @@ class Critic(eqx.Module):
     net: eqx.nn.Sequential
     action_size: Optional[int] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
-    min_std: float
+    min_std: float = eqx.field(static=True)
 
     def __init__(
             self,

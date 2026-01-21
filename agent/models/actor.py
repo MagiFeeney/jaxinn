@@ -108,9 +108,9 @@ class Actor(eqx.Module):
     action_size: int = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     init_std: float = eqx.field(static=True)
-    min_std: float
-    mean_scale: float
-    raw_init_std: float
+    min_std: float = eqx.field(static=True)
+    mean_scale: float = eqx.field(static=True)
+    raw_init_std: float = eqx.field(static=True)
 
     def __init__(
         self,
