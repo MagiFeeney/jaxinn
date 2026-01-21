@@ -6,14 +6,21 @@
 Jaxinn/
 ├─ agent/
 │  ├─ models/
+│  │  ├─ __init__.py
 │  │  ├─ actor.py
 │  │  ├─ critic.py
+│  │  ├─ utils.py
 │  │  └─ world.py
+│  ├─ __init__.py
 │  ├─ core.py
 │  └─ memory.py
 ├─ envs/
-│  └─ __init__.py
+│  ├─ __init__.py
+│  ├─ environment.py
+│  └─ wrapper.py
+├─ config.py
 ├─ README.md
+├─ requirements.txt
 └─ train.py
 ```
 
@@ -38,3 +45,6 @@ Jaxinn/
 - interaction
   - parallel envs
   - batched loop
+
+## TODO
+- [ ] Wrap the env to get the next real obs that is overwritten by the reset one

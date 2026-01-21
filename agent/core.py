@@ -126,7 +126,9 @@ class Agent(eqx.Module):
         return prior, posterior
 
     def add_experience(self, transitions: Transition):
-        new_memory = self.memory.add(transitions)
+        transitions_flatten = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), transitions)
+
+        new_memory = self.memory.add(transitions_flatten)
 
         return eqx.tree_at(
             lambda x: x.memory,
