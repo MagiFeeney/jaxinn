@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Tuple, Generic, TypeVar
+from typing import List, Tuple, Generic, TypeVar
 from jaxtyping import PRNGKeyArray
 
 import equinox as eqx
@@ -280,10 +280,10 @@ class Agent(eqx.Module):
 
         @eqx.filter_value_and_grad(has_aux=True)
         def ac_loss_fn(
-                actor: Learner,
-                critic: Learner,
+                models: List[Learner],
                 posterior: LatentStateWithParams,
         ):  # TODO: add PG
+            actor, critic = models
             return_prediction, value_dist = self.plan(posterior.latent_state.flatten(), key_planning) # TODO: keep data as is and add processor for processing
             actor_loss = -return_prediction.mean()
             critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction)).mean()
@@ -294,7 +294,7 @@ class Agent(eqx.Module):
                 "critic": critic_loss,
             }
 
-        (loss, aux), (actor_grads, critic_grads) = ac_loss_fn(self.actor, self.critic, posterior)
+        (loss, aux), (actor_grads, critic_grads) = ac_loss_fn((self.actor, self.critic), posterior)
         new_actor = self.actor.update(actor_grads)
         new_critic = self.critic.update(critic_grads)
         metrics.update(**aux)
