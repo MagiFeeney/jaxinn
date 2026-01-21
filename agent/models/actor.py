@@ -6,7 +6,7 @@ import distrax
 
 from typing import Tuple, Union, Any, Optional, Callable, Dict
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn, dx
+from .utils import get_activation_fn, dx, StaticCallable
 from .world import LatentState
 
 
@@ -132,13 +132,13 @@ class Actor(eqx.Module):
         # Build network
         self.net = eqx.nn.Sequential([
             eqx.nn.Linear(belief_size + state_size, hidden_size, key=keys[0]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[1]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[2]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[3]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, 2 * action_size, key=keys[4]),
         ])
 

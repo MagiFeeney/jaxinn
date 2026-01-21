@@ -5,7 +5,7 @@ import distrax
 
 from typing import Optional, Callable, Union
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn, dx
+from .utils import get_activation_fn, dx, StaticCallable
 from .world import LatentState
 
 
@@ -44,11 +44,11 @@ class Critic(eqx.Module):
                 ),
                 hidden_size, key=keys[0]
             ),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[1]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[2]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, output_size, key=keys[3]),
         ])
 

@@ -5,7 +5,7 @@ import distrax
 
 from typing import Optional, Callable, Union, Dict, Tuple, Any
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn, dx
+from .utils import get_activation_fn, dx, StaticCallable
 
 
 class LatentState(eqx.Module):
@@ -106,14 +106,14 @@ class Encoder(eqx.Module):
 
         self.body = eqx.nn.Sequential([
             eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, key=keys[0]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, key=keys[1]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, key=keys[2]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, key=keys[3]),
-            eqx.nn.Lambda(activation),
-            eqx.nn.Lambda(jnp.ravel),
+            StaticCallable(activation),
+            StaticCallable(jnp.ravel),
         ])
 
         feature_map_shape = self.get_feature_map_shape(shape)
@@ -174,13 +174,13 @@ class Decoder(eqx.Module):
         self.embedding = eqx.nn.Linear(belief_size + state_size, embedding_size, key=keys[0])
 
         self.body = eqx.nn.Sequential([
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.ConvTranspose2d(embedding_size, 4 * depth, kernel_size=5, stride=stride, key=keys[1]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=5, stride=stride, key=keys[2]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=6, stride=stride, key=keys[3]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=6, stride=stride, key=keys[4]),
         ])
 
@@ -243,7 +243,7 @@ class Representation(eqx.Module):
 
         self.net = eqx.nn.Sequential([
             eqx.nn.Linear(belief_size + embedding_size, hidden_size, key=keys[0]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, output_size, key=keys[1]),
         ])
 
@@ -331,7 +331,7 @@ class Transition(eqx.Module):
         # p(c_{t - 1} | s_{t - 1}, a_{t - 1})
         self.encoder = eqx.nn.Sequential([
             eqx.nn.Linear(input_size, hidden_size, key=keys[0]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
         ])
 
         # p(h_t | c_{t - 1}, h_{t - 1})
@@ -340,7 +340,7 @@ class Transition(eqx.Module):
         # p(s_t | h_t)
         self.head = eqx.nn.Sequential([
             eqx.nn.Linear(belief_size, hidden_size, key=keys[2]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, output_size, key=keys[3]),
         ])
 
@@ -423,11 +423,11 @@ class Reward(eqx.Module):
                 ),
                 hidden_size, key=keys[0]
             ),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[1]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[2]),
-            eqx.nn.Lambda(activation),
+            StaticCallable(activation),
             eqx.nn.Linear(hidden_size, output_size, key=keys[3]),
         ])
 
