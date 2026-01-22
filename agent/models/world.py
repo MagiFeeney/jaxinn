@@ -1,3 +1,4 @@
+import math
 import jax
 import jax.numpy as jnp
 import equinox as eqx
@@ -128,8 +129,7 @@ class Encoder(eqx.Module):
             StaticCallable(jnp.ravel),
         ])
 
-        feature_map_shape = self.get_feature_map_shape(shape)
-        feature_map_size = int(jnp.prod(feature_map_shape)) # flattened
+        feature_map_size = self.get_feature_map_size(shape)
         if embedding_size is not None:
             self.embedding_size = embedding_size
             self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=keys[4])
@@ -150,11 +150,11 @@ class Encoder(eqx.Module):
         out = self.head(feature)
         return out
 
-    def get_feature_map_shape(self, shape) -> Tuple[int, int, int]:
+    def get_feature_map_size(self, shape) -> int:
         dummy_input = jnp.zeros(shape)
         out_shape_struct = jax.eval_shape(self.body, dummy_input)
-        out_shape = jnp.array(out_shape_struct.shape)
-        return out_shape
+        feature_map_size = math.prod(out_shape_struct.shape)
+        return feature_map_size
 
 
 class Decoder(eqx.Module):

@@ -1,4 +1,6 @@
-jax
+jax['cuda']
 equinox
 distrax
+tyro
+gymnax
 mujoco_playground
