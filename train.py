@@ -39,12 +39,16 @@ class Trainer(eqx.Module):
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
             agent, key = carry
             key, key_train, key_evaluate = jax.random.split(key, 3)
-            agent, metrics = jax.lax.scan(
+
+            # Training
+            (agent, _), metrics = jax.lax.scan(
                 lambda carry, _: self.train(*carry),
                 (agent, key_train),
                 None,
                 self.eval_interval // self.train_interval
             )
+
+            # Evaluation
             episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
             evaluation = jnp.mean(episodic_returns)
 
@@ -61,11 +65,12 @@ class Trainer(eqx.Module):
             actor:  {actor}
             critic: {critic}
 
-            --- Evaluation ({self.num_eval_episodes} episodes) ---
+            --- Evaluation ({n} episodes) ---
             {e}
                 """,
                 k=(iteration + 1) * self.eval_interval,
                 **metrics,
+                n=self.num_eval_episodes,
                 e=evaluation,
             )
 
@@ -81,7 +86,7 @@ class Trainer(eqx.Module):
 
     # TODO: more serious consideration of parallel train
     def train(self, agent: Agent, key: PRNGKeyArray):
-        key_init, key_reset, key_interact, key_learn = jax.random.split(key, 4)
+        key, key_init, key_reset, key_interact, key_learn = jax.random.split(key, 5)
         obs, env_state = self.env.reset(key_reset)
         latent_state_init = agent.init_state(key_init, batch_shape=(self.env.num_envs,))
 
@@ -119,7 +124,7 @@ class Trainer(eqx.Module):
         )
 
         avg_metrics = jax.tree.map(jnp.mean, metrics)
-        return agent, avg_metrics
+        return (agent, key), avg_metrics
 
     def evaluate(self, agent: Agent, key: PRNGKeyArray):
         key_init, key_reset, key_scan = jax.random.split(key, 3)

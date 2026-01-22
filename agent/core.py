@@ -129,7 +129,12 @@ class Agent(eqx.Module):
         return prior, posterior
 
     def add_experience(self, transitions: Transition):
-        transitions_flatten = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), transitions)
+        transitions_flatten = jax.tree.map(
+            lambda x: x.reshape(-1, *x.shape[2:]).astype(jnp.uint8)
+                if (x.dtype == jnp.float32 and x.ndim > 3)
+                else x.reshape(-1, *x.shape[2:]),
+                transitions
+        )                       # flatten and cast dtype in one go
 
         new_memory = self.memory.add(transitions_flatten)
 
