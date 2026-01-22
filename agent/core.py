@@ -8,6 +8,7 @@ import optax
 
 from .models import World, Critic, Actor, LatentState, LatentStateWithParams
 from .memory import Transition, Memory, Uniform, Prioritized
+from .utils import differentiable
 
 
 ModelType = TypeVar("ModelType", bound=eqx.Module)
@@ -243,64 +244,66 @@ class Agent(eqx.Module):
             critic_loss
         """
 
-        key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
+        key, key_memory, key_world, key_ac = jax.random.split(key, 4)
         data = self.memory.sample((self.batch_size, self.chunk_size), key_memory)
-        prior, posterior = self.reason(data, key_reasoning)
         metrics = {}
 
         @eqx.filter_value_and_grad(has_aux=True)
+        @differentiable(['world'])
         def world_loss_fn(
-                world: Learner,
-                prior: LatentStateWithParams,
-                posterior: LatentStateWithParams,
-                data
+                agent: Agent,
+                data: Transition,
+                key: PRNGKeyArray,
         ):
-            # reward
-            reward_loss = -jax.vmap(jax.vmap(world.reward))(posterior.latent_state).log_prob(data.reward).mean()
+            prior, posterior = agent.reason(data, key)
 
-            # observation
-            observation_loss = -jax.vmap(jax.vmap(world.perception.decoder))(posterior.latent_state).log_prob(data.next_obs).mean()
-
-            # KL divergence
+            reward_loss = -jax.vmap(jax.vmap(agent.world.reward))(posterior.latent_state).log_prob(data.reward).mean()
+            observation_loss = -jax.vmap(jax.vmap(agent.world.perception.decoder))(posterior.latent_state).log_prob(data.next_obs).mean()
             kl_loss = posterior.kl_divergence(prior.dist).mean()
-
-            # Total loss
             total_loss = reward_loss + observation_loss + kl_loss
 
-            return total_loss, {
+            metrics = {
                 "model/reward": reward_loss,
                 "model/observation": observation_loss,
                 "model/kl": kl_loss,
                 "model/total": total_loss,
             }
+            return total_loss, (metrics, posterior)
 
-        (loss, aux), grads = world_loss_fn(self.world, prior, posterior, data)
-        new_world = self.world.update(grads)
+        (loss, (aux, posterior)), grads = world_loss_fn(self, data, key_world)
+        new_world = self.world.update(grads.world)
         metrics.update(**aux)
 
+        # Incorporate the newly updated world
+        agent = eqx.tree_at(lambda x: x.world, self, new_world)
+
         @eqx.filter_value_and_grad(has_aux=True)
+        @differentiable(['actor', 'critic'])
         def ac_loss_fn(
-                models: List[Learner],
+                agent: Agent,
                 posterior: LatentStateWithParams,
+                key: PRNGKeyArray,
         ):  # TODO: add PG
-            actor, critic = models
-            return_prediction, value_dist = self.plan(posterior.latent_state.flatten(), key_planning) # TODO: keep data as is and add processor for processing
+            return_prediction, value_dist = agent.plan(posterior.latent_state.flatten(), key) # TODO: keep data as is and add processor for processing
             actor_loss = -return_prediction.mean()
             critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction)).mean()
             total_loss = actor_loss + critic_loss # non-interleaved
 
-            return total_loss, {
+            metrics = {
                 "actor": actor_loss,
                 "critic": critic_loss,
             }
+            return total_loss, metrics
 
-        (loss, aux), (actor_grads, critic_grads) = ac_loss_fn((self.actor, self.critic), posterior)
-        new_actor = self.actor.update(actor_grads)
-        new_critic = self.critic.update(critic_grads)
+        (loss, aux), grads = ac_loss_fn(agent, posterior, key_ac) # TODO: make grads split inside the wrapper
+        new_actor = self.actor.update(grads.actor)
+        new_critic = self.critic.update(grads.critic)
         metrics.update(**aux)
 
-        return eqx.tree_at(
-            lambda x: (x.world, x.actor, x.critic),
-            self,
-            (new_world, new_actor, new_critic)
-        ), metrics
+        # Incorporate the newly updated actor and critic
+        agent = eqx.tree_at(
+            lambda x: (x.actor, x.critic),
+            agent,
+            (new_actor, new_critic)
+        )
+        return agent, metrics
