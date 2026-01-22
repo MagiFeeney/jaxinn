@@ -1,3 +1,4 @@
+import math
 import jax
 import jax.numpy as jnp
 import equinox as eqx
@@ -147,7 +148,7 @@ class Actor(eqx.Module):
         self.min_std = min_std
         self.init_std = init_std
         self.mean_scale = mean_scale
-        self.raw_init_std = jnp.log(jnp.exp(init_std) - 1)
+        self.raw_init_std = math.log(math.exp(init_std) - 1)
 
     def __call__(
         self,

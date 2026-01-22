@@ -62,8 +62,8 @@ class Trainer(eqx.Module):
             total:        {model/total}
 
             --- Actor and Critic Loss ---
-            actor:  {actor}
-            critic: {critic}
+            actor:        {actor}
+            critic:       {critic}
 
             --- Evaluation ({n} episodes) ---
             {e}
