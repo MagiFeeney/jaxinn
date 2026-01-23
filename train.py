@@ -5,7 +5,6 @@ from jaxtyping import PRNGKeyArray
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from gymnax.environments.environment import Environment # TODO: replace with Any or sth else
 
 from config import Config
 from envs import make_env
@@ -15,7 +14,7 @@ from agent.models import LatentState, LatentStateWithParams
 
 class Trainer(eqx.Module):
     agent: eqx.Module
-    env: Environment = eqx.field(static=True)
+    env: Any = eqx.field(static=True)
 
     num_environment_steps: int = eqx.field(static=True)
     eval_interval: int = eqx.field(static=True)
@@ -24,7 +23,7 @@ class Trainer(eqx.Module):
     episode_length: int = eqx.field(static=True)
     num_eval_episodes: int = eqx.field(static=True)
 
-    def __init__(self, config, *, key: PRNGKeyArray):
+    def __init__(self, config: Config, *, key: PRNGKeyArray):
         self.env = make_env(**config.env())
         # Update config with env particulars
         config.agent.world.transition.update({"action_size": self.env.action_size})
@@ -84,7 +83,6 @@ class Trainer(eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    # TODO: more serious consideration of parallel train
     def train(self, agent: Agent, key: PRNGKeyArray):
         key, key_init, key_reset, key_interact, key_learn = jax.random.split(key, 5)
         obs, env_state = self.env.reset(key_reset)
@@ -151,7 +149,7 @@ class Trainer(eqx.Module):
         cumulative_rewards = jnp.sum(transitions.reward * masks) # Return up to the first termination
         return cumulative_rewards
 
-    def make_interact_step_fn(self, agent, eval=False, prefill=False):
+    def make_interact_step_fn(self, agent: Agent, eval: bool = False, prefill: bool = False):
         def random_act_branch(operand):
             last_state, _, _, key = operand
             keys = jax.random.split(key, self.env.num_envs)
@@ -185,7 +183,6 @@ class Trainer(eqx.Module):
                 reward=reward,
                 done=done,
             )
-
             return (transition, latent_state, next_env_state, key), transition
         return interact_step_fn
 

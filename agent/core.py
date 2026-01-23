@@ -91,14 +91,17 @@ class Agent(eqx.Module):
         # Extra particulars for agent learning
         self.__dict__.update(config.optimization())
 
-    def act(self, last_latent_state, last_action, obs, *, key: PRNGKeyArray, eval=False):
+    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
+        return LatentState.initialize(self.belief_size, self.state_size, self.random_init, batch_shape, key=key)
+
+    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False):
         key_perceive, key_action = jax.random.split(key, 2)
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
         params = jax.vmap(self.actor)(posterior.latent_state)
         action = self.actor.sample(params, key_action, eval)
         return posterior.latent_state, action
 
-    def predict(self, latent_state, action, key):
+    def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray):
         """Predict based on the belief without seeing observation."""
         params, belief = jax.vmap(self.world.transition)(latent_state, action)
         state = self.world.transition.sample(params, key)
@@ -109,10 +112,7 @@ class Agent(eqx.Module):
         )
         return prior
 
-    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
-        return LatentState.initialize(self.belief_size, self.state_size, self.random_init, batch_shape, key=key)
-
-    def perceive(self, latent_state, action, observation, key):
+    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray):
         """
         Perception is the process of recognizing existing knowledge or deriving new information from sensory inputs based on memory, representations, and predictive models.
         """
@@ -144,7 +144,7 @@ class Agent(eqx.Module):
             new_memory
         )
 
-    def reason(self, data, key):
+    def reason(self, data: Transition, key: PRNGKeyArray):
         """
         Reason about the relationship among data and to the goal with contexts from predictive models or memory given a fixed belief;
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
@@ -173,7 +173,7 @@ class Agent(eqx.Module):
         )
         return priors, posteriors
 
-    def plan(self, latent_state: LatentState, key):
+    def plan(self, latent_state: LatentState, key: PRNGKeyArray):
         # Imagination
         def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
             latent_state, key = carry
@@ -234,7 +234,7 @@ class Agent(eqx.Module):
 
         return return_predictions, value_dists
 
-    def learn(self, key):
+    def learn(self, key: PRNGKeyArray):
         """
         key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
         data ← memory(key_memory)
