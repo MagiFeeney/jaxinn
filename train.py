@@ -165,9 +165,8 @@ class Trainer(eqx.Module):
             key_act, key_noise = jax.random.split(key, 2)
             latent_state, action = agent.act(last_state, last_action, obs, key=key_act, eval=eval)
             if not eval and self.action_noise > 0:
-                noise = jax.random.normal(key_noise, shape=action.shape)
-                action = action + noise * self.action_noise_std
-                action = jnp.clip(action, -1.0, 1.0)
+                noise = jax.random.normal(key_noise, shape=action.shape) * self.action_noise_std
+                action = jnp.clip(action + noise, -1.0, 1.0)
             return latent_state, action
 
         def interact_step_fn(carry, _):
