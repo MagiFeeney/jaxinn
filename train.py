@@ -1,5 +1,5 @@
 import tyro
-from typing import Optional, Tuple, Literal, Any
+from typing import Optional, Tuple, Literal, Any, Dict
 from jaxtyping import PRNGKeyArray
 
 import jax
@@ -33,7 +33,7 @@ class Trainer(eqx.Module):
         self.agent = Agent(config.agent, key=key)
         self.__dict__.update(config.exploration())
 
-    def __call__(self, key: PRNGKeyArray):
+    def __call__(self, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
@@ -88,14 +88,18 @@ class Trainer(eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    def prefill(self, agent: Agent, key: PRNGKeyArray):
-        transitions = self.interact(agent, key, prefill=True)
+    def prefill(self, agent: Agent, key: PRNGKeyArray) -> Agent:
+        num_prefill_episodes = self.prefill_steps // self.episode_length
+        keys = jax.random.split(key, num_prefill_episodes)
+        transitions, _ = jax.vmap(lambda k: self.interact(agent, k, prefill=True))(keys)
+        # merge multiple episodes
+        transitions = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), transitions)
         agent = agent.add_experience(transitions)
         return agent
 
-    def train(self, agent: Agent, key: PRNGKeyArray):
+    def train(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Tuple[Agent, PRNGKeyArray], jax.Array]:
         key, key_interact, key_learn = jax.random.split(key, 3)
-        transitions = self.interact(agent, key_interact)
+        transitions, transition_init = self.interact(agent, key_interact)
         transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transition_init, transitions) # insert the initial transition
 
         # Store them
@@ -117,8 +121,8 @@ class Trainer(eqx.Module):
         avg_metrics = jax.tree.map(jnp.mean, metrics)
         return (agent, key), avg_metrics
 
-    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1):
-        transitions = self.interact(agent, key, eval=True, num_envs=num_envs)
+    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1) -> jax.Array:
+        transitions, _ = self.interact(agent, key, eval=True, num_envs=num_envs)
         masks = 1 - jnp.maximum.accumulate(transitions.done)
         cumulative_rewards = jnp.sum(transitions.reward * masks) # Return up to the first termination
         return cumulative_rewards
@@ -130,7 +134,7 @@ class Trainer(eqx.Module):
             eval: bool = False,
             prefill: bool = False,
             num_envs: int | None = None
-    ):
+    ) -> Tuple[Transition, ...]:
         key_reset, key_init, key_step = jax.random.split(key, 3)
         if num_envs is not None:
             obs, env_state = self.env.reset(key_reset, num_envs=num_envs)
@@ -187,7 +191,7 @@ class Trainer(eqx.Module):
             None,
             self.episode_length // num_envs,
         )
-        return transitions
+        return transitions, transition_init
 
 
 def main(args):
