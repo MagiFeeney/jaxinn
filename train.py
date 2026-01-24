@@ -17,11 +17,13 @@ class Trainer(eqx.Module):
     env: Any = eqx.field(static=True)
 
     num_environment_steps: int = eqx.field(static=True)
+    prefill_steps: int = eqx.field(static=True)
     eval_interval: int = eqx.field(static=True)
     train_interval: int = eqx.field(static=True)
     train_iterations: int = eqx.field(static=True)
     episode_length: int = eqx.field(static=True)
     num_eval_episodes: int = eqx.field(static=True)
+    action_noise_std: float = eqx.field(static=True)
 
     def __init__(self, config: Config, *, key: PRNGKeyArray):
         self.env = make_env(**config.env())
@@ -153,14 +155,20 @@ class Trainer(eqx.Module):
         )
 
         def random_act_branch(operand):
-            last_state, _, _, key = operand
+            last_latent_state, _, _, key = operand
             keys = jax.random.split(key, num_envs)
             action = jax.vmap(self.env.action_space.sample)(keys)
-            return last_state, action # For consistency required by branching
+            return last_latent_state, action # For consistency
 
         def agent_act_branch(operand):
-            last_state, last_action, obs, key = operand
-            return agent.act(last_state, last_action, obs, key=key, eval=eval)
+            last_latent_state, last_action, obs, key = operand
+            key_act, key_noise = jax.random.split(key, 2)
+            latent_state, action = agent.act(last_state, last_action, obs, key=key_act, eval=eval)
+            if not eval and self.action_noise > 0:
+                noise = jax.random.normal(key_noise, shape=action.shape)
+                action = action + noise * self.action_noise_std
+                action = jnp.clip(action, -1.0, 1.0)
+            return latent_state, action
 
         def interact_step_fn(carry, _):
             transition, last_latent_state, env_state, key = carry
@@ -215,9 +223,6 @@ def main(args):
         f"Achieved return:\n"
         f"{final_eval_return}"
     )
-
-    # TODO: plot figure or statistics logging
-
 
 if __name__ == "__main__":
     args = tyro.cli(Config)

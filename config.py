@@ -205,7 +205,7 @@ class Exploration(Base):
     train_iterations: int = 100
     episode_length: int = 1000
     num_eval_episodes: int = 10
-    action_noise: float = 0.3
+    action_noise_std: float = 0.3
 
 
 # Optimization
