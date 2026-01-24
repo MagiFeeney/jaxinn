@@ -70,11 +70,13 @@ class Trainer(eqx.Module):
             critic:       {critic}
 
             --- Evaluation ({n} episodes) ---
-            {e}
+            return:       {r}
+            mean:         {e}
                 """,
                 k=(iteration + 1) * self.eval_interval + self.prefill_steps,
                 **metrics,
                 n=self.num_eval_episodes,
+                r=episodic_returns,
                 e=evaluation,
             )
 

@@ -183,11 +183,9 @@ class Actor(eqx.Module):
             dist = dx(TanhNormal)(**params)
 
         dist = dx.Independent(dist, reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
-
         sample_dist = SampleDist(dist)
 
-        return jax.lax.cond(
-            det,
-            lambda: sample_dist.mode(seed=key),
-            lambda: sample_dist.sample(seed=key), # TODO: add action_noise
-        )
+        if det:
+            return sample_dist.mode(seed=key)
+        else:
+            return sample_dist.sample(seed=key) # TODO: add action_noise
