@@ -124,16 +124,16 @@ class Trainer(eqx.Module):
         avg_metrics = jax.tree.map(jnp.mean, metrics)
         return (agent, key), avg_metrics
 
-    def evaluate(self, agent: Agent, key: PRNGKeyArray):
+    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1):
         key_init, key_reset, key_scan = jax.random.split(key, 3)
-        obs, env_state = self.env.reset(key_reset)
-        latent_state_init = agent.init_state(key_init, batch_shape=(self.env.num_envs,))
+        obs, env_state = self.env.reset(key_reset, num_envs=num_envs)
+        latent_state_init = agent.init_state(key_init, batch_shape=(num_envs,))
 
         transition_init = Transition(
-            action=jnp.zeros((self.env.num_envs, self.env.action_size)),
+            action=jnp.zeros((num_envs, self.env.action_size)),
             next_obs=obs,
-            reward=jnp.zeros((self.env.num_envs,)),
-            done=jnp.zeros((self.env.num_envs,), dtype=bool),
+            reward=jnp.zeros((num_envs,)),
+            done=jnp.zeros((num_envs,), dtype=bool),
         )
 
         evaluate_interact_step_fn = self.make_interact_step_fn(agent, eval=True)

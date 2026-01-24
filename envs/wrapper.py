@@ -20,17 +20,19 @@ class Batched(eqx.Module):
     def __init__(self, env: Any, env_params: TEnvParams, num_envs: int = 1):
         self.env = env
         self.env_params = env_params
-        self.num_envs = num_envs
+        self.num_envs = num_envs # Default value; may be changed if given as input during reset
 
         self.vmap_reset = jax.vmap(self.env.reset, in_axes=(0, None))
         self.vmap_step = jax.vmap(self.env.step, in_axes=(0, 0, 0, None))
 
-    def reset(self, key: PRNGKeyArray):
-        keys = jax.random.split(key, self.num_envs)
+    def reset(self, key: PRNGKeyArray, num_envs: int | None = None):
+        num_keys = num_envs if num_envs is not None else self.num_envs
+        keys = jax.random.split(key, num_keys)
         return self.vmap_reset(keys, self.env_params)
 
     def step(self, key: PRNGKeyArray, env_state: TEnvState, action: jax.Array):
-        keys = jax.random.split(key, self.num_envs)
+        num_keys = action.shape[0] # Infer from action since we have already known that before step
+        keys = jax.random.split(key, num_keys)
         return self.vmap_step(keys, env_state, action, self.env_params)
 
     @property
