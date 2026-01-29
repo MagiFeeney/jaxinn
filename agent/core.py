@@ -199,7 +199,7 @@ class Agent(eqx.Module):
         value_dists = jax.vmap(jax.vmap(self.critic))(latent_states)
         values = value_dists.mean()
 
-        dones = jnp.ones_like(values)
+        dones = jnp.zeros_like(values)
         baselines = jnp.zeros_like(values)
 
         def uae_step_fn(carry, inputs):
