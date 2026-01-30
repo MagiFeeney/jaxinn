@@ -118,6 +118,7 @@ class Agent(eqx.Module):
         """
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
+        observation = observation / 255.0 - 0.5
         embedding = jax.vmap(self.world.perception.encoder)(observation)
         params, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, embedding)
         state = self.world.representation.sample(params, key_posterior)
@@ -169,7 +170,7 @@ class Agent(eqx.Module):
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
             (init_latent_state, key_scan),
-            (data.action, data.next_obs / 255.0 - 0.5, data.done) # TODO: env interaction part may also need to check
+            (data.action, data.next_obs.astype(jnp.float32), data.done) # TODO: env interaction part may also need to check
         )
         return priors, posteriors
 
