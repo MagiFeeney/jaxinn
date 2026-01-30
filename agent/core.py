@@ -94,8 +94,12 @@ class Agent(eqx.Module):
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
         return LatentState.initialize(self.belief_size, self.state_size, self.random_init, batch_shape, key=key)
 
+    def process(self, obs):
+        return obs.astype(jnp.float32) / 255.0 - 0.5
+
     def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False):
         key_perceive, key_action = jax.random.split(key, 2)
+        obs = jax.vmap(self.world.perception.encoder)(self.process(obs))
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
         params = jax.vmap(self.actor)(posterior.latent_state)
         action = self.actor.sample(params, key_action, eval)
@@ -152,6 +156,7 @@ class Agent(eqx.Module):
         """
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
+        next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(self.process(data.next_obs)) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
             latent_state, key = carry
@@ -170,7 +175,7 @@ class Agent(eqx.Module):
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
             (init_latent_state, key_scan),
-            (data.action, data.next_obs.astype(jnp.float32), data.done) # TODO: env interaction part may also need to check
+            (data.action, next_obs, data.done) # TODO: env interaction part may also need to check
         )
         return priors, posteriors
 
