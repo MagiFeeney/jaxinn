@@ -122,9 +122,7 @@ class Agent(eqx.Module):
         """
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
-        observation = observation / 255.0 - 0.5
-        embedding = jax.vmap(self.world.perception.encoder)(observation)
-        params, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, embedding)
+        params, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, observation)
         state = self.world.representation.sample(params, key_posterior)
         posterior = LatentStateWithParams(
             latent_state=LatentState(belief=belief, state=state),
@@ -241,20 +239,7 @@ class Agent(eqx.Module):
         return return_predictions, value_dists
 
     def learn(self, key: PRNGKeyArray):
-        """
-        key, key_memory, key_reasoning, key_planning = jax.random.split(key, 4)
-        data ← memory(key_memory)
-        posterior ← reason(data, key_reasoning): what is it? what might be missing? will it be?
-        update(data, posterior):
-          model
-            reward_loss(posterior.latent_state, reward)
-            observation_loss(posterior.latent_state, observation)
-            kl_loss(posterior.params)
-          lambda_return ← plan(posterior, key_planning)
-            actor_loss
-            critic_loss
-        """
-
+        """Update world model, actor and critic."""
         key, key_memory, key_world, key_ac = jax.random.split(key, 4)
         data = self.memory.sample((self.batch_size, self.chunk_size), key_memory)
         metrics = {}
