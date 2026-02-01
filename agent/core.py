@@ -183,7 +183,7 @@ class Agent(eqx.Module):
             latent_state, key = carry
 
             key, key_action, key_predict = jax.random.split(key, 3)
-            params = jax.vmap(self.actor)(latent_state)
+            params = jax.vmap(self.actor)(latent_state.detach())
             action = self.actor.sample(params, key_action)
             prior = self.predict(latent_state, action, key_predict)
 
