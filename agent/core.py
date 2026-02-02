@@ -6,8 +6,9 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 import optax
 
+from envs import Transition
 from .models import World, Critic, Actor, LatentState, LatentStateWithParams
-from .memory import Transition, Memory, Uniform, Prioritized
+from .memory import Memory, Uniform, Prioritized
 from .utils import differentiable
 
 

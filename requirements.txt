@@ -3,4 +3,4 @@ equinox
 distrax
 tyro
 gymnax
-mujoco_playground
+playground

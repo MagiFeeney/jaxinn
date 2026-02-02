@@ -1,5 +1,5 @@
 from .wrapper import Batched
-from .environment import create
+from .environment import create, Transition, Environment
 
 
 def make_env(env_name, **kwargs):
@@ -10,4 +10,4 @@ def make_env(env_name, **kwargs):
     return Batched(env, env_params, num_envs)
 
 
-__all__ = ['Batched']
+__all__ = ['Batched', 'Transition', 'Environment']

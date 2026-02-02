@@ -4,13 +4,7 @@ import jax.numpy as jnp
 import equinox as eqx
 from typing import Tuple
 from jaxtyping import PRNGKeyArray
-
-
-class Transition(eqx.Module):
-    action: jax.Array
-    next_obs: jax.Array
-    reward: jax.Array
-    done: jax.Array
+from envs import Transition
 
 
 # Base class

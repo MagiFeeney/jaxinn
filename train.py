@@ -7,13 +7,13 @@ import jax.numpy as jnp
 import equinox as eqx
 
 from config import Config
-from envs import make_env
-from agent import Agent, Transition
+from envs import make_env, Transition
+from agent import Agent
 from agent.models import LatentState, LatentStateWithParams
 
 
 class Trainer(eqx.Module):
-    agent: eqx.Module
+    agent: Agent
     env: Any = eqx.field(static=True)
 
     num_environment_steps: int = eqx.field(static=True)

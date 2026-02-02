@@ -47,5 +47,7 @@ Jaxinn/
   - batched loop
 
 ## TODO
-- [ ] Wrap the env to get the next real obs that is overwritten by the reset one
-- [ ] Handle the last time step being terminated, which is meaningless when sampled
+- [ ] Wrap the env to get the next real obs that is overwritten by the reset one.
+- [ ] Handle the last time step being terminated, which is meaningless when sampled.
+- [ ] Memory shape should follow the env shape.
+  - [ ] Flatten according to env axis, so different trajectories are stacked in order.
