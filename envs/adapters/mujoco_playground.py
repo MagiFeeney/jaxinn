@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from envs.environment import Transition, Environment, EnvInfo
+from envs.spaces import Discrete, Box
 
 from mujoco_playground import registry
 from mujoco.mjx import Model as MjxModel
@@ -70,7 +71,30 @@ class Playground(Environment):
 
     @property
     def observation_space(self, env_params=None):
-        raise NotImplementedError
+        if isinstance(self.observation_size, dict):
+            return Dict(
+                spaces={
+                    key: Box(
+                        low=-jnp.inf,
+                        high=jnp.inf,
+                        shape=(shape,) if isinstance(shape, int) else shape,
+                        dtype=jnp.float32
+                    )
+                    for key, shape in self.observation_size.items()
+                }
+            )
+        else:
+            shape = self.observation_size
+            return Box(
+                low=-jnp.inf,
+                high=jnp.inf,
+                shape=(shape,) if isinstance(shape, int) else shape,
+                dtype=jnp.float32
+            )
+
+    @property
+    def observation_size(self):
+        return self.env.observation_size
 
     @property
     def reward_space(self, env_params=None):
@@ -78,7 +102,12 @@ class Playground(Environment):
 
     @property
     def action_space(self, env_params=None):
-        raise NotImplementedError
+        return Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self.action_size,),
+            dtype=jnp.float32
+        )
 
     @property
     def action_size(self):
