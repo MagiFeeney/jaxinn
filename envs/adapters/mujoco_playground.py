@@ -70,7 +70,7 @@ class Playground(Environment):
         return jnp.array(frames)
 
     @property
-    def observation_space(self, env_params=None):
+    def observation_space(self, env_params=None) -> Box:
         if isinstance(self.observation_size, dict):
             return Dict(
                 spaces={
@@ -93,7 +93,7 @@ class Playground(Environment):
             )
 
     @property
-    def observation_size(self):
+    def observation_size(self) -> int:
         return self.env.observation_size
 
     @property
@@ -101,7 +101,7 @@ class Playground(Environment):
         raise NotImplementedError
 
     @property
-    def action_space(self, env_params=None):
+    def action_space(self, env_params=None) -> Box:
         return Box(
             low=-1.0,
             high=1.0,
@@ -110,5 +110,5 @@ class Playground(Environment):
         )
 
     @property
-    def action_size(self):
+    def action_size(self) -> int:
         return self.env.action_size
