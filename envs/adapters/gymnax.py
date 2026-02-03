@@ -4,13 +4,12 @@ from typing import Any, Callable, Optional, Tuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
+from envs.environment import Transition, Environment, EnvInfo
 
 from gymnax import EnvParams as GymnaxEnvParams
 from gymnax.environments.spaces import Discrete
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import TEnvState as GymnaxEnvState
-
-from envs.environment import Transition, Environment, EnvState, EnvInfo
 
 
 class Gymnax(Environment):

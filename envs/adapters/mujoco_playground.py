@@ -4,13 +4,12 @@ from typing import Any, Callable, Optional, Tuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
+from envs.environment import Transition, Environment, EnvInfo
 
 from mujoco import mjx
 from mujoco.mjx import Model as MjxModel
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
-
-from envs.environment import Transition, Environment, EnvState, EnvInfo
 
 
 class Playground(Environment):
