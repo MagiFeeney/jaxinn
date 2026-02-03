@@ -1,9 +1,22 @@
 import abc
 import jax
 import jax.numpy as jnp
-from typing import Tuple, Any
+from typing import Tuple, Any, Dict
 from jaxtyping import PRNGKeyArray, Array, Bool, Float
 import equinox as eqx
+
+
+class EnvInfo(eqx.Module):
+    data: Dict[str, Any]
+
+    def __init__(self, **kwargs):
+        object.__setattr__(self, "data", kwargs)
+
+    def __getattr__(self, item):
+        try:
+            return self.data[item]
+        except KeyError:
+            raise AttributeError(f"'{type(self).__name__}' has no attribute '{item}'")
 
 
 class EnvState(eqx.Module):
@@ -21,11 +34,11 @@ class Environment(eqx.Module):
     env: Any = eqx.field(static=True)
     env_params: Any = eqx.field(static=True) # TODO: fix Playground env_params
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, Any]:
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvState]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, Any]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvState, EnvInfo]:
         pass
 
     @property

@@ -10,7 +10,7 @@ from gymnax.environments.spaces import Discrete
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import TEnvState as GymnaxEnvState
 
-from envs.environment import Transition, Environment, EnvState
+from envs.environment import Transition, Environment, EnvState, EnvInfo
 
 
 class Gymnax(Environment):
@@ -21,7 +21,7 @@ class Gymnax(Environment):
     ):
         super().__init__(env, env_params)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, GymnaxEnvState]:
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
         transition = Transition(
             action=jnp.zeros(self.action_size),
@@ -29,19 +29,26 @@ class Gymnax(Environment):
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),
         )
-        return transition, env_state
+        env_info = EnvInfo(
+            info={},            # TODO: fix mismatched pytree
+            reset=True,
+        )
+        return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, GymnaxEnvState]:
+    def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         """Step the environment."""
-        next_env_state = self.env.step(env_state, action)
-        next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action)
+        next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
         transition = Transition(
             action=action,
             next_obs=next_obs,
             reward=reward,
             done=done,
         )
-        return transition, next_env_state, info # TODO: decide whether to return info separately
+        env_info = EnvInfo(
+            info=info,
+            reset=True,
+        )
+        return transition, env_info, next_env_state
 
     @property
     def observation_space(self):

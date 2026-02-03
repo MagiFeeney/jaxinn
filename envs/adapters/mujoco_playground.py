@@ -10,7 +10,7 @@ from mujoco.mjx import Model as MjxModel
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
 
-from envs.environment import Transition, Environment, EnvState
+from envs.environment import Transition, Environment, EnvState, EnvInfo
 
 
 class Playground(Environment):
@@ -21,7 +21,7 @@ class Playground(Environment):
     ):
         super().__init__(env, env_params)
 
-    def reset(self, key: PRNGKeyArray, env_params=None) -> Tuple[Transition, MjxState]:
+    def reset(self, key: PRNGKeyArray, env_params=None) -> Tuple[Transition, EnvInfo, MjxState]:
         env_state = self.env.reset(key)
         transition = Transition(
             action=jnp.zeros(self.action_size),
@@ -29,9 +29,14 @@ class Playground(Environment):
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),
         )
-        return transition, env_state
+        env_info = EnvInfo(
+            info=env_state.info,
+            metrics=env_state.metrics,
+            reset=True,
+        )
+        return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: MjxState, action: jax.Array, env_params=None) -> Tuple[Transition, MjxState]:
+    def step(self, key: PRNGKeyArray, env_state: MjxState, action: jax.Array, env_params=None) -> Tuple[Transition, EnvInfo, MjxState]:
         """Step the environment."""
         next_env_state = self.env.step(env_state, action)
         transition = Transition(
@@ -40,7 +45,12 @@ class Playground(Environment):
             reward=next_env_state.reward,
             done=next_env_state.done,
         )
-        return transition, next_env_state
+        env_info = EnvInfo(
+            info=next_env_state.info,
+            metrics=next_env_state.metrics,
+            reset=False,
+        )
+        return transition, env_info, next_env_state
 
     def render(
             self,
