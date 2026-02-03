@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from envs.environment import Transition, Environment, EnvInfo
 
+import gymnax
 from gymnax import EnvParams as GymnaxEnvParams
 from gymnax.environments.spaces import Discrete
 from gymnax.environments.environment import Environment as GymnaxEnvironment
@@ -19,6 +20,11 @@ class Gymnax(Environment):
             env_params: Optional[GymnaxEnvParams] = None,
     ):
         super().__init__(env, env_params)
+
+    @classmethod
+    def create(cls, env_name: str, **kwargs) -> "Gymnax":
+        env, env_params = gymnax.make(env_name, **kwargs)
+        return cls(env, env_params)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)

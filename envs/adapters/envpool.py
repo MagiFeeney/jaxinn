@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from envs.environment import Transition, Environment, EnvInfo
 
+import envpool
 from envpool.python.env_pool import EnvPoolMixin
 
 
@@ -21,6 +22,11 @@ class EnvPool(Environment):
         self._recv: Callable = recv
         self._send: Callable = send
         self._step: Callable = step
+
+    @classmethod
+    def create(cls, env_name: str, **kwargs) -> "EnvPool":
+        env = envpool.make(env_name, env_type="gymnasium", **kwargs) # TODO: env_pool takes num_envs
+        return cls(env, env_params=None)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
         env_state, (obs, _, _, _, info) = self._recv(self._handle)
@@ -54,7 +60,7 @@ class EnvPool(Environment):
 
     @property
     def observation_space(self):
-        return self.env.observation_space
+        return self.env.observation_space # TODO: integrate with Jaxinn.envs.spaces to correct shape
 
     @property
     def action_space(self):

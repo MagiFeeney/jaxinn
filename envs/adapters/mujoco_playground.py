@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from envs.environment import Transition, Environment, EnvInfo
 
-from mujoco import mjx
+from mujoco_playground import registry
 from mujoco.mjx import Model as MjxModel
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
@@ -19,6 +19,12 @@ class Playground(Environment):
             env_params: Optional[Any] = None,
     ):
         super().__init__(env, env_params)
+
+    @classmethod
+    def create(cls, env_name: str, **kwargs) -> "Playground":
+        env = registry.load(env_name, **kwargs)
+        env_params = registry.get_default_config(env_name)
+        return cls(env, env_params)
 
     def reset(self, key: PRNGKeyArray, env_params=None) -> Tuple[Transition, EnvInfo, MjxState]:
         env_state = self.env.reset(key)
