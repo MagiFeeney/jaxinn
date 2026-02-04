@@ -1,5 +1,4 @@
-import math
-from typing import Any, Callable, Optional, Tuple, Dict
+from typing import Any, Optional, Tuple, Dict
 
 import jax
 import jax.numpy as jnp
