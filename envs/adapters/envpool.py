@@ -69,6 +69,3 @@ class EnvPool(Environment):
     @property
     def action_size(self):
         return self.action_space.n
-
-    def reward_space(self):
-        raise NotImplementedError

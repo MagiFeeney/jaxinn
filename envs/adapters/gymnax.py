@@ -68,6 +68,3 @@ class Gymnax(Environment):
         if isinstance(self.action_space, Discrete):
             return self.action_space.n
         return math.prod(self.action_space.shape)
-
-    def reward_space(self):
-        raise NotImplementedError

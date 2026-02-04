@@ -97,10 +97,6 @@ class Playground(Environment):
         return self.env.observation_size
 
     @property
-    def reward_space(self, env_params=None):
-        raise NotImplementedError
-
-    @property
     def action_space(self, env_params=None) -> Box:
         return Box(
             low=-1.0,

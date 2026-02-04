@@ -34,11 +34,12 @@ class Environment(eqx.Module):
     env: Any = eqx.field(static=True)
     env_params: Any = eqx.field(static=True) # TODO: fix Playground env_params
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvState]:
-        raise NotImplementedError
+    @abc.abstractmethod
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        pass
 
     @abc.abstractmethod
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvState, EnvInfo]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         pass
 
     @property
@@ -48,14 +49,5 @@ class Environment(eqx.Module):
 
     @property
     @abc.abstractmethod
-    def reward_space(self):
-        pass
-
-    @property
-    @abc.abstractmethod
     def action_space(self):
         pass
-
-
-def create():
-    pass

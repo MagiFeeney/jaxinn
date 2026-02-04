@@ -1,5 +1,5 @@
-from .wrapper import Batched
-from .environment import create, Transition, Environment
+from .wrapper import Batched, AutoReset
+from .environment import Transition, Environment
 
 
 def make_env(env_name, **kwargs):
@@ -10,4 +10,9 @@ def make_env(env_name, **kwargs):
     return Batched(env, env_params, num_envs)
 
 
-__all__ = ['Batched', 'Transition', 'Environment']
+__all__ = [
+    'Batched',
+    'AutoReset',
+    'Transition',
+    'Environment',
+]
