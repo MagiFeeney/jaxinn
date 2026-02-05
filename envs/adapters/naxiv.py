@@ -27,7 +27,7 @@ class Navix(Environment):
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, NavixTimestep]:
         env_state = self.env.reset(key)
         transition = Transition(
-            action=jnp.zeros(self.action_size),
+            action=jnp.zeros(self.action_space.shape),
             next_obs=env_state.observation.astype(jnp.float32),
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),

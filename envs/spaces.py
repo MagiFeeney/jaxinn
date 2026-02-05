@@ -103,7 +103,7 @@ class Box(Space[jax.Array]):
             jnp.all(jnp.isfinite(self.high))
         )
 
-    def sample(self, key: jax.Array) -> jnp.Array:
+    def sample(self, key: jax.Array) -> jax.Array:
         def bounded_sample(key):
             if jnp.issubdtype(self.dtype, jnp.integer):
                  return jax.random.randint(
@@ -128,7 +128,7 @@ class Box(Space[jax.Array]):
                 lower=self.low,
                 upper=self.high,
                 dtype=self.dtype if not jnp.issubdtype(self.dtype, jnp.integer) else jnp.float32
-            ).astype(self.dtype)
+            )
 
         return jax.lax.cond(
             self.is_bounded,

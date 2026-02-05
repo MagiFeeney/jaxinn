@@ -30,7 +30,7 @@ class Playground(Environment):
     def reset(self, key: PRNGKeyArray, env_params=None) -> Tuple[Transition, EnvInfo, MjxState]:
         env_state = self.env.reset(key)
         transition = Transition(
-            action=jnp.zeros(self.action_size),
+            action=jnp.zeros(self.action_space.shape),
             next_obs=env_state.obs,
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),

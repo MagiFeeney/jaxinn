@@ -5,7 +5,7 @@ from typing import Any, Callable, Tuple
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from envs.environment import Transition, Environment, EnvInfo
+from envs.environment import Transition, Environment, EnvInfo, EnvState
 
 
 class Wrapper(Environment):

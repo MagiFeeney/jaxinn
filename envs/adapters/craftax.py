@@ -30,7 +30,7 @@ class Craftax(Environment):     # TODO: subclass gymnax instead
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, CraftaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
         transition = Transition(
-            action=jnp.zeros(self.action_size),
+            action=jnp.zeros(self.action_space.shape),
             next_obs=obs,
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),
