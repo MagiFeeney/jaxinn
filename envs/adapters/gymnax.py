@@ -29,13 +29,13 @@ class Gymnax(Environment):
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
         transition = Transition(
-            action=jnp.zeros(self.action_space.shape),
+            action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
-            info={},            # TODO: fix mismatched pytree
+            info={'discount': jnp.array(1.0)},            # TODO: fix mismatched pytree
             reset=True,
         )
         return transition, env_info, env_state
@@ -61,7 +61,9 @@ class Gymnax(Environment):
 
     @property
     def action_space(self):
-        return self.env.action_space(self.env_params)
+        space = self.env.action_space(self.env_params)
+        space.dtype = jnp.int32
+        return space
 
     @property
     def action_size(self):

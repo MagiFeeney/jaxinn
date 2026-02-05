@@ -82,18 +82,18 @@ class AutoReset(Wrapper):
             no_reset
         )                       # potentially saves computation for rendering when done is False
 
-        final_env_state = jax.tree_map(
+        final_env_state = jax.tree.map(
             lambda r, s: jnp.where(done, r, s),
             reset_env_state,
             step_env_state
         )
-        _next_obs = jax.tree_map(
+        _next_obs = jax.tree.map(
             lambda r, s: jnp.where(done, r, s),
             reset_transition.next_obs,
             step_transition.next_obs
         )
         final_transition = eqx.tree_at(lambda t: t.next_obs, step_transition, _next_obs)
-        final_info = EnvInfo(**info.data, terminal_observation=step_transition.next_obs)
+        final_info = EnvInfo(**step_env_info.data, terminal_observation=step_transition.next_obs)
         return final_transition, final_info, final_env_state
 
 
@@ -114,11 +114,13 @@ class ActionRepeat(Wrapper):
             key, key_step = jax.random.split(key, 2)
             prev_done = transition.done
 
-            def do_step(env_state, key):
+            def do_step(operand):
+                operand = env_state, key
                 transition, env_info, next_env_state = self.env.step(key, env_state, action)
                 return transition, env_info, next_env_state
 
-            def skip_step(env_state, key): # skip if done
+            def skip_step(operand): # skip if done
+                operand = env_state, key
                 return transition, env_info, env_state
 
             transition, env_info, next_env_state = jax.lax.cond(

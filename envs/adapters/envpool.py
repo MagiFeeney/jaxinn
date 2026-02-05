@@ -31,7 +31,7 @@ class EnvPool(Environment):
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
         env_state, (obs, _, _, _, info) = self._recv(self._handle)
         transition = Transition(
-            action=jnp.zeros(self.action_space.shape),
+            action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),
