@@ -141,18 +141,11 @@ class Trainer(eqx.Module):
     ) -> Tuple[Transition, ...]:
         key_reset, key_init, key_step = jax.random.split(key, 3)
         if num_envs is not None:
-            obs, env_state = self.env.reset(key_reset, num_envs=num_envs)
+            transition_init, env_state = self.env.reset(key_reset, num_envs=num_envs)
         else:
-            obs, env_state = self.env.reset(key_reset)
+            transition_init, env_state = self.env.reset(key_reset)
             num_envs = self.env.num_envs
-
         latent_state_init = agent.init_state(key_init, batch_shape=(num_envs,))
-        transition_init = Transition(
-            action=jnp.zeros((num_envs, self.env.action_size)),
-            next_obs=obs,
-            reward=jnp.zeros((num_envs,)),
-            done=jnp.zeros((num_envs,), dtype=bool),
-        )
 
         def random_act_branch(operand):
             last_latent_state, _, _, key = operand
@@ -184,14 +177,7 @@ class Trainer(eqx.Module):
             else:
                 latent_state, action = agent_act_branch(operand)
 
-            next_obs, next_env_state, reward, done, info = self.env.step(key_step, env_state, action)
-
-            transition = Transition(
-                action=action,
-                next_obs=next_obs,
-                reward=reward,
-                done=done,
-            )
+            transition, info, next_env_state = self.env.step(key_step, env_state, action)
             return (transition, latent_state, next_env_state, key), transition
 
         _, transitions = jax.lax.scan(
