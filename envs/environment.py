@@ -32,7 +32,7 @@ class Transition(eqx.Module):
 
 class Environment(eqx.Module):
     env: Any = eqx.field(static=True)
-    env_params: Any = eqx.field(static=True) # TODO: fix Playground env_params
+    env_params: Any = eqx.field(static=True)
 
     @abc.abstractmethod
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:

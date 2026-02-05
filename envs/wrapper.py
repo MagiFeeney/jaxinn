@@ -36,7 +36,7 @@ class Wrapper(Environment):
 
 class Batched(Wrapper):
     num_envs: int = eqx.field(static=True)
-    vmap_reset: Callable = eqx.field(static=True) # TODO: StaticCallable?
+    vmap_reset: Callable = eqx.field(static=True)
     vmap_step: Callable = eqx.field(static=True)
 
     def __init__(self, env: Environment, num_envs: int):

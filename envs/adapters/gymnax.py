@@ -35,7 +35,7 @@ class Gymnax(Environment):
             done=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
-            info={'discount': jnp.array(1.0)},            # TODO: fix mismatched pytree
+            info={'discount': jnp.array(1.0)},
             reset=True,
         )
         return transition, env_info, env_state

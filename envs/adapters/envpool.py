@@ -25,7 +25,7 @@ class EnvPool(Environment):
 
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "EnvPool":
-        env = envpool.make(env_name, env_type="gymnasium", **kwargs) # TODO: env_pool takes num_envs
+        env = envpool.make(env_name, env_type="gymnasium", **kwargs)
         return cls(env, env_params=None)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
