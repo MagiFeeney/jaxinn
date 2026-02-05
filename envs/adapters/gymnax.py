@@ -10,7 +10,7 @@ import gymnax
 from gymnax import EnvParams as GymnaxEnvParams
 from gymnax.environments.spaces import Discrete
 from gymnax.environments.environment import Environment as GymnaxEnvironment
-from gymnax.environments.environment import TEnvState as GymnaxEnvState
+from gymnax.environments.environment import EnvState as GymnaxEnvState
 
 
 class Gymnax(Environment):
