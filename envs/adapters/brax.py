@@ -48,7 +48,7 @@ class Brax(Environment):
         )
         env_info = EnvInfo(
             info=next_env_state.info,
-            reset=True,
+            reset=False,
         )
         return transition, env_info, next_env_state
 

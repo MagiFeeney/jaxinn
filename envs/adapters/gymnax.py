@@ -51,7 +51,7 @@ class Gymnax(Environment):
         )
         env_info = EnvInfo(
             info=info,
-            reset=True,
+            reset=False,
         )
         return transition, env_info, next_env_state
 
