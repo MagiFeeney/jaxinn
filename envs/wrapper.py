@@ -95,3 +95,48 @@ class AutoReset(Wrapper):
         final_transition = eqx.tree_at(lambda t: t.next_obs, step_transition, _next_obs)
         final_info = EnvInfo(**info.data, terminal_observation=step_transition.next_obs)
         return final_transition, final_info, final_env_state
+
+
+class ActionRepeat(Wrapper):
+    action_repeat: int = eqx.field(static=True)
+
+    def __init__(self, env: Environment, action_repeat: int):
+        self.env = env
+        self.action_repeat = action_repeat
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        key, key_step = jax.random.split(key, 2)
+        transition, env_info, next_env_state = self.env.step(key_step, env_state, action)
+        first_reward = transition.reward
+
+        def repeat_fn(carry, _):
+            transition, env_info, env_state, key = carry
+            key, key_step = jax.random.split(key, 2)
+            prev_done = transition.done
+
+            def do_step(env_state, key):
+                transition, env_info, next_env_state = self.env.step(key, env_state, action)
+                return transition, env_info, next_env_state
+
+            def skip_step(env_state, key): # skip if done
+                return transition, env_info, env_state
+
+            transition, env_info, next_env_state = jax.lax.cond(
+                transition.done,
+                skip_step,
+                do_step,
+                (env_state, key_step)
+            )
+            reward = jnp.where(prev_done, 0.0, transition.reward)
+            return (transition, env_info, next_env_state, key), reward
+
+        if self.action_repeat > 1:
+            (transition, env_info, next_env_state, _), rewards = jax.lax.scan(
+                repeat_fn,
+                (transition, env_info, next_env_state, key),
+                None,
+                self.action_repeat - 1
+            )
+            total_reward = first_reward + jnp.sum(rewards, axis=0)
+            transition = eqx.tree_at(lambda t: t.reward, transition, total_reward)
+        return transition, env_info, next_env_state
