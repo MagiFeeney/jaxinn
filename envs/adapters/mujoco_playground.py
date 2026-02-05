@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, List
 
 import jax
 import jax.numpy as jnp
@@ -62,7 +62,7 @@ class Playground(Environment):
             self,
             env_state: List[MjxState],
             height: int = 64,
-            width: int: 64,
+            width: int = 64,
             camera: Optional[str] = None
     ) -> jax.Array:
         frames = self.env.render(env_state, height, width, camera) # returns a list of np.ndarray due to backbone renderer
