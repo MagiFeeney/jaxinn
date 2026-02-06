@@ -39,7 +39,7 @@ class Trainer(eqx.Module):
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
-        agent = self.prefill(self.agent, key_prefill)
+        agent = self.prefill(key_prefill)
 
         # Train and evaluate
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
@@ -92,13 +92,14 @@ class Trainer(eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    def prefill(self, agent: Agent, key: PRNGKeyArray) -> Agent:
+    def prefill(self, key: PRNGKeyArray) -> Agent:
+        # Start with the initial agent: self.agent
         num_prefill_episodes = self.prefill_steps // self.episode_length
         keys = jax.random.split(key, num_prefill_episodes)
-        transitions, _ = jax.vmap(lambda k: self.interact(agent, k, prefill=True))(keys)
+        transitions, _ = jax.vmap(lambda k: self.interact(self.agent, k, prefill=True))(keys)
         # merge multiple episodes
         transitions = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), transitions)
-        agent = agent.add_experience(transitions)
+        agent = self.agent.add_experience(transitions)
         return agent
 
     def train(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Tuple[Agent, PRNGKeyArray], jax.Array]:
