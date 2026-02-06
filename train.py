@@ -142,9 +142,9 @@ class Trainer(eqx.Module):
     ) -> Tuple[Transition, ...]:
         key_reset, key_init, key_step = jax.random.split(key, 3)
         if num_envs is not None:
-            transition_init, env_state = self.env.reset(key_reset, num_envs=num_envs)
+            transition_init, info, env_state = self.env.reset(key_reset, num_envs=num_envs)
         else:
-            transition_init, env_state = self.env.reset(key_reset)
+            transition_init, info, env_state = self.env.reset(key_reset)
             num_envs = self.env.num_envs
         latent_state_init = agent.init_state(key_init, batch_shape=(num_envs,))
 

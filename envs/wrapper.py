@@ -13,6 +13,7 @@ class Wrapper(Environment):
 
     def __init__(self, env: Environment):
         self.env = env
+        self.env_params = env.env_params # populate env_params
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         return self.env.reset(key)
@@ -40,8 +41,7 @@ class Batched(Wrapper):
     vmap_step: Callable = eqx.field(static=True)
 
     def __init__(self, env: Environment, num_envs: int):
-        self.env = env
-
+        super().__init__(env)
         self.num_envs = num_envs
         self.vmap_reset = jax.vmap(self.env.reset)
         self.vmap_step = jax.vmap(self.env.step)
@@ -59,7 +59,7 @@ class Batched(Wrapper):
 
 class AutoReset(Wrapper):
     def __init__(self, env: Environment):
-        self.env = env
+        super().__init__(env)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         return self.env.reset(key)
@@ -101,7 +101,7 @@ class ActionRepeat(Wrapper):
     action_repeat: int = eqx.field(static=True)
 
     def __init__(self, env: Environment, action_repeat: int):
-        self.env = env
+        super().__init__(env)
         self.action_repeat = action_repeat
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:

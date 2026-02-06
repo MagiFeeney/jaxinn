@@ -191,7 +191,7 @@ class Memory(Base):
 # Environment
 @dataclass
 class Env(Base):
-    env_name: str = "DeepSea"
+    env_id: str = "gymnax/DeepSea-bsuite"
     num_envs: int = 1                # num. of envs for collecting data
 
 
