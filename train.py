@@ -96,19 +96,16 @@ class Trainer(eqx.Module):
         # Start with the initial agent: self.agent
         num_prefill_episodes = self.prefill_steps // self.episode_length
         keys = jax.random.split(key, num_prefill_episodes)
-        transitions, _ = jax.vmap(lambda k: self.interact(self.agent, k, prefill=True))(keys)
-        # merge multiple episodes
-        transitions = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), transitions)
-        agent = self.agent.add_experience(transitions)
+        transitions, terminal_obs = jax.vmap(lambda k: self.interact(self.agent, k, prefill=True))(keys)
+        agent = self.agent.add_experience(transitions, terminal_obs)
         return agent
 
     def train(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Tuple[Agent, PRNGKeyArray], jax.Array]:
         key, key_interact, key_learn = jax.random.split(key, 3)
-        transitions, transition_init = self.interact(agent, key_interact)
-        transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transition_init, transitions) # insert the initial transition
+        transitions, terminal_obs = self.interact(agent, key_interact)
 
         # Store them
-        agent = agent.add_experience(transitions)
+        agent = agent.add_experience(transitions, terminal_obs)
 
         def learn_step_fn(carry, _):
             agent, key = carry
@@ -128,8 +125,9 @@ class Trainer(eqx.Module):
 
     def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1) -> jax.Array:
         transitions, _ = self.interact(agent, key, eval=True, num_envs=num_envs)
-        masks = 1 - jnp.maximum.accumulate(transitions.done)
-        cumulative_rewards = jnp.sum(transitions.reward * masks) # Return up to the first termination
+        masks = 1 - jnp.maximum.accumulate(transitions.done, axis=0)
+        shifted_masks = jnp.concatenate([jnp.ones_like(masks[0:1]), masks[:-1]])
+        cumulative_rewards = jnp.sum(transitions.reward * shifted_masks) # Return up to the first termination inclusively
         return cumulative_rewards
 
     def interact(
@@ -179,15 +177,16 @@ class Trainer(eqx.Module):
                 latent_state, action = agent_act_branch(operand)
 
             transition, info, next_env_state = self.env.step(key_step, env_state, action)
-            return (transition, latent_state, next_env_state, key), transition
+            return (transition, latent_state, next_env_state, key), (transition, info.terminal_observation)
 
-        _, transitions = jax.lax.scan(
+        _, (transitions, terminal_obs) = jax.lax.scan(
             interact_step_fn,
             (transition_init, latent_state_init, env_state, key_step),
             None,
             self.episode_length // num_envs,
         )
-        return transitions, transition_init
+        transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transition_init, transitions) # include the initial transition
+        return transitions, terminal_obs
 
 
 def main(args):
