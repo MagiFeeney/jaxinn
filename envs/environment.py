@@ -13,10 +13,16 @@ class EnvInfo(eqx.Module):
         object.__setattr__(self, "data", kwargs)
 
     def __getattr__(self, item):
-        try:
+        # Check top level first
+        if item in self.data:
             return self.data[item]
-        except KeyError:
-            raise AttributeError(f"'{type(self).__name__}' has no attribute '{item}'")
+
+        # Look inside info otherwise
+        info = self.data.get("info")
+        if info is not None and isinstance(info, dict) and item in info:
+            return info[item]
+
+        raise AttributeError(f"'{type(self).__name__}' has no attribute '{item}'")
 
 
 class EnvState(eqx.Module):

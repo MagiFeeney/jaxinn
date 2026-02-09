@@ -4,13 +4,50 @@ from typing import Any, Callable, Optional, Tuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
+from functools import partial
 from envs.environment import Transition, Environment, EnvInfo
 
 import gymnax
 from gymnax import EnvParams as GymnaxEnvParams
 from gymnax.environments.spaces import Discrete
 from gymnax.environments.environment import Environment as GymnaxEnvironment
-from gymnax.environments.environment import EnvState as GymnaxEnvState
+from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
+
+
+class TerminalObservationWrapper:
+    def __init__(self, env):
+        self.env = env
+
+    @partial(jax.jit, static_argnames=("self",))
+    def step(
+        self,
+        key: jax.Array,
+        state: GymnaxEnvState,
+        action: int | float | jax.Array,
+        params: GymnaxEnvParams | None = None,
+    ) -> tuple[jax.Array, GymnaxEnvState, jax.Array, jax.Array, dict[Any, Any]]:
+        """Performs step transitions in the environment."""
+        if params is None:
+            params = self.default_params
+
+        # Step
+        key_step, key_reset = jax.random.split(key)
+        obs_st, state_st, reward, done, info = self.step_env(
+            key_step, state, action, params
+        )
+        obs_re, state_re = self.reset_env(key_reset, params)
+
+        # Auto-reset environment based on termination
+        state = jax.tree.map(
+            lambda x, y: jax.lax.select(done, x, y), state_re, state_st
+        )
+        obs = jax.lax.select(done, obs_re, obs_st)
+        # Get terminal obs
+        info['terminal_observation'] = obs_st
+        return obs, state, reward, done, info
+
+    def __getattr__(self, name):
+        return getattr(self.env, name)
 
 
 class Gymnax(Environment):
@@ -24,6 +61,7 @@ class Gymnax(Environment):
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "Gymnax":
         env, env_params = gymnax.make(env_name, **kwargs)
+        env = TerminalObservationWrapper(env)
         return cls(env, env_params)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
