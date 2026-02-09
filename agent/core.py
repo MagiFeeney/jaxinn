@@ -151,10 +151,11 @@ class Agent(eqx.Module):
         terminal_obs_flatten = flatten_fn(terminal_obs)
 
         mask = transitions.done.transpose(1, 0).reshape(-1)
+        N = mask.shape[0]
 
         # Indices for step transitions; we replenish ones at done = True with terminal_obs
         shifts = jnp.concatenate([jnp.array([False]), mask[:-1]])
-        step_indices = jnp.arange(total_steps) + jnp.cumsum(shifts)
+        step_indices = jnp.arange(N) + jnp.cumsum(shifts)
 
         # Indices for reset transitions
         reset_indices = step_indices + 1 # To keep shape static; only indices at mask are meaningful
@@ -179,7 +180,6 @@ class Agent(eqx.Module):
             new_next_obs
         )
 
-        N = mask.shape[0]
         padded_length = 2 * N
         # Create the merged empty array
         def merge_fn(step_leaf, reset_leaf):
