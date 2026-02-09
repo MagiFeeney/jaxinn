@@ -134,64 +134,69 @@ class Agent(eqx.Module):
 
     @staticmethod
     def replenish_and_flatten(transitions: Transition, terminal_obs: jax.Array | None = None) -> Transition:
+        def flatten_fn(x):
+            # (T, B, ...) -> (B*T, ...)
+            flattened = jnp.swapaxes(x, 0, 1).reshape(-1, *x.shape[2:])
+            # For storage
+            if x.dtype == jnp.float32 and x.ndim > 3:
+                return flattened.astype(jnp.uint8)
+            return flattened
+
         # flatten and cast dtype in one go
-        transitions_flatten = jax.tree.map(
-            lambda x: jnp.swapaxes(x, 0, 1).reshape(-1, *x.shape[2:]).astype(jnp.uint8)
-                if (x.dtype == jnp.float32 and x.ndim > 3)
-                else jnp.swapaxes(x, 0, 1).reshape(-1, *x.shape[2:]),
-                transitions
-        )                       # (T, B) → (B, T) so the flatten is correct
+        transitions_flatten = jax.tree.map(flatten_fn, transitions)
 
         if terminal_obs is None:
             return transitions_flatten
 
-        terminal_obs_flatten = (
-            jnp.swapaxes(terminal_obs, 0, 1).reshape(-1, *terminal_obs.shape[2:]).astype(jnp.uint8)
-            if (terminal_obs.dtype == jnp.float32 and terminal_obs.ndim > 3)
-            else jnp.swapaxes(terminal_obs, 0, 1).reshape(-1, *terminal_obs.shape[2:])
-        )
+        terminal_obs_flatten = flatten_fn(terminal_obs)
 
         mask = transitions.done.transpose(1, 0).reshape(-1)
-        total_steps = mask.shape[0]
-        num_dones = int(jnp.sum(mask)) # TODO: check jit-compatibility
-        flatten_length = total_steps + num_dones
 
         # Indices for step transitions; we replenish ones at done = True with terminal_obs
         shifts = jnp.concatenate([jnp.array([False]), mask[:-1]])
         step_indices = jnp.arange(total_steps) + jnp.cumsum(shifts)
 
         # Indices for reset transitions
-        reset_indices = step_indices[mask] + 1
+        reset_indices = step_indices + 1 # To keep shape static; only indices at mask are meaningful
 
         # Construct reset transitions
-        reset_transitions = jax.tree.map(lambda x: jnp.zeros_like(x[mask]), transitions_flatten)
+        reset_transitions = jax.tree.map(lambda x: jnp.zeros_like(x), transitions_flatten)
         reset_transitions = eqx.tree_at(
             lambda x: x.next_obs,
             reset_transitions,
-            transitions_flatten.next_obs[mask]
+            transitions_flatten.next_obs
         )
 
         # Replenish terminal_obs
-        new_next_obs = transitions_flatten.next_obs.at[mask].set(terminal_obs_flatten[mask])
+        new_next_obs = jnp.where(
+            mask[:, None, None, None],
+            terminal_obs_flatten,
+            transitions_flatten.next_obs
+        ) # TODO: handle vector obs
         step_transitions = eqx.tree_at(
             lambda x: x.next_obs,
             transitions_flatten,
             new_next_obs
         )
 
+        N = mask.shape[0]
+        padded_length = 2 * N
         # Create the merged empty array
         def merge_fn(step_leaf, reset_leaf):
-            new_shape = (flatten_length, *step_leaf.shape[1:])
+            new_shape = (padded_length, *step_leaf.shape[1:]) # Fixed length for jit
             out = jnp.zeros(new_shape, dtype=step_leaf.dtype)
             out = out.at[step_indices].set(step_leaf)
-            out = out.at[reset_indices].set(reset_leaf)
+            # Trick
+            _reset_indices = jnp.where(mask, reset_indices, padded_length)
+            out = out.at[_reset_indices].set(reset_leaf, mode='drop')
             return out
 
-        return jax.tree.map(merge_fn, step_transitions, reset_transitions)
+        valid_length = N + jnp.sum(mask) # Actual length
+        return jax.tree.map(merge_fn, step_transitions, reset_transitions), valid_length
 
     def add_experience(self, transitions: Transition, terminal_obs: jax.Array | None = None) -> Agent:
-        transitions_flatten = self.replenish_and_flatten(transitions, terminal_obs) # handle terminal obs; critical for world modeling e.g. predict reward
-        new_memory = self.memory.add(transitions_flatten)
+        transitions_flatten, valid_length = self.replenish_and_flatten(transitions, terminal_obs) # handle terminal obs; critical for world modeling e.g. predict reward
+        new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
             lambda x: x.memory,
             self,
