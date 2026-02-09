@@ -48,7 +48,7 @@ class Memory(eqx.Module):
 
 # Memory with uniform sampling
 class Uniform(Memory):
-    def add(self, transition: Transition):
+    def add(self, transition: Transition, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
         index = (self.ptr + jnp.arange(batch_size)) % self.capacity
@@ -59,9 +59,15 @@ class Uniform(Memory):
             self.data, transition
         )
 
+        # Get actual num. of data added
+        if valid_length is not None:
+            num_data = valid_length
+        else:
+            num_data = batch_size
+
         # Update pointer and size
-        new_ptr = (self.ptr + batch_size) % self.capacity
-        new_size = jnp.minimum(self.size + batch_size, self.capacity)
+        new_ptr = (self.ptr + num_data) % self.capacity
+        new_size = jnp.minimum(self.size + num_data, self.capacity)
 
         return eqx.tree_at(
             lambda m: (m.data, m.ptr, m.size),
@@ -177,11 +183,12 @@ class Prioritized(Uniform):
         self.beta = beta
         self.sumtree = SumTree(capacity, chunk_size)
 
-    def add(self, transition: Transition, priority: jax.Array):
+    def add(self, transition: Transition, priority: jax.Array, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         # Add priority first to use old parameters
+        # If valid_length is not None, priority of data after that should zero
         new_tree = self.sumtree.update(self.ptr, priority**self.alpha)
-        new_memory = super().add(transition) # updated with new data, ptr and size
+        new_memory = super().add(transition, valid_length) # updated with new data, ptr and size
 
         # Update additional subtree of new priority
         return eqx.tree_at(

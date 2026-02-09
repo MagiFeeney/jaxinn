@@ -132,16 +132,71 @@ class Agent(eqx.Module):
         )
         return prior, posterior
 
-    def add_experience(self, transitions: Transition):
-        transitions_flatten = jax.tree.map(
-            lambda x: x.reshape(-1, *x.shape[2:]).astype(jnp.uint8)
-                if (x.dtype == jnp.float32 and x.ndim > 3)
-                else x.reshape(-1, *x.shape[2:]),
-                transitions
-        )                       # flatten and cast dtype in one go
+    @staticmethod
+    def replenish_and_flatten(transitions: Transition, terminal_obs: jax.Array | None = None) -> Transition:
+        def flatten_fn(x):
+            # (T, B, ...) -> (B*T, ...)
+            flattened = jnp.swapaxes(x, 0, 1).reshape(-1, *x.shape[2:])
+            # For storage
+            if x.dtype == jnp.float32 and x.ndim > 3:
+                return flattened.astype(jnp.uint8)
+            return flattened
 
-        new_memory = self.memory.add(transitions_flatten)
+        # flatten and cast dtype in one go
+        transitions_flatten = jax.tree.map(flatten_fn, transitions)
 
+        if terminal_obs is None:
+            return transitions_flatten
+
+        terminal_obs_flatten = flatten_fn(terminal_obs)
+
+        mask = transitions.done.transpose(1, 0).reshape(-1)
+        N = mask.shape[0]
+
+        # Indices for step transitions; we replenish ones at done = True with terminal_obs
+        shifts = jnp.concatenate([jnp.array([False]), mask[:-1]])
+        step_indices = jnp.arange(N) + jnp.cumsum(shifts)
+
+        # Indices for reset transitions
+        reset_indices = step_indices + 1 # To keep shape static; only indices at mask are meaningful
+
+        # Construct reset transitions
+        reset_transitions = jax.tree.map(lambda x: jnp.zeros_like(x), transitions_flatten)
+        reset_transitions = eqx.tree_at(
+            lambda x: x.next_obs,
+            reset_transitions,
+            transitions_flatten.next_obs
+        )
+
+        # Replenish terminal_obs
+        new_next_obs = jnp.where(
+            mask[:, None, None, None],
+            terminal_obs_flatten,
+            transitions_flatten.next_obs
+        ) # TODO: handle vector obs
+        step_transitions = eqx.tree_at(
+            lambda x: x.next_obs,
+            transitions_flatten,
+            new_next_obs
+        )
+
+        padded_length = 2 * N
+        # Create the merged empty array
+        def merge_fn(step_leaf, reset_leaf):
+            new_shape = (padded_length, *step_leaf.shape[1:]) # Fixed length for jit
+            out = jnp.zeros(new_shape, dtype=step_leaf.dtype)
+            out = out.at[step_indices].set(step_leaf)
+            # Trick
+            _reset_indices = jnp.where(mask, reset_indices, padded_length)
+            out = out.at[_reset_indices].set(reset_leaf, mode='drop')
+            return out
+
+        valid_length = N + jnp.sum(mask) # Actual length
+        return jax.tree.map(merge_fn, step_transitions, reset_transitions), valid_length
+
+    def add_experience(self, transitions: Transition, terminal_obs: jax.Array | None = None) -> Agent:
+        transitions_flatten, valid_length = self.replenish_and_flatten(transitions, terminal_obs) # handle terminal obs; critical for world modeling e.g. predict reward
+        new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
             lambda x: x.memory,
             self,
@@ -155,25 +210,25 @@ class Agent(eqx.Module):
         """
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
+        init_mask = jnp.ones_like(data.done[0])
         next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(self.process(data.next_obs)) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
-            latent_state, key = carry
+            latent_state, last_mask, key = carry
             action, obs, done = inputs
-            mask = 1 - done[..., None]
             key, key_perceive = jax.random.split(key)
 
-            # Mask the action and state if the observation results from reset
-            # This happens when the sampled sequence contains multiple trajectories
-            latent_state = latent_state * mask
-            action = action * mask
+            # Mask the state if the last step is done; action is already zero
+            latent_state = latent_state * last_mask # TODO: test the performance for the above
             prior, posterior = self.perceive(latent_state, action, obs, key_perceive)
 
-            return (posterior.latent_state, key), (prior, posterior)
+            # Update mask
+            mask = 1 - done[..., None]
+            return (posterior.latent_state, mask, key), (prior, posterior)
 
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
-            (init_latent_state, key_scan),
+            (init_latent_state, init_mask, key_scan),
             (data.action, next_obs, data.done) # TODO: env interaction part may also need to check
         )
         return priors, posteriors
@@ -242,7 +297,7 @@ class Agent(eqx.Module):
     def learn(self, key: PRNGKeyArray):
         """Update world model, actor and critic."""
         key, key_memory, key_world, key_ac = jax.random.split(key, 4)
-        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory)
+        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory) # T x B
         metrics = {}
 
         @eqx.filter_value_and_grad(has_aux=True)
