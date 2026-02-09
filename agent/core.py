@@ -210,25 +210,25 @@ class Agent(eqx.Module):
         """
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
+        init_mask = jnp.ones_like(data.done[0])
         next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(self.process(data.next_obs)) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
-            latent_state, key = carry
+            latent_state, last_mask, key = carry
             action, obs, done = inputs
-            mask = 1 - done[..., None]
             key, key_perceive = jax.random.split(key)
 
-            # Mask the action and state if the observation results from reset
-            # This happens when the sampled sequence contains multiple trajectories
-            latent_state = latent_state * mask
-            action = action * mask
+            # Mask the state if the last step is done; action is already zero
+            latent_state = latent_state * last_mask # TODO: test the performance for the above
             prior, posterior = self.perceive(latent_state, action, obs, key_perceive)
 
-            return (posterior.latent_state, key), (prior, posterior)
+            # Update mask
+            mask = 1 - done[..., None]
+            return (posterior.latent_state, mask, key), (prior, posterior)
 
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
-            (init_latent_state, key_scan),
+            (init_latent_state, init_mask, key_scan),
             (data.action, next_obs, data.done) # TODO: env interaction part may also need to check
         )
         return priors, posteriors
@@ -297,7 +297,7 @@ class Agent(eqx.Module):
     def learn(self, key: PRNGKeyArray):
         """Update world model, actor and critic."""
         key, key_memory, key_world, key_ac = jax.random.split(key, 4)
-        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory)
+        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory) # T x B
         metrics = {}
 
         @eqx.filter_value_and_grad(has_aux=True)
