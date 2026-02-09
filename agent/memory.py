@@ -2,7 +2,7 @@ import abc
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Tuple, Union
+from typing import Tuple
 from jaxtyping import PRNGKeyArray
 from envs import Transition
 
@@ -48,7 +48,7 @@ class Memory(eqx.Module):
 
 # Memory with uniform sampling
 class Uniform(Memory):
-    def add(self, transition: Transition, valid_length: Union[int, jax.Array] | None = None):
+    def add(self, transition: Transition, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
         index = (self.ptr + jnp.arange(batch_size)) % self.capacity
@@ -183,7 +183,7 @@ class Prioritized(Uniform):
         self.beta = beta
         self.sumtree = SumTree(capacity, chunk_size)
 
-    def add(self, transition: Transition, priority: jax.Array, valid_length: Union[int, jax.Array] | None = None):
+    def add(self, transition: Transition, priority: jax.Array, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         # Add priority first to use old parameters
         # If valid_length is not None, priority of data after that should zero
