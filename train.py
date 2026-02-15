@@ -96,7 +96,9 @@ class Trainer(eqx.Module):
         # Start with the initial agent: self.agent
         num_prefill_episodes = self.prefill_steps // self.episode_length
         keys = jax.random.split(key, num_prefill_episodes)
-        transitions, terminal_obs = jax.vmap(lambda k: self.interact(self.agent, k, prefill=True))(keys)
+        transitions, terminal_obs = jax.vmap(lambda k: self.interact(self.agent, k, prefill=True))(keys) # N x T x E
+        transitions = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), transitions) # (N x T) x E
+        terminal_obs = terminal_obs.reshape(-1, *terminal_obs.shape[2:]) # (N x T) x E
         agent = self.agent.add_experience(transitions, terminal_obs)
         return agent
 
@@ -186,6 +188,7 @@ class Trainer(eqx.Module):
             self.episode_length // num_envs,
         )
         transitions = jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y], axis=0), transition_init, transitions) # include the initial transition
+        terminal_obs = jnp.concatenate([transition_init.next_obs[None, ...], terminal_obs], axis=0)
         return transitions, terminal_obs
 
 

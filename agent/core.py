@@ -150,7 +150,7 @@ class Agent(eqx.Module):
 
         terminal_obs_flatten = flatten_fn(terminal_obs)
 
-        mask = transitions.done.transpose(1, 0).reshape(-1)
+        mask = transitions_flatten.done
         N = mask.shape[0]
 
         # Indices for step transitions; we replenish ones at done = True with terminal_obs
@@ -194,7 +194,7 @@ class Agent(eqx.Module):
         valid_length = N + jnp.sum(mask) # Actual length
         return jax.tree.map(merge_fn, step_transitions, reset_transitions), valid_length
 
-    def add_experience(self, transitions: Transition, terminal_obs: jax.Array | None = None) -> Agent:
+    def add_experience(self, transitions: Transition, terminal_obs: jax.Array | None = None) -> "Agent":
         transitions_flatten, valid_length = self.replenish_and_flatten(transitions, terminal_obs) # handle terminal obs; critical for world modeling e.g. predict reward
         new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
@@ -210,7 +210,7 @@ class Agent(eqx.Module):
         """
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
-        init_mask = jnp.ones_like(data.done[0])
+        init_mask = jnp.ones_like(data.done[0][..., None], dtype=jnp.int32)
         next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(self.process(data.next_obs)) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
