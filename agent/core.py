@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
-from typing import List, Tuple, Generic, TypeVar
+from typing import List, Tuple, Dict, Generic, TypeVar
 from jaxtyping import PRNGKeyArray
 
 import equinox as eqx
+import distrax
 import optax
 
 from envs import Transition
@@ -31,7 +32,7 @@ class Learner(eqx.Module, Generic[ModelType]):
         optimizer_state = optimizer.init(params)
         return cls(model, optimizer, optimizer_state)
 
-    def update(self, grads):
+    def update(self, grads) -> "Learner":
         if isinstance(grads, Learner):
             grads = grads.model
         updates, new_optimizer_state = self.optimizer.update(
@@ -92,13 +93,13 @@ class Agent(eqx.Module):
         # Extra particulars for agent learning
         self.__dict__.update(config.optimization())
 
-    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()):
+    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, self.random_init, batch_shape, key=key)
 
-    def process(self, obs):
+    def process(self, obs) -> jax.Array:
         return obs.astype(jnp.float32) / 255.0 - 0.5
 
-    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False):
+    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
         key_perceive, key_action = jax.random.split(key, 2)
         obs = jax.vmap(self.world.perception.encoder)(self.process(obs))
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
@@ -106,7 +107,7 @@ class Agent(eqx.Module):
         action = self.actor.sample(params, key_action, eval)
         return posterior.latent_state, action
 
-    def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray):
+    def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray) -> LatentStateWithParams:
         """Predict based on the belief without seeing observation."""
         params, belief = jax.vmap(self.world.transition)(latent_state, action)
         state = self.world.transition.sample(params, key)
@@ -117,7 +118,7 @@ class Agent(eqx.Module):
         )
         return prior
 
-    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray):
+    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray) -> Tuple[LatentStateWithParams, LatentStateWithParams]:
         """
         Perception is the process of recognizing existing knowledge or deriving new information from sensory inputs based on memory, representations, and predictive models.
         """
@@ -133,7 +134,7 @@ class Agent(eqx.Module):
         return prior, posterior
 
     @staticmethod
-    def replenish_and_flatten(transitions: Transition, terminal_obs: jax.Array | None = None) -> Transition:
+    def replenish_and_flatten(transitions: Transition, terminal_obs: jax.Array | None = None) -> Tuple[Transition, jax.Array]:
         def flatten_fn(x):
             # (T, B, ...) -> (B*T, ...)
             flattened = jnp.swapaxes(x, 0, 1).reshape(-1, *x.shape[2:])
@@ -203,7 +204,7 @@ class Agent(eqx.Module):
             new_memory
         )
 
-    def reason(self, data: Transition, key: PRNGKeyArray):
+    def reason(self, data: Transition, key: PRNGKeyArray) -> Tuple[LatentStateWithParams, LatentStateWithParams]:
         """
         Reason about the relationship among data and to the goal with contexts from predictive models or memory given a fixed belief;
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
@@ -233,7 +234,7 @@ class Agent(eqx.Module):
         )
         return priors, posteriors
 
-    def plan(self, latent_state: LatentState, key: PRNGKeyArray):
+    def plan(self, latent_state: LatentState, key: PRNGKeyArray) -> Tuple[jax.Array, distrax.Distribution]:
         # Imagination
         def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
             latent_state, key = carry
@@ -294,7 +295,7 @@ class Agent(eqx.Module):
 
         return return_predictions, value_dists
 
-    def learn(self, key: PRNGKeyArray):
+    def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
         """Update world model, actor and critic."""
         key, key_memory, key_world, key_ac = jax.random.split(key, 4)
         data = self.memory.sample((self.batch_size, self.chunk_size), key_memory) # T x B
