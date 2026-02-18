@@ -134,10 +134,10 @@ class Agent(eqx.Module):
         return prior, posterior
 
     @staticmethod
-    def replenish_and_flatten(transitions: Transition, terminal_obs: jax.Array | None = None) -> Tuple[Transition, jax.Array]:
+    def replenish_and_flatten(transitions: Transition, terminal_obs: jax.Array, source: int) -> Tuple[Transition, jax.Array]:
         def flatten_fn(x):
             # (T, B, ...) -> (B*T, ...)
-            flattened = jnp.swapaxes(x, 0, 1).reshape(-1, *x.shape[2:])
+            flattened = jnp.moveaxis(x, source=source, destination=source - 1).reshape(-1, *x.shape[source + 1:])
             # For storage
             if x.dtype == jnp.float32 and x.ndim > 3:
                 return flattened.astype(jnp.uint8)
@@ -170,11 +170,12 @@ class Agent(eqx.Module):
         )
 
         # Replenish terminal_obs
+        mask_expanded = mask.reshape((N,) + (1,) * (terminal_obs_flatten.ndim - 1))
         new_next_obs = jnp.where(
-            mask[:, None, None, None],
+            mask_expanded,
             terminal_obs_flatten,
             transitions_flatten.next_obs
-        ) # TODO: handle vector obs
+        )
         step_transitions = eqx.tree_at(
             lambda x: x.next_obs,
             transitions_flatten,
@@ -195,8 +196,8 @@ class Agent(eqx.Module):
         valid_length = N + jnp.sum(mask) # Actual length
         return jax.tree.map(merge_fn, step_transitions, reset_transitions), valid_length
 
-    def add_experience(self, transitions: Transition, terminal_obs: jax.Array | None = None) -> "Agent":
-        transitions_flatten, valid_length = self.replenish_and_flatten(transitions, terminal_obs) # handle terminal obs; critical for world modeling e.g. predict reward
+    def add_experience(self, transitions: Transition, terminal_obs: jax.Array | None = None, source: int = 1) -> "Agent":
+        transitions_flatten, valid_length = self.replenish_and_flatten(transitions, terminal_obs, source) # handle terminal obs; critical for world modeling e.g. predict reward
         new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
             lambda x: x.memory,
