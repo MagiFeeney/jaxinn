@@ -4,6 +4,7 @@ from jaxtyping import PRNGKeyArray
 
 import jax
 import jax.numpy as jnp
+from jax.sharding import Mesh, PartitionSpec as P
 import equinox as eqx
 
 from config import Config
@@ -190,8 +191,8 @@ class Trainer(eqx.Module):
 
 
 def main(args):
-    key = jax.random.PRNGKey(args.seed)
-    keys = jax.random.split(key, args.num_seeds)
+    devices = jax.devices()
+    mesh = Mesh(devices, axis_names=('parallel_dim',))
 
     @eqx.filter_jit
     @eqx.filter_vmap
@@ -200,8 +201,13 @@ def main(args):
         trainer = Trainer(args, key=key_agent)
         return trainer(key_train)
 
+    key = jax.random.PRNGKey(args.seed)
+    keys = jax.random.split(key, args.num_seeds)
+    sharding = jax.sharding.NamedSharding(mesh, P('parallel_dim'))
+    sharded_keys = jax.device_put(keys, sharding)
+
     # Parallel agents
-    final_agent, (metrics, evaluation) = train(keys)
+    final_agent, (metrics, evaluation) = train(sharded_keys)
     final_eval_return = evaluation[:, -1]
     print(
         f"{args.num_seeds} agents (multiple seeds) training completed!\n"
