@@ -245,9 +245,11 @@ class Agent(eqx.Module):
             action = self.actor.sample(params, key_action)
             prior = self.predict(latent_state, action, key_predict)
 
-            return (prior.latent_state, key), (prior.latent_state, action)
+            reward = jax.vmap(self.world.reward)(prior.latent_state).mean() # Equivalent to r(s, a, s') instead of r(s, a)
+            value_dist = jax.vmap(self.critic)(latent_state)
+            return (prior.latent_state, key), (reward, value_dist)
 
-        _, (latent_states, actions) = jax.lax.scan(
+        (last_latent_state, _), (rewards, value_dists) = jax.lax.scan(
             imagine_step_fn,
             (latent_state.detach(), key),
             None,
@@ -255,10 +257,7 @@ class Agent(eqx.Module):
         )
 
         # Processing data
-        rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states).mean() # Equivalent to r(s, a, s') instead of r(s, a)
-        last_value = jax.vmap(self.critic)(latent_states[-1]).mean()
-        latent_states = LatentState.concatenate([latent_state[None, ...], latent_states[:-1]], axis=0) # Shift one step left and concatenate the first step
-        value_dists = jax.vmap(jax.vmap(self.critic))(latent_states)
+        last_value = jax.vmap(self.critic)(last_latent_state).mean()
         values = value_dists.mean()
 
         dones = jnp.zeros_like(values)
