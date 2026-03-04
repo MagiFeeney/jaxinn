@@ -191,10 +191,7 @@ class Trainer(eqx.Module):
 
 
 def main(args):
-    devices = jax.devices()
-    mesh = Mesh(devices, axis_names=('parallel_dim',))
-
-    @eqx.filter_jit
+    @eqx.filter_pmap
     @eqx.filter_vmap
     def train(key):
         key_agent, key_train = jax.random.split(key)
@@ -203,12 +200,13 @@ def main(args):
 
     key = jax.random.PRNGKey(args.seed)
     keys = jax.random.split(key, args.num_seeds)
-    sharding = jax.sharding.NamedSharding(mesh, P('parallel_dim'))
-    sharded_keys = jax.device_put(keys, sharding)
+    num_devices = jax.device_count()
+    seeds_per_device = args.num_seeds // num_devices
+    keys = keys.reshape(num_devices, seeds_per_device, -1)
 
     # Parallel agents
-    final_agent, (metrics, evaluation) = train(sharded_keys)
-    final_eval_return = evaluation[:, -1]
+    final_agent, (metrics, evaluation) = train(keys)
+    final_eval_return = evaluation.reshape(args.num_seeds, -1)[:, -1]
     print(
         f"{args.num_seeds} agents (multiple seeds) training completed!\n"
         f"Achieved return:\n"
