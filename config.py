@@ -185,6 +185,7 @@ class Critic(ModelShared):
 @dataclass
 class Memory(Base):
     capacity: int = 1000000
+    device: Literal['cpu', 'gpu'] = 'gpu'
     type: Literal['uniform', 'prioritized'] = "uniform"
 
 

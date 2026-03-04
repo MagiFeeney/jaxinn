@@ -83,7 +83,8 @@ class Agent(eqx.Module):
         self.memory = memory_cls(
             capacity=config.memory.capacity,
             obs_shape=config.world.perception.encoder.shape,
-            action_size=config.world.transition.action_size
+            action_size=config.world.transition.action_size,
+            num_seeds=config.memory.num_seeds,
         )
         # For initialization of LatentState
         self.random_init = config.random_init
