@@ -6,28 +6,28 @@ from typing import Tuple
 from jaxtyping import PRNGKeyArray
 from envs import Transition
 
+from .storage import Storage, CPUStorage, GPUStorage
+
 
 # Base class
 class Memory(eqx.Module):
-    data: Transition
+    storage: Storage
     ptr: jax.Array
     size: jax.Array
     capacity: int = eqx.field(static=True)
 
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
         self.capacity = capacity
-        # Pre-allocate
-        self.data = Transition( # TODO: if there is performance gap, replace with zeros
-            action=jnp.empty((capacity, action_size)),
-            next_obs=jnp.empty((capacity, *obs_shape), dtype=jnp.uint8), # For memory efficiency
-            reward=jnp.empty(capacity),
-            done=jnp.empty(capacity, dtype=bool),
-        )
+        # Initialize data on either the CPU or GPU, depending on the memory requirements of the task
+        if num_seeds is not None:
+            self.storage = CPUStorage(num_seeds, capacity, obs_shape, action_size)
+        else:
+            self.storage = GPUStorage(capacity, obs_shape, action_size) # vmap automatically handle multiple seeds
         self.ptr = jnp.array(0)
         self.size = jnp.array(0)
 
     def __getattr__(self, name):
-        return getattr(self.data, name)
+        return getattr(self.storage, name)
 
     @property
     def full(self):
@@ -54,10 +54,7 @@ class Uniform(Memory):
         index = (self.ptr + jnp.arange(batch_size)) % self.capacity
 
         # Write new data
-        new_data = jax.tree.map(
-            lambda buf, batch: buf.at[index].set(batch),
-            self.data, transition
-        )
+        new_storage, token = self.storage.write(index, transition)
 
         # Get actual num. of data added
         if valid_length is not None:
@@ -66,13 +63,13 @@ class Uniform(Memory):
             num_data = batch_size
 
         # Update pointer and size
-        new_ptr = (self.ptr + num_data) % self.capacity
+        new_ptr = (self.ptr + num_data + token) % self.capacity
         new_size = jnp.minimum(self.size + num_data, self.capacity)
 
         return eqx.tree_at(
-            lambda m: (m.data, m.ptr, m.size),
+            lambda m: (m.storage, m.ptr, m.size),
             self,
-            (new_data, new_ptr, new_size)
+            (new_storage, new_ptr, new_size)
         )
 
     def sample(self, sample_shape: Tuple[int, ...], key: PRNGKeyArray):
@@ -83,11 +80,7 @@ class Uniform(Memory):
         offset = jnp.arange(chunk_size)
         sample_index = (offset[:, None] + batch_index[None, :]) % self.capacity # T x B
 
-        trajectories = jax.tree.map(
-            lambda x: x[sample_index],
-            self.data
-        )
-        return trajectories
+        return self.storage.read(sample_index)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
         start = jnp.where(
@@ -177,8 +170,8 @@ class Prioritized(Uniform):
     beta: float = eqx.field(static=True)
 
     # Require chunk_size to be given because we want to handle the overshooting during settling priorities
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, chunk_size: int, alpha=0.6, beta=0.4):
-        super().__init__(capacity, obs_shape, action_size)
+    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, chunk_size: int, num_seeds: int | None = None, alpha=0.6, beta=0.4):
+        super().__init__(capacity, obs_shape, action_size, num_seeds)
         self.alpha = alpha
         self.beta = beta
         self.sumtree = SumTree(capacity, chunk_size)

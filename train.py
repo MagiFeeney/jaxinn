@@ -33,6 +33,10 @@ class Trainer(eqx.Module):
         config.agent.actor.update({"action_size": self.env.action_size})
         config.agent.world.perception.encoder.update({"shape": self.env.observation_space.shape})
         config.agent.world.perception.decoder.update({"shape": self.env.observation_space.shape})
+        if config.agent.memory.device == "cpu":
+            config.agent.memory.num_seeds = config.num_seeds # Manually allocate memory for all seeds
+        else:
+            config.agent.memory.num_seeds = None             # vmap handles this
         self.agent = Agent(config.agent, key=key)
         self.__dict__.update(config.exploration())
 
@@ -212,6 +216,7 @@ def main(args):
         f"Achieved return:\n"
         f"{final_eval_return}"
     )
+
 
 if __name__ == "__main__":
     args = tyro.cli(Config)
