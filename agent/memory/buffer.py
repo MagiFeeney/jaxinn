@@ -12,11 +12,13 @@ from .storage import Storage, CPUStorage, GPUStorage
 # Base class
 class Memory(eqx.Module):
     storage: Storage
+    seed_idx: jax.Array   # Unique id to anchor data for multiple seeds
     ptr: jax.Array
     size: jax.Array
     capacity: int = eqx.field(static=True)
 
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
+    def __init__(self, seed_idx: jax.Array, capacity: int, obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
+        self.seed_idx = jnp.array(seed_idx, dtype=jnp.int32)
         self.capacity = capacity
         # Initialize data on either the CPU or GPU, depending on the memory requirements of the task
         if num_seeds is not None:
@@ -54,7 +56,7 @@ class Uniform(Memory):
         index = (self.ptr + jnp.arange(batch_size)) % self.capacity
 
         # Write new data
-        new_storage, token = self.storage.write(index, transition)
+        new_storage, token = self.storage.write(self.seed_idx, index, transition)
 
         # Get actual num. of data added
         if valid_length is not None:
@@ -62,7 +64,7 @@ class Uniform(Memory):
         else:
             num_data = batch_size
 
-        # Update pointer and size
+        # Update pointer and size; token is used to prevent xla "Dead code elimination"
         new_ptr = (self.ptr + num_data + token) % self.capacity
         new_size = jnp.minimum(self.size + num_data, self.capacity)
 
@@ -80,7 +82,7 @@ class Uniform(Memory):
         offset = jnp.arange(chunk_size)
         sample_index = (offset[:, None] + batch_index[None, :]) % self.capacity # T x B
 
-        return self.storage.read(sample_index)
+        return self.storage.read(self.seed_idx, sample_index)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
         start = jnp.where(
