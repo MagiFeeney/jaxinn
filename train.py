@@ -26,7 +26,7 @@ class Trainer(eqx.Module):
     num_eval_episodes: int = eqx.field(static=True)
     action_noise_std: float = eqx.field(static=True)
 
-    def __init__(self, config: Config, *, key: PRNGKeyArray):
+    def __init__(self, config: Config, *, key: PRNGKeyArray, memory_id: jax.Array):
         self.env = make_env(**config.env())
         # Update config with env particulars
         config.agent.world.transition.update({"action_size": self.env.action_size})
@@ -37,7 +37,7 @@ class Trainer(eqx.Module):
             config.agent.memory.num_seeds = config.num_seeds # Manually allocate memory for all seeds
         else:
             config.agent.memory.num_seeds = None             # vmap handles this
-        self.agent = Agent(config.agent, key=key)
+        self.agent = Agent(config.agent, key=key, memory_id=memory_id)
         self.__dict__.update(config.exploration())
 
     def __call__(self, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
@@ -197,9 +197,9 @@ class Trainer(eqx.Module):
 def main(args):
     @eqx.filter_pmap
     @eqx.filter_vmap
-    def train(key):
+    def train(key, memory_id):
         key_agent, key_train = jax.random.split(key)
-        trainer = Trainer(args, key=key_agent)
+        trainer = Trainer(args, key=key_agent, memory_id=memory_id)
         return trainer(key_train)
 
     key = jax.random.PRNGKey(args.seed)
@@ -208,8 +208,10 @@ def main(args):
     seeds_per_device = args.num_seeds // num_devices
     keys = keys.reshape(num_devices, seeds_per_device, -1)
 
+    memory_ids = jnp.arange(num_devices * seeds_per_device).reshape(num_devices, seeds_per_device) # For anchoring cpu memory if enabled
+
     # Parallel agents
-    final_agent, (metrics, evaluation) = train(keys)
+    final_agent, (metrics, evaluation) = train(keys, memory_ids)
     final_eval_return = evaluation.reshape(args.num_seeds, -1)[:, -1]
     print(
         f"{args.num_seeds} agents (multiple seeds) training completed!\n"
