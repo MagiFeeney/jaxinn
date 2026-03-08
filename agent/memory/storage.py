@@ -1,6 +1,6 @@
 import abc
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Any
 
 import jax
 import jax.numpy as jnp
@@ -45,10 +45,17 @@ class Storage(eqx.Module):
 class CPUStorage(Storage):
     host: HostRAM = eqx.field(static=True)
     num_seeds: int = eqx.field(static=True)
+    base_struct: Any = eqx.field(static=True)
 
     def __init__(self, num_seeds: int, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
         self.host = HostRAM(num_seeds, capacity, obs_shape, action_size)
         self.num_seeds = num_seeds
+
+        # Precompute to save compute
+        self.base_struct = jax.tree.map(
+            lambda x: jax.ShapeDtypeStruct(x.shape[2:], x.dtype),
+            self.host.data
+        )
 
     @property
     def data(self):
@@ -65,10 +72,9 @@ class CPUStorage(Storage):
 
     def read(self, seed_idx: jax.Array, sample_index: jax.Array):
         expected_struct = jax.tree.map(
-            lambda x: jax.ShapeDtypeStruct((*sample_index.shape, *x.shape[2:]), x.dtype),
-            self.host.data
+            lambda x: jax.ShapeDtypeStruct((*sample_index.shape, *x.shape), x.dtype),
+            self.base_struct
         )
-
         return jax.pure_callback(
             self.host.read, expected_struct,
             seed_idx, sample_index,
