@@ -203,9 +203,17 @@ def main(args):
         return trainer(key_train)
 
     key = jax.random.PRNGKey(args.seed)
-    keys = jax.random.split(key, args.num_seeds)
     num_devices = jax.device_count()
+    if args.num_seeds % num_devices != 0:
+        closest_lower = (args.num_seeds // num_devices) * num_devices
+        closest_higher = closest_lower + num_devices
+        raise ValueError(
+            f"Mismatch: args.num_seeds ({args.num_seeds}) is not divisible by "
+            f"num_devices ({num_devices}). \n"
+            f"Please set --num_seeds to {closest_lower} or {closest_higher}."
+        )
     seeds_per_device = args.num_seeds // num_devices
+    keys = jax.random.split(key, args.num_seeds)
     keys = keys.reshape(num_devices, seeds_per_device, -1)
 
     memory_ids = jnp.arange(num_devices * seeds_per_device).reshape(num_devices, seeds_per_device) # For anchoring cpu memory if enabled
@@ -214,7 +222,7 @@ def main(args):
     final_agent, (metrics, evaluation) = train(keys, memory_ids)
     final_eval_return = evaluation.reshape(args.num_seeds, -1)[:, -1]
     print(
-        f"{args.num_seeds} agents (multiple seeds) training completed!\n"
+        f"{args.num_seeds} agents/seeds training completed!\n"
         f"Achieved return:\n"
         f"{final_eval_return}"
     )
