@@ -7,7 +7,7 @@ import distrax
 
 from typing import Optional, Callable, Union, Dict, Tuple, Any
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn, dx, StaticCallable
+from .utils import get_activation_fn, get_precision_fn, dx, StaticCallable
 
 
 class LatentState(eqx.Module):
@@ -98,6 +98,7 @@ class Encoder(eqx.Module):
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
     embedding_size: Optional[int] = eqx.field(static=True)
+    dtype: str = eqx.field(static=True)
 
     def __init__(
             self,
@@ -107,10 +108,12 @@ class Encoder(eqx.Module):
             stride: int = 2,
             embedding_size: Optional[int] = 1024,
             activation_function: Union[str, Callable] = "elu",
+            dtype: str = "float32",
             *,
             key: PRNGKeyArray
     ):
         activation = get_activation_fn(activation_function)
+        self.dtype = get_precision_fn(dtype)
 
         if embedding_size is not None:
             keys = jax.random.split(key, 5)
@@ -118,13 +121,13 @@ class Encoder(eqx.Module):
             keys = jax.random.split(key, 4)
 
         self.body = eqx.nn.Sequential([
-            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, key=keys[0]),
+            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, key=keys[0], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, key=keys[1]),
+            eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, key=keys[1], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, key=keys[2]),
+            eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, key=keys[2], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, key=keys[3]),
+            eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, key=keys[3], dtype=self.dtype),
             StaticCallable(activation),
             StaticCallable(jnp.ravel),
         ])
@@ -146,12 +149,14 @@ class Encoder(eqx.Module):
             self,
             obs: Float[Array, "... obs_size"]
     ) -> Float[Array, "... output_size"]:
-        feature = self.body(obs)
+        obs = obs.astype(self.dtype)
+        feature = eqx.filter_checkpoint(self.body)(obs)
+        feature = feature.astype(jnp.float32) # upcast for stability
         out = self.head(feature)
         return out
 
     def get_feature_map_size(self, shape) -> int:
-        dummy_input = jnp.zeros(shape)
+        dummy_input = jnp.zeros(shape, dtype=self.dtype)
         out_shape_struct = jax.eval_shape(self.body, dummy_input)
         feature_map_size = math.prod(out_shape_struct.shape)
         return feature_map_size
@@ -165,6 +170,7 @@ class Decoder(eqx.Module):
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
     embedding_size: int = eqx.field(static=True)
+    dtype: str = eqx.field(static=True)
 
     def __init__(
             self,
@@ -176,10 +182,12 @@ class Decoder(eqx.Module):
             stride: int = 2,
             activation_function: Union[str, Callable] = "elu",
             embedding_size: int = 1024,
+            dtype: str = "float32",
             *,
             key: PRNGKeyArray
     ):
         activation = get_activation_fn(activation_function)
+        self.dtype = get_precision_fn(dtype)
 
         keys = jax.random.split(key, 5)
 
@@ -187,13 +195,13 @@ class Decoder(eqx.Module):
 
         self.body = eqx.nn.Sequential([
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(embedding_size, 4 * depth, kernel_size=5, stride=stride, key=keys[1]),
+            eqx.nn.ConvTranspose2d(embedding_size, 4 * depth, kernel_size=5, stride=stride, key=keys[1], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=5, stride=stride, key=keys[2]),
+            eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=5, stride=stride, key=keys[2], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=6, stride=stride, key=keys[3]),
+            eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=6, stride=stride, key=keys[3], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=6, stride=stride, key=keys[4]),
+            eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=6, stride=stride, key=keys[4], dtype=self.dtype),
         ])
 
         self.shape = shape
@@ -209,8 +217,9 @@ class Decoder(eqx.Module):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         embedding = self.embedding(latent_state)
-        embedding = embedding[..., None, None] # Reshape the vector to BCHW
-        out = self.body(embedding)
+        embedding = embedding[..., None, None].astype(self.dtype) # Reshape the vector to BCHW
+        out = eqx.filter_checkpoint(self.body)(embedding)
+        out = out.astype(jnp.float32)
         dist = dx.Normal(out, jnp.ones_like(out))
         return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
 

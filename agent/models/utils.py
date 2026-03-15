@@ -1,10 +1,15 @@
 import jax
 import jax.nn as jnn
-from typing import Callable, Union, Any
+from typing import Callable, Union, Dict, Any
 from jaxtyping import PyTree, Array, PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
 import distrax
+
+
+RegisteredItem = Union[str, Callable]
+Activation = RegisteredItem
+Dtype = RegisteredItem
 
 
 ACTIVATIONS = {
@@ -18,19 +23,31 @@ ACTIVATIONS = {
 }
 
 
-Activation = Union[str, Callable]
+DTYPES = {
+    "float16": jnp.float16,
+    "bfloat16": jnp.bfloat16,
+    "float32": jnp.float32,
+    "float64": jnp.float64,
+}
 
 
-def get_activation_fn(name_or_fn) -> Callable:
-    if isinstance(name_or_fn, str):
-        try:
-            return ACTIVATIONS[name_or_fn.lower()]
-        except KeyError:
-            raise ValueError(f"Unknown activation: {name_or_fn}")
-    elif callable(name_or_fn):
-        return name_or_fn
-    else:
-        raise TypeError(f"Expected str or callable, got {type(name_or_fn)}")
+def _create_getter(registry: Dict[str, Any], entity_name: str) -> Callable[[RegisteredItem], Callable]:
+    """Generates a getter function for a specific registry."""
+    def getter(name_or_fn: RegisteredItem) -> Callable:
+        if isinstance(name_or_fn, str):
+            try:
+                return registry[name_or_fn.lower()]
+            except KeyError:
+                raise ValueError(f"Unknown {entity_name}: {name_or_fn}")
+        elif callable(name_or_fn):
+            return name_or_fn
+        else:
+            raise TypeError(f"Expected str or callable, got {type(name_or_fn)}")
+    return getter
+
+
+get_activation_fn = _create_getter(ACTIVATIONS, "activation")
+get_precision_fn = _create_getter(DTYPES, "dtype")
 
 
 class StaticCallable(eqx.Module):
