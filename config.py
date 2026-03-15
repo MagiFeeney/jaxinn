@@ -99,6 +99,7 @@ class Decoder(ModelShared, PerceptionShared):
     activation_function: str = "elu"
     dtype: str = "bfloat16"
 
+
 @dataclass
 class Perception(Model):
     encoder: Encoder = field(default_factory=Encoder)

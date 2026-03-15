@@ -1,5 +1,6 @@
 import jax
 import jax.nn as jnn
+import jax.numpy as jnp
 from typing import Callable, Union, Dict, Any
 from jaxtyping import PyTree, Array, PRNGKeyArray
 import equinox as eqx
