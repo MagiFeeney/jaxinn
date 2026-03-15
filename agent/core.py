@@ -216,9 +216,7 @@ class Agent(eqx.Module):
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
         init_mask = jnp.ones_like(data.done[0][..., None], dtype=jnp.int32)
-        batched_encoder = jax.vmap(jax.vmap(self.world.perception.encoder))
-        checkpointed_encoder = jax.checkpoint(batched_encoder)
-        next_obs = checkpointed_encoder(self.process(data.next_obs)) # Launch kernel once
+        next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(self.process(data.next_obs)) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
             latent_state, last_mask, key = carry
@@ -316,19 +314,7 @@ class Agent(eqx.Module):
             prior, posterior = agent.reason(data, key)
 
             reward_loss = -jax.vmap(jax.vmap(agent.world.reward))(posterior.latent_state).log_prob(data.reward).mean()
-
-            batched_decoder = jax.vmap(agent.world.perception.decoder)
-            checkpointed_decoder = jax.checkpoint(batched_decoder)
-            def decode_and_loss(inputs):
-                latent, target_obs = inputs
-                dist = checkpointed_decoder(latent)
-                return dist.log_prob(target_obs)
-            obs_log_probs = jax.lax.map(
-                decode_and_loss,
-                (posterior.latent_state, data.next_obs)
-            )
-            observation_loss = -obs_log_probs.mean()
-
+            observation_loss = -jax.vmap(jax.vmap(agent.world.perception.decoder))(posterior.latent_state).log_prob(data.next_obs).mean()
             kl_loss = posterior.kl_divergence(prior.dist).mean()
             total_loss = reward_loss + observation_loss + kl_loss
 
