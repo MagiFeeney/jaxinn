@@ -91,12 +91,13 @@ class OptimizerShared(Base):
 @dataclass
 class Encoder(PerceptionShared):
     activation_function: str = "elu"
+    dtype: str = "bfloat16"
 
 
 @dataclass
 class Decoder(ModelShared, PerceptionShared):
     activation_function: str = "elu"
-
+    dtype: str = "bfloat16"
 
 @dataclass
 class Perception(Model):
