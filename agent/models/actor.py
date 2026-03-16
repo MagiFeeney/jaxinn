@@ -168,6 +168,9 @@ class Actor(eqx.Module):
             mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
             std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
             params = {"mean": mean, "std": std}
+        elif self.head_type == "Categorical":
+            logit = out
+            params = {"logits": logit}
 
         return params
 
@@ -181,6 +184,12 @@ class Actor(eqx.Module):
             dist = dx(AffineBeta)(**params)
         elif self.head_type == "Tanh Normal":
             dist = dx(TanhNormal)(**params)
+        elif self.head_type == "Categorical":
+            dist = dx.OneHotCategorical(**params)
+            # Same for both train and eval
+            action = dist.sample(seed=key)
+            action = action + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
+            return action
 
         dist = dx.Independent(dist, reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
         sample_dist = SampleDist(dist)
@@ -188,4 +197,4 @@ class Actor(eqx.Module):
         if det:
             return sample_dist.mode(seed=key)
         else:
-            return sample_dist.sample(seed=key) # TODO: add action_noise
+            return sample_dist.sample(seed=key)

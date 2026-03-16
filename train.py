@@ -24,7 +24,7 @@ class Trainer(eqx.Module):
     train_iterations: int = eqx.field(static=True)
     episode_length: int = eqx.field(static=True)
     num_eval_episodes: int = eqx.field(static=True)
-    action_noise_std: float = eqx.field(static=True)
+    action_noise: float = eqx.field(static=True)
 
     def __init__(self, config: Config, *, key: PRNGKeyArray, memory_id: jax.Array):
         self.env = make_env(**config.env())
@@ -162,9 +162,18 @@ class Trainer(eqx.Module):
             last_latent_state, last_action, obs, key = operand
             key_act, key_noise = jax.random.split(key, 2)
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
-            if not eval and self.action_noise_std > 0:
-                noise = jax.random.normal(key_noise, shape=action.shape) * self.action_noise_std
-                action = jnp.clip(action + noise, -1.0, 1.0)
+            if not eval and self.action_noise > 0:
+                if self.env.is_action_space_discrete:
+                    key_idx, key_cond = jax.random.split(key_noise, 2)
+                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.action_size)
+                    expl_action = jax.nn.one_hot(random_idx, self.env.action_size)
+
+                    should_explore = jax.random.uniform(key_cond, (*action.shape[:-1], 1)) < self.action_noise
+                    action = jnp.where(should_explore, expl_action, action)
+                else:
+                    noise = jax.random.normal(key_noise, shape=action.shape) * self.action_noise
+                    action = jnp.clip(action + noise, -1.0, 1.0)
+
             return latent_state, action
 
         def interact_step_fn(carry, _):

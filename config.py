@@ -159,7 +159,7 @@ class Actor(ModelShared):
     activation_function: str = "elu"
     action_size: Optional[int] = None # Pass from the env params
     min_std: float = 0.0
-    head_type: Literal['Tanh Normal', 'Beta'] = "Tanh Normal"
+    head_type: Literal['Tanh Normal', 'Beta', 'Categorical'] = "Tanh Normal"
 
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
@@ -208,7 +208,7 @@ class Exploration(Base):
     train_iterations: int = 100
     episode_length: int = 1000
     num_eval_episodes: int = 10
-    action_noise_std: float = 0.3
+    action_noise: float = 0.3
 
 
 # Optimization
