@@ -90,7 +90,7 @@ class LatentStateWithParams(eqx.Module):
 
 
 # Perception
-class Encoder(eqx.Module):
+class CNNEncoder(eqx.Module):
     body: eqx.nn.Sequential
     head: Union[eqx.nn.Linear, eqx.nn.Identity]
     shape: Tuple[int, int, int] = eqx.field(static=True)
@@ -162,7 +162,47 @@ class Encoder(eqx.Module):
         return feature_map_size
 
 
-class Decoder(eqx.Module):
+class LinearEncoder(eqx.Module):
+    net: eqx.Module
+
+    def __init__(
+            self,
+            shape: Tuple[int, ...],
+            hidden_size: Optional[int] = None,
+            output_size: Optional[int] = None,
+            num_layers: Optional[int] = None,
+            activation_function: Union[str, Callable] = "elu",
+            *,
+            key: PRNGKeyArray
+    ):
+        assert len(shape) == 1, (
+            f"Expected a 1D shape, but got shape {shape} with {len(shape)} dimensions "
+            f"in {self.__class__.__name__}."
+        )
+        activation = get_activation_fn(activation_function)
+
+        if hidden_size is not None and \
+           output_size is not None and \
+           num_layers is not None:
+            self.net = eqx.nn.MLP(
+                in_size = shape[0],
+                out_size = output_size,
+                width_size = hidden_size,
+                depth = num_layers,
+                activation = StaticCallable(activation),
+                key = key
+            )
+        else:
+            self.net = eqx.nn.Identity()
+
+    def __call__(
+            self,
+            obs: Float[Array, "... obs_size"]
+    ) -> Float[Array, "... output_size"]:
+        return self.net(obs)
+
+
+class CNNDecoder(eqx.Module):
     embedding: eqx.nn.Linear
     body: eqx.nn.Sequential
     shape: Tuple[int, int, int] = eqx.field(static=True)
@@ -222,6 +262,46 @@ class Decoder(eqx.Module):
         out = out.astype(jnp.float32)
         dist = dx.Normal(out, jnp.ones_like(out))
         return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
+
+
+class LinearDecoder(eqx.Module):
+    net: eqx.Module
+
+    def __init__(
+            self,
+            shape: Tuple[int, ...],
+            belief_size: int,
+            state_size: int,
+            hidden_size: int,
+            num_layers: int,
+            activation_function: Union[str, Callable] = "elu",
+            *,
+            key: PRNGKeyArray
+    ):
+        assert len(shape) == 1, (
+            f"Expected a 1D shape, but got shape {shape} with {len(shape)} dimensions "
+            f"in {self.__class__.__name__}."
+        )
+        activation = get_activation_fn(activation_function)
+
+        self.net = eqx.nn.MLP(
+            in_size = belief_size + state_size,
+            out_size = shape[0],
+            width_size = hidden_size,
+            depth = num_layers,
+            activation = StaticCallable(activation),
+            key = key
+        )
+
+    def __call__(
+            self,
+            latent_state: Union[Float[Array, "... input_size"], LatentState],
+    ) -> distrax.Distribution:
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+        out = self.net(latent_state)
+        dist = dx.Normal(out, jnp.ones_like(out))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(1))
 
 
 # Representation
@@ -484,14 +564,31 @@ class Reward(eqx.Module):
         return dist
 
 
+# Add your own registries!
+PERCEPTION_REGISTRY = {
+    "cnn": (CNNEncoder, CNNDecoder),
+    "linear": (LinearEncoder, LinearDecoder)
+}
+
+
 class Perception(eqx.Module):
     encoder: Encoder
     decoder: Decoder
 
-    def __init__(self, encoder, decoder, *, key: PRNGKeyArray):
+    def __init__(self, type, domain, encoder, decoder, *, key: PRNGKeyArray):
         key_encoder, key_decoder = jax.random.split(key, 2)
-        self.encoder = Encoder(**encoder(), key=key_encoder)
-        self.decoder = Decoder(**decoder(), key=key_decoder)
+
+        encoder_cls, decoder_cls = PERCEPTION_REGISTRY[type]
+
+        if len(encoder.shape) == 1:
+            assert domain == "state" and domain == "state" , \
+                f"State-based task (1D) requires a state module. Got {type}."
+        else:
+            assert domain == "pixel" and domain == "pixel" , \
+                f"Pixel-based task (3D+) requires a spatial module. Got {type}."
+
+        self.encoder = encoder_cls(**encoder(), key=key_encoder)
+        self.decoder = decoder_cls(**decoder(), key=key_decoder)
 
 
 class World(eqx.Module):
