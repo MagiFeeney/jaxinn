@@ -36,6 +36,36 @@ class Transition(eqx.Module):
     done: Bool[Array, ""]
 
 
+def process_obs(obs: jax.Array) -> jax.Array:
+    """Process observation from NHWC to NCHW for the image input while turning the 2D input as gray image."""
+    if obs.ndim == 3 and obs.shape[-1] in (1, 3, 4, 6):
+        obs = jnp.moveaxis(obs, source=-1, destination=-3)
+    elif obs.ndim == 2:
+        obs = obs[None, ...]    # Convert to gray image
+
+    return obs
+
+
+def process_observation_space(space: Any) -> Any:
+    """Align with and reflect the processed observation."""
+    if hasattr(space, 'spaces') and isinstance(space.spaces, dict):
+        new_spaces = {k: process_observation_space(v) for k, v in space.spaces.items()}
+        return type(space)(new_spaces)
+
+    if hasattr(space, 'shape') and hasattr(space, 'low') and hasattr(space, 'high'):
+        if len(space.shape) == 3 and space.shape[-1] in (1, 3, 4, 6):
+            new_shape = (space.shape[2], space.shape[0], space.shape[1])
+            low = jnp.moveaxis(space.low, -1, -3) if getattr(space.low, 'ndim', 0) == 3 else space.low
+            high = jnp.moveaxis(space.high, -1, -3) if getattr(space.high, 'ndim', 0) == 3 else space.high
+            return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
+        elif len(space.shape) == 2:
+            new_shape = (1, space.shape[0], space.shape[1])
+            low = space.low[None, ...] if getattr(space.low, 'ndim', 0) == 2 else space.low
+            high = space.high[None, ...] if getattr(space.high, 'ndim', 0) == 2 else space.high
+            return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
+    return space
+
+
 class Environment(eqx.Module):
     env: Any = eqx.field(static=True)
     env_params: Any = eqx.field(static=True)
@@ -56,6 +86,11 @@ class Environment(eqx.Module):
     @property
     @abc.abstractmethod
     def action_space(self):
+        pass
+
+    @property
+    @abc.abstractmethod
+    def action_size(self):
         pass
 
     @property

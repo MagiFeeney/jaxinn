@@ -4,7 +4,7 @@ from typing import Any, Callable, Optional, Tuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Transition, Environment, EnvInfo
+from envs.environment import Transition, Environment, EnvInfo, process_obs, process_observation_space
 
 from gymnax.environments.spaces import Discrete
 from gymnax.environments.environment import Environment as GymnaxEnvironment
@@ -29,6 +29,7 @@ class Craftax(Environment):     # TODO: subclass gymnax instead
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, CraftaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
+        obs = process_obs(obs)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
@@ -44,6 +45,7 @@ class Craftax(Environment):     # TODO: subclass gymnax instead
     def step(self, key: PRNGKeyArray, env_state: CraftaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, CraftaxEnvState]:
         """Step the environment."""
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
+        next_obs = process_obs(next_obs)
         transition = Transition(
             action=action,
             next_obs=next_obs,
@@ -58,7 +60,9 @@ class Craftax(Environment):     # TODO: subclass gymnax instead
 
     @property
     def observation_space(self):
-        return self.env.observation_space(self.env_params)
+        space = self.env.observation_space(self.env_params)
+        space = process_observation_space(space)
+        return space
 
     @property
     def action_space(self):

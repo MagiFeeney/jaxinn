@@ -88,22 +88,81 @@ class OptimizerShared(Base):
 
 
 # World Model
+## For pixel-based tasks
 @dataclass
-class Encoder(PerceptionShared):
+class CNNEncoder(PerceptionShared):
     activation_function: str = "elu"
     dtype: str = "bfloat16"
 
 
 @dataclass
-class Decoder(ModelShared, PerceptionShared):
+class CNNDecoder(ModelShared, PerceptionShared):
     activation_function: str = "elu"
     dtype: str = "bfloat16"
+
+
+## For state-based tasks
+@dataclass
+class LinearEncoder(Base):
+    shape: Optional[Tuple[int, ...]] = None # known at runtime
+    hidden_size: Optional[int] = None
+    output_size: Optional[int] = None
+    num_layers: Optional[int] = None
+    activation_function: str = "elu"
+
+
+@dataclass
+class LinearDecoder(ModelShared):
+    hidden_size: int = 300
+    shape: Optional[Tuple[int, ...]] = None # known at runtime
+    num_layers: int = 3
+    activation_function: str = "elu"
+
+
+CONFIG_REGISTRY = {
+    "cnn": (CNNEncoder, CNNDecoder),
+    "linear": (LinearEncoder, LinearDecoder)
+}
+
+
+PIXEL_ARCHS = {"cnn"}
+STATE_ARCHS = {"linear"}
+
+
+def arch_to_domain(arch):
+    if arch in PIXEL_ARCHS:
+        return "pixel"
+    elif arch in STATE_ARCHS:
+        return "state"
+    else:
+        raise NotImplementedError(f"Architecture {arch} is currently not supported or classified.")
 
 
 @dataclass
 class Perception(Model):
-    encoder: Encoder = field(default_factory=Encoder)
-    decoder: Decoder = field(default_factory=Decoder)
+    type: str = "cnn"
+    domain: Optional[str] = None
+
+    encoder: Optional[Any] = None
+    decoder: Optional[Any] = None
+
+    def __post_init__(self):
+        if self.type not in CONFIG_REGISTRY:
+            raise ValueError(f"Unknown perception type: '{self.type}'")
+
+        encoder_cls, decoder_cls = CONFIG_REGISTRY[self.type]
+
+        if self.encoder is None:
+            self.encoder = encoder_cls()
+        elif isinstance(self.encoder, dict):
+            self.encoder = encoder_cls(**self.encoder)
+
+        if self.decoder is None:
+            self.decoder = decoder_cls()
+        elif isinstance(self.decoder, dict):
+            self.decoder = decoder_cls(**self.decoder)
+
+        self.domain = arch_to_domain(self.type)
 
 
 @dataclass
@@ -223,7 +282,7 @@ class Optimization(Base):
 
 # All about agent
 @dataclass
-class Agent:
+class Agent(Base):
     world: World = field(default_factory=World)
     actor: Actor = field(default_factory=Actor)
     critic: Critic = field(default_factory=Critic)
