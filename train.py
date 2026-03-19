@@ -240,7 +240,7 @@ def main(args):
 
 if __name__ == "__main__":
     # Grab the env id
-    env_selector, unknown = tyro.cli(
+    env_selector, _ = tyro.cli(
         EnvSelector,
         return_unknown_args=True
     )
@@ -249,7 +249,6 @@ if __name__ == "__main__":
     # Final CLI Pass
     args = tyro.cli(
         Config,
-        args=unknown,
         default=get_config(env_id)
     )
 
