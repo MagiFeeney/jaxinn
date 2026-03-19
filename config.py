@@ -104,7 +104,7 @@ class CNNDecoder(ModelShared, PerceptionShared):
 ## For state-based tasks
 @dataclass
 class LinearEncoder(Base):
-    shape: Optional[Tuple[int, ...]] = None # known at runtime
+    shape: Optional[Tuple[int, ...]] = None # known at runtime; as input
     hidden_size: Optional[int] = None
     output_size: Optional[int] = None
     num_layers: Optional[int] = None
@@ -113,8 +113,8 @@ class LinearEncoder(Base):
 
 @dataclass
 class LinearDecoder(ModelShared):
+    shape: Optional[Tuple[int, ...]] = None # known at runtime; as ouput
     hidden_size: int = 300
-    shape: Optional[Tuple[int, ...]] = None # known at runtime
     num_layers: int = 3
     activation_function: str = "elu"
 
@@ -152,15 +152,17 @@ class Perception(Model):
 
         encoder_cls, decoder_cls = CONFIG_REGISTRY[self.type]
 
-        if self.encoder is None:
-            self.encoder = encoder_cls()
-        elif isinstance(self.encoder, dict):
-            self.encoder = encoder_cls(**self.encoder)
+        if self.encoder is None or not isinstance(self.encoder, encoder_cls):
+            if isinstance(self.encoder, dict):
+                self.encoder = encoder_cls(**self.encoder)
+            else:
+                self.encoder = encoder_cls()
 
-        if self.decoder is None:
-            self.decoder = decoder_cls()
-        elif isinstance(self.decoder, dict):
-            self.decoder = decoder_cls(**self.decoder)
+        if self.decoder is None or not isinstance(self.decoder, decoder_cls):
+            if isinstance(self.decoder, dict):
+                self.decoder = decoder_cls(**self.decoder)
+            else:
+                self.decoder = decoder_cls()
 
         self.domain = arch_to_domain(self.type)
 

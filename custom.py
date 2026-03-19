@@ -67,7 +67,6 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
     applying family-level overrides first, then env-specific overrides, lastly custom overrides if any.
     """
     config = Config()
-    config.env.env_id = env_id
 
     env_family = env_id.split("/")[0] if "/" in env_id else None
 
