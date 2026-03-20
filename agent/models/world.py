@@ -571,9 +571,13 @@ PERCEPTION_REGISTRY = {
 }
 
 
+EncoderType = Union[CNNEncoder, LinearEncoder]
+DecoderType = Union[CNNDecoder, LinearDecoder]
+
+
 class Perception(eqx.Module):
-    encoder: Encoder
-    decoder: Decoder
+    encoder: EncoderType
+    decoder: DecoderType
 
     def __init__(self, type, domain, encoder, decoder, *, key: PRNGKeyArray):
         key_encoder, key_decoder = jax.random.split(key, 2)
@@ -599,7 +603,7 @@ class World(eqx.Module):
 
     def __init__(self, perception, representation, transition, reward, *, key: PRNGKeyArray):
         key_perception, key_representation, key_transition, key_reward = jax.random.split(key, 4)
-        self.perception = Perception(**perception(), key=key_perception)
+        self.perception = Perception(perception.type, perception.domain, **perception(), key=key_perception)
         self.representation = Representation(**representation(), key=key_representation)
         self.transition = Transition(**transition(), key=key_transition)
         self.reward = Reward(**reward(), key=key_reward)
