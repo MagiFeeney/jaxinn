@@ -89,10 +89,5 @@ class Environment(eqx.Module):
         pass
 
     @property
-    @abc.abstractmethod
-    def action_size(self):
-        pass
-
-    @property
     def is_action_space_discrete(self) -> bool:
         return type(self.action_space).__name__ == "Discrete"
