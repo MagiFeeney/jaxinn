@@ -28,7 +28,7 @@ class Trainer(eqx.Module):
     action_noise: float = eqx.field(static=True)
 
     def __init__(self, config: Config, *, key: PRNGKeyArray, memory_id: jax.Array):
-        self.env = make_env(**config.env())
+        self.env = make_env(**config.env(), wrapper=config.env.wrapper())
         # Update config with env particulars
         config.agent.world.transition.update({"action_size": self.env.action_size})
         config.agent.actor.update({"action_size": self.env.action_size})

@@ -97,16 +97,18 @@ class CNNEncoder(eqx.Module):
     kernel_size: int = eqx.field(static=True)
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
-    embedding_size: Optional[int] = eqx.field(static=True)
+    embedding_size: int = eqx.field(static=True)
     dtype: str = eqx.field(static=True)
+
+    feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
 
     def __init__(
             self,
             shape: Tuple[int, int, int],
+            embedding_size: int,
             kernel_size: int = 4,
             depth: int = 48,
             stride: int = 2,
-            embedding_size: Optional[int] = 1024,
             activation_function: Union[str, Callable] = "elu",
             dtype: str = "float32",
             *,
@@ -115,35 +117,29 @@ class CNNEncoder(eqx.Module):
         activation = get_activation_fn(activation_function)
         self.dtype = get_precision_fn(dtype)
 
-        if embedding_size is not None:
-            keys = jax.random.split(key, 5)
-        else:
-            keys = jax.random.split(key, 4)
+        keys = jax.random.split(key, 5)
 
         self.body = eqx.nn.Sequential([
-            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, key=keys[0], dtype=self.dtype),
+            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[0], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, key=keys[1], dtype=self.dtype),
+            eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[1], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, key=keys[2], dtype=self.dtype),
+            eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[2], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, key=keys[3], dtype=self.dtype),
+            eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[3], dtype=self.dtype),
             StaticCallable(activation),
             StaticCallable(jnp.ravel),
         ])
 
-        feature_map_size = self.get_feature_map_size(shape)
-        if embedding_size is not None:
-            self.embedding_size = embedding_size
-            self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=keys[4])
-        else:
-            self.embedding_size = feature_map_size
-            self.head = eqx.nn.Identity()
+        self.feature_map_shape = self.get_feature_map_shape(shape)
+        feature_map_size = math.prod(self.feature_map_shape)
+        self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=keys[4])
 
         self.shape = shape
         self.kernel_size = kernel_size
         self.depth = depth
         self.stride = stride
+        self.embedding_size = embedding_size
 
     def __call__(
             self,
@@ -155,11 +151,77 @@ class CNNEncoder(eqx.Module):
         out = self.head(feature)
         return out
 
-    def get_feature_map_size(self, shape) -> int:
+    def get_feature_map_shape(self, shape) -> int:
         dummy_input = jnp.zeros(shape, dtype=self.dtype)
-        out_shape_struct = jax.eval_shape(self.body, dummy_input)
-        feature_map_size = math.prod(out_shape_struct.shape)
-        return feature_map_size
+        out = jax.eval_shape(self.body[:-1], dummy_input) # exclude ravel
+        return out.shape
+
+
+class CNNDecoder(eqx.Module):
+    embedding: eqx.nn.Linear
+    body: eqx.nn.Sequential
+    shape: Tuple[int, int, int] = eqx.field(static=True)
+    kernel_size: int = eqx.field(static=True)
+    depth: int = eqx.field(static=True)
+    stride: int = eqx.field(static=True)
+    dtype: str = eqx.field(static=True)
+
+    feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
+
+    def __init__(
+            self,
+            belief_size: int,
+            state_size: int,
+            shape: Tuple[int, int, int],
+            feature_map_shape: Tuple[int, int, int],
+            kernel_size: int = 4,
+            depth: int = 48,
+            stride: int = 2,
+            activation_function: Union[str, Callable] = "elu",
+            dtype: str = "float32",
+            *,
+            key: PRNGKeyArray
+    ):
+        activation = get_activation_fn(activation_function)
+        self.dtype = get_precision_fn(dtype)
+        self.feature_map_shape = feature_map_shape
+        feature_map_size = math.prod(feature_map_shape)
+
+        keys = jax.random.split(key, 5)
+
+        self.embedding = eqx.nn.Linear(belief_size + state_size, feature_map_size, key=keys[0])
+        self.body = eqx.nn.Sequential([
+            StaticCallable(activation),
+            eqx.nn.ConvTranspose2d(feature_map_shape[0], 4 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[1], dtype=self.dtype),
+            StaticCallable(activation),
+            eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[2], dtype=self.dtype),
+            StaticCallable(activation),
+            eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[3], dtype=self.dtype),
+            StaticCallable(activation),
+            eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[4], dtype=self.dtype),
+        ])
+
+        self.shape = shape
+        self.kernel_size = kernel_size
+        self.depth = depth
+        self.stride = stride
+
+    def __call__(
+            self,
+            latent_state: Union[Float[Array, "... input_size"], LatentState],
+    ) -> distrax.Distribution:
+        if isinstance(latent_state, LatentState):
+            latent_state = latent_state.feature
+        embedding = self.embedding(latent_state)
+        embedding = embedding.reshape(embedding.shape[:-1] + self.feature_map_shape).astype(self.dtype)
+        out = eqx.filter_checkpoint(self.body)(embedding)
+        out = out.astype(jnp.float32)
+
+        if out.shape[-3:] != self.shape:
+            out = jax.image.resize(out, shape=out.shape[:-3] + self.shape, method="bilinear")
+
+        dist = dx.Normal(out, jnp.ones_like(out))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
 
 
 class LinearEncoder(eqx.Module):
@@ -200,68 +262,6 @@ class LinearEncoder(eqx.Module):
             obs: Float[Array, "... obs_size"]
     ) -> Float[Array, "... output_size"]:
         return self.net(obs)
-
-
-class CNNDecoder(eqx.Module):
-    embedding: eqx.nn.Linear
-    body: eqx.nn.Sequential
-    shape: Tuple[int, int, int] = eqx.field(static=True)
-    kernel_size: int = eqx.field(static=True)
-    depth: int = eqx.field(static=True)
-    stride: int = eqx.field(static=True)
-    embedding_size: int = eqx.field(static=True)
-    dtype: str = eqx.field(static=True)
-
-    def __init__(
-            self,
-            belief_size: int,
-            state_size: int,
-            shape: Tuple[int, int, int],
-            kernel_size: int = 4,
-            depth: int = 48,
-            stride: int = 2,
-            activation_function: Union[str, Callable] = "elu",
-            embedding_size: int = 1024,
-            dtype: str = "float32",
-            *,
-            key: PRNGKeyArray
-    ):
-        activation = get_activation_fn(activation_function)
-        self.dtype = get_precision_fn(dtype)
-
-        keys = jax.random.split(key, 5)
-
-        self.embedding = eqx.nn.Linear(belief_size + state_size, embedding_size, key=keys[0])
-
-        self.body = eqx.nn.Sequential([
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(embedding_size, 4 * depth, kernel_size=5, stride=stride, key=keys[1], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=5, stride=stride, key=keys[2], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=6, stride=stride, key=keys[3], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=6, stride=stride, key=keys[4], dtype=self.dtype),
-        ])
-
-        self.shape = shape
-        self.kernel_size = kernel_size
-        self.depth = depth
-        self.stride = stride
-        self.embedding_size = embedding_size
-
-    def __call__(
-            self,
-            latent_state: Union[Float[Array, "... input_size"], LatentState],
-    ) -> distrax.Distribution:
-        if isinstance(latent_state, LatentState):
-            latent_state = latent_state.feature
-        embedding = self.embedding(latent_state)
-        embedding = embedding[..., None, None].astype(self.dtype) # Reshape the vector to BCHW
-        out = eqx.filter_checkpoint(self.body)(embedding)
-        out = out.astype(jnp.float32)
-        dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
 
 
 class LinearDecoder(eqx.Module):
@@ -592,7 +592,10 @@ class Perception(eqx.Module):
                 f"Pixel-based task (3D+) requires a spatial module. Got {type}."
 
         self.encoder = encoder_cls(**encoder(), key=key_encoder)
-        self.decoder = decoder_cls(**decoder(), key=key_decoder)
+        if type == "cnn":
+            self.decoder = decoder_cls(feature_map_shape=self.encoder.feature_map_shape, **decoder(), key=key_decoder)
+        else:
+            self.decoder = decoder_cls(**decoder(), key=key_decoder)
 
 
 class World(eqx.Module):
