@@ -83,6 +83,8 @@ class Gymnax(Environment):
         """Step the environment."""
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
         next_obs = process_obs(next_obs)
+        if "terminal_observation" in info:
+            info["terminal_observation"] = process_obs(info["terminal_observation"])
         transition = Transition(
             action=action,
             next_obs=next_obs,

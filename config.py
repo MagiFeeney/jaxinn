@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict, is_dataclass
-from typing import Tuple, Any, Optional, Literal
+from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
 
 
@@ -76,7 +76,7 @@ class ModelShared(Model):
 class PerceptionShared(Model):
     """Shared parameters across perception modules."""
     shape: Optional[Tuple[int, ...]] = None
-    embedding_size: int = 1024
+    activation_function: str = "elu"
 
 
 @dataclass
@@ -91,32 +91,27 @@ class OptimizerShared(Base):
 ## For pixel-based tasks
 @dataclass
 class CNNEncoder(PerceptionShared):
-    activation_function: str = "elu"
+    embedding_size: int = 1024
     dtype: str = "bfloat16"
 
 
 @dataclass
 class CNNDecoder(ModelShared, PerceptionShared):
-    activation_function: str = "elu"
     dtype: str = "bfloat16"
 
 
 ## For state-based tasks
 @dataclass
-class LinearEncoder(Base):
-    shape: Optional[Tuple[int, ...]] = None # known at runtime; as input
+class LinearEncoder(PerceptionShared):
     hidden_size: Optional[int] = None
     output_size: Optional[int] = None
     num_layers: Optional[int] = None
-    activation_function: str = "elu"
 
 
 @dataclass
-class LinearDecoder(ModelShared):
-    shape: Optional[Tuple[int, ...]] = None # known at runtime; as ouput
+class LinearDecoder(ModelShared, PerceptionShared):
     hidden_size: int = 300
     num_layers: int = 3
-    activation_function: str = "elu"
 
 
 CONFIG_REGISTRY = {
@@ -254,9 +249,17 @@ class Memory(Base):
 
 # Environment
 @dataclass
+class Wrapper(Base):
+    num_envs: int = 1                # num. of envs for collecting data
+    target_shape: Optional[Tuple[int, int]] = None
+
+
+@dataclass
 class Env(Base):
     env_id: str = "gymnax/DeepSea-bsuite"
-    num_envs: int = 1                # num. of envs for collecting data
+    # creation: Dict[str, Any] = field(default_factory=dict)
+    creation: Dict[str, Union[int, float, bool, str]] = field(default_factory=dict)
+    wrapper: Wrapper = field(default_factory=Wrapper)
 
 
 # Exploration

@@ -6,6 +6,7 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
 from envs.environment import Transition, Environment, EnvInfo, EnvState
+from envs.spaces import OneHotDiscrete
 
 
 class Wrapper(Environment):
@@ -142,3 +143,72 @@ class ActionRepeat(Wrapper):
             total_reward = first_reward + jnp.sum(rewards, axis=0)
             transition = eqx.tree_at(lambda t: t.reward, transition, total_reward)
         return transition, env_info, next_env_state
+
+
+class OneHotAction(Wrapper):
+    def __init__(self, env: Environment):
+        super().__init__(env)
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+        dummy_one_hot_action = jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype)
+        transition = eqx.tree_at(lambda t: t.action, transition, dummy_one_hot_action)
+        return transition, env_info, env_state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        discrete_action = jnp.argmax(action, axis=-1)
+        # Interact with actual scalar action
+        transition, env_info, next_env_state = self.env.step(key, env_state, discrete_action)
+        # Store as one-hot vector
+        transition = eqx.tree_at(lambda t: t.action, transition, action)
+        return transition, env_info, next_env_state
+
+    @property
+    def action_space(self):
+        space = self.env.action_space
+        if self.env.is_action_space_discrete:
+            return OneHotDiscrete(n=space.n, dtype=jnp.float32)
+        return space
+
+
+class ResizeImage(Wrapper):
+    """Resize image to a target shape."""
+    target_shape: Tuple[int, int] = eqx.field(static=True, default=(64, 64))
+
+    def __init__(self, env: Environment, target_shape: Tuple[int, int]):
+        super().__init__(env)
+        self.target_shape = target_shape
+
+    def _upscale(self, obs: jax.Array) -> jax.Array:
+        if obs.shape[-2:] != self.target_shape:
+            target_shape = obs.shape[:-2] + self.target_shape
+            obs = jax.image.resize(obs, shape=target_shape, method="nearest")
+        return obs.astype(jnp.uint8)
+
+    def _walk_and_scale(self, node):
+        if not isinstance(node, dict):
+            return node
+        return {k: self._upscale(v) if k == "terminal_observation" else self._walk_and_scale(v) for k, v in node.items()}
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, state = self.env.reset(key)
+        transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
+        info = eqx.tree_at(lambda x: x.data, info, self._walk_and_scale(info.data))
+        return transition, info, state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, next_state = self.env.step(key, env_state, action)
+        transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
+        info = eqx.tree_at(lambda x: x.data, info, self._walk_and_scale(info.data))
+        return transition, info, next_state
+
+    @property
+    def observation_space(self):
+        space = self.env.observation_space
+        new_shape = (space.shape[0], *self.target_shape)
+        return type(space)(
+            low=space.low,
+            high=space.high,
+            shape=new_shape,
+            dtype=space.dtype
+        )
