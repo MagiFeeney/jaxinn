@@ -21,7 +21,7 @@ class Navix(Environment):
 
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "Navix":
-        env = navix.make(env_name, **kwargs)
+        env = navix.make("Navix-" + env_name, **kwargs)
         return cls(env, env_params=None)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, NavixTimestep]:
