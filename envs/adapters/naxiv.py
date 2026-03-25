@@ -33,7 +33,7 @@ class Navix(Environment):
             done=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
-            info={},            # TODO: fix mismatched pytree
+            info=env_state.info,
             reset=True,
         )
         return transition, env_info, env_state
