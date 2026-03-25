@@ -127,6 +127,11 @@ class Actor(eqx.Module):
         *,
         key: PRNGKeyArray,
     ):
+        if head_type == "Categorical":
+            output_size = action_size
+        else:
+            output_size = 2 * action_size
+
         activation = get_activation_fn(activation_function)
 
         keys = jax.random.split(key, 5)
@@ -140,7 +145,7 @@ class Actor(eqx.Module):
             StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[3]),
             StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, 2 * action_size, key=keys[4]),
+            eqx.nn.Linear(hidden_size, output_size, key=keys[4]),
         ])
 
         self.head_type = head_type

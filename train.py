@@ -8,6 +8,7 @@ from jax.sharding import Mesh, PartitionSpec as P
 import equinox as eqx
 
 from config import Config
+from custom import EnvSelector, get_config
 from envs import make_env, Transition
 from agent import Agent
 from agent.models import LatentState, LatentStateWithParams
@@ -27,7 +28,7 @@ class Trainer(eqx.Module):
     action_noise: float = eqx.field(static=True)
 
     def __init__(self, config: Config, *, key: PRNGKeyArray, memory_id: jax.Array):
-        self.env = make_env(**config.env())
+        self.env = make_env(**config.env(), wrapper=config.env.wrapper())
         # Update config with env particulars
         config.agent.world.transition.update({"action_size": self.env.action_size})
         config.agent.actor.update({"action_size": self.env.action_size})
@@ -238,5 +239,18 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = tyro.cli(Config)
+    # Grab the env id
+    env_selector, _ = tyro.cli(
+        EnvSelector,
+        return_unknown_args=True
+    )
+    env_id = env_selector.env_id
+
+    # Final CLI Pass
+    args = tyro.cli(
+        Config,
+        default=get_config(env_id)
+    )
+
+    # Run
     main(args)

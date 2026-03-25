@@ -5,11 +5,11 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from functools import partial
-from envs.environment import Transition, Environment, EnvInfo
+from envs.environment import Transition, Environment, EnvInfo, process_obs, process_observation_space
 
 import gymnax
 from gymnax import EnvParams as GymnaxEnvParams
-from gymnax.environments.spaces import Discrete
+from gymnax.environments.spaces import Discrete, Box
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
 
@@ -66,6 +66,7 @@ class Gymnax(Environment):
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
+        obs = process_obs(obs)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
@@ -81,6 +82,9 @@ class Gymnax(Environment):
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         """Step the environment."""
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
+        next_obs = process_obs(next_obs)
+        if "terminal_observation" in info:
+            info["terminal_observation"] = process_obs(info["terminal_observation"])
         transition = Transition(
             action=action,
             next_obs=next_obs,
@@ -95,12 +99,13 @@ class Gymnax(Environment):
 
     @property
     def observation_space(self):
-        return self.env.observation_space(self.env_params)
+        space = self.env.observation_space(self.env_params)
+        space = process_observation_space(space)
+        return space
 
     @property
     def action_space(self):
         space = self.env.action_space(self.env_params)
-        space.dtype = jnp.int32
         return space
 
     @property

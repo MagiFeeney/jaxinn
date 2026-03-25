@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict, is_dataclass
-from typing import Tuple, Any, Optional, Literal
+from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
 
 
@@ -76,7 +76,7 @@ class ModelShared(Model):
 class PerceptionShared(Model):
     """Shared parameters across perception modules."""
     shape: Optional[Tuple[int, ...]] = None
-    embedding_size: int = 1024
+    activation_function: str = "elu"
 
 
 @dataclass
@@ -88,22 +88,78 @@ class OptimizerShared(Base):
 
 
 # World Model
+## For pixel-based tasks
 @dataclass
-class Encoder(PerceptionShared):
-    activation_function: str = "elu"
+class CNNEncoder(PerceptionShared):
+    embedding_size: int = 1024
     dtype: str = "bfloat16"
 
 
 @dataclass
-class Decoder(ModelShared, PerceptionShared):
-    activation_function: str = "elu"
+class CNNDecoder(ModelShared, PerceptionShared):
     dtype: str = "bfloat16"
+
+
+## For state-based tasks
+@dataclass
+class LinearEncoder(PerceptionShared):
+    hidden_size: Optional[int] = None
+    output_size: Optional[int] = None
+    num_layers: Optional[int] = None
+
+
+@dataclass
+class LinearDecoder(ModelShared, PerceptionShared):
+    hidden_size: int = 300
+    num_layers: int = 3
+
+
+CONFIG_REGISTRY = {
+    "cnn": (CNNEncoder, CNNDecoder),
+    "linear": (LinearEncoder, LinearDecoder)
+}
+
+
+PIXEL_ARCHS = {"cnn"}
+STATE_ARCHS = {"linear"}
+
+
+def arch_to_domain(arch):
+    if arch in PIXEL_ARCHS:
+        return "pixel"
+    elif arch in STATE_ARCHS:
+        return "state"
+    else:
+        raise NotImplementedError(f"Architecture {arch} is currently not supported or classified.")
 
 
 @dataclass
 class Perception(Model):
-    encoder: Encoder = field(default_factory=Encoder)
-    decoder: Decoder = field(default_factory=Decoder)
+    type: str = "cnn"
+    domain: Optional[str] = None
+
+    encoder: Optional[Any] = None
+    decoder: Optional[Any] = None
+
+    def __post_init__(self):
+        if self.type not in CONFIG_REGISTRY:
+            raise ValueError(f"Unknown perception type: '{self.type}'")
+
+        encoder_cls, decoder_cls = CONFIG_REGISTRY[self.type]
+
+        if self.encoder is None or not isinstance(self.encoder, encoder_cls):
+            if isinstance(self.encoder, dict):
+                self.encoder = encoder_cls(**self.encoder)
+            else:
+                self.encoder = encoder_cls()
+
+        if self.decoder is None or not isinstance(self.decoder, decoder_cls):
+            if isinstance(self.decoder, dict):
+                self.decoder = decoder_cls(**self.decoder)
+            else:
+                self.decoder = decoder_cls()
+
+        self.domain = arch_to_domain(self.type)
 
 
 @dataclass
@@ -193,9 +249,17 @@ class Memory(Base):
 
 # Environment
 @dataclass
+class Wrapper(Base):
+    num_envs: int = 1                # num. of envs for collecting data
+    target_shape: Optional[Tuple[int, int]] = None
+
+
+@dataclass
 class Env(Base):
     env_id: str = "gymnax/DeepSea-bsuite"
-    num_envs: int = 1                # num. of envs for collecting data
+    # creation: Dict[str, Any] = field(default_factory=dict)
+    creation: Dict[str, Union[int, float, bool, str]] = field(default_factory=dict)
+    wrapper: Wrapper = field(default_factory=Wrapper)
 
 
 # Exploration
@@ -223,7 +287,7 @@ class Optimization(Base):
 
 # All about agent
 @dataclass
-class Agent:
+class Agent(Base):
     world: World = field(default_factory=World)
     actor: Actor = field(default_factory=Actor)
     critic: Critic = field(default_factory=Critic)

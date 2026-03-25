@@ -1,8 +1,9 @@
 from dataclasses import dataclass
+from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, AutoReset
+from .wrapper import Batched, AutoReset, ActionRepeat, OneHotAction, ResizeImage
 from .environment import Environment
 
 
@@ -24,7 +25,11 @@ _FACTORY_REGISTRY = {
 }
 
 
-def make_env(env_id: str, **kwargs) -> Environment:
+def make_env(
+        env_id: str,
+        creation: Dict[str, Any],
+        wrapper: Dict[str, Any]
+) -> Environment:
     parts = re.split(r'[:/]', env_id, maxsplit=1)
     if len(parts) != 2:
         raise ValueError(f"Invalid env_id '{env_id}'. Must be 'source/env_name'.")
@@ -41,19 +46,20 @@ def make_env(env_id: str, **kwargs) -> Environment:
     except (ImportError, TypeError) as e:
         raise ImportError(f"Failed to import adapter for '{source}'. Do you have '{spec.module}' installed?") from e
 
-    num_envs = kwargs.get('num_envs', 1)
-
-    if spec.native_batched:
-        env = cls.create(env_name, **kwargs)
-    else:
-        create_kwargs = kwargs.copy()
-        create_kwargs.pop('num_envs', None)
-        env = cls.create(env_name, **create_kwargs)
+    if spec.native_batched and "num_envs" in wrapper:
+        creation["num_envs"] = wrapper["num_envs"]
+    env = cls.create(env_name, **creation)
 
     if not spec.native_autoreset:
         env = AutoReset(env)
 
+    if env.is_action_space_discrete:
+        env = OneHotAction(env)
+
+    if wrapper.get("target_shape") is not None:
+        env = ResizeImage(env, wrapper["target_shape"])
+
     if not spec.native_batched:
-        env = Batched(env, num_envs=num_envs)
+        env = Batched(env, num_envs=wrapper["num_envs"])
 
     return env
