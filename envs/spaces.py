@@ -87,6 +87,25 @@ class Discrete(Space[jax.Array]):
 
 
 @jax.tree_util.register_pytree_node_class
+class OneHotDiscrete(Discrete):
+    """
+    A space representing a one-hot encoded discrete action.
+    """
+    def __init__(self, n: int, dtype=jnp.int32):
+        super().__init__(n=n, dtype=dtype)
+        self.shape = (n,)
+
+    def sample(self, key: jax.Array) -> jax.Array:
+        random_idx = jax.random.randint(key, shape=(), minval=0, maxval=self.n)
+        return jax.nn.one_hot(random_idx, self.n, dtype=self.dtype)
+
+    def contains(self, x: jax.Array) -> jax.Array:
+        is_sum_one = jnp.sum(x) == 1
+        is_all_zero_or_one = jnp.all(jnp.logical_or(x == 0, x == 1))
+        return is_sum_one & is_all_zero_or_one & (x.shape == self.shape)
+
+
+@jax.tree_util.register_pytree_node_class
 class Box(Space[jax.Array]):
     """
     A continuous space in [low, high].
