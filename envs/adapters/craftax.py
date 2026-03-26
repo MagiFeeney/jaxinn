@@ -4,7 +4,7 @@ from typing import Any, Callable, Optional, Tuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Transition, Environment, EnvInfo, process_obs, process_observation_space
+from envs.environment import Transition, Environment, EnvInfo
 from envs.adapters.gymnax import Gymnax
 
 from gymnax.environments.spaces import Discrete

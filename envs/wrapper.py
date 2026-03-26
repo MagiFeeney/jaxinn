@@ -145,6 +145,73 @@ class ActionRepeat(Wrapper):
         return transition, env_info, next_env_state
 
 
+def walk_and_apply(node, transform_fn, target_key="terminal_observation"):
+    """
+    Recursively walks a dictionary and applies transform_fn to the value
+    of any key matching target_key.
+    """
+    if not isinstance(node, dict):
+        return node
+
+    return {
+        k: transform_fn(v) if k == target_key else walk_and_apply(v, transform_fn, target_key)
+        for k, v in node.items()
+    }
+
+
+class ChannelFirst(Wrapper):
+    def __init__(self, env: Environment):
+        super().__init__(env)
+
+    @staticmethod
+    def process_obs(obs: jax.Array) -> jax.Array:
+        """Process observation from NHWC to NCHW for the image input while turning the 2D input as gray image."""
+        if obs.ndim == 3 and obs.shape[-1] in (1, 3, 4, 6):
+            obs = jnp.moveaxis(obs, source=-1, destination=-3)
+        elif obs.ndim == 2:
+            obs = obs[None, ...]    # Convert to gray image
+
+        return obs
+
+    @staticmethod
+    def process_observation_space(space: Any) -> Any:
+        """Align with and reflect the processed observation."""
+        if hasattr(space, 'spaces') and isinstance(space.spaces, dict):
+            new_spaces = {k: process_observation_space(v) for k, v in space.spaces.items()}
+            return type(space)(new_spaces)
+
+        if hasattr(space, 'shape') and hasattr(space, 'low') and hasattr(space, 'high'):
+            if len(space.shape) == 3 and space.shape[-1] in (1, 3, 4, 6):
+                new_shape = (space.shape[2], space.shape[0], space.shape[1])
+                low = jnp.moveaxis(space.low, -1, -3) if getattr(space.low, 'ndim', 0) == 3 else space.low
+                high = jnp.moveaxis(space.high, -1, -3) if getattr(space.high, 'ndim', 0) == 3 else space.high
+                return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
+            elif len(space.shape) == 2:
+                new_shape = (1, space.shape[0], space.shape[1])
+                low = space.low[None, ...] if getattr(space.low, 'ndim', 0) == 2 else space.low
+                high = space.high[None, ...] if getattr(space.high, 'ndim', 0) == 2 else space.high
+                return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
+        return space
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, state = self.env.reset(key)
+        transition = eqx.tree_at(lambda t: t.next_obs, transition, self.process_obs(transition.next_obs))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self.process_obs))
+        return transition, info, state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, next_state = self.env.step(key, env_state, action)
+        transition = eqx.tree_at(lambda t: t.next_obs, transition, self.process_obs(transition.next_obs))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self.process_obs))
+        return transition, info, next_state
+
+    @property
+    def observation_space(self):
+        space = self.env.observation_space
+        space = self.process_observation_space(space)
+        return space
+
+
 class OneHotAction(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
@@ -185,21 +252,16 @@ class ResizeImage(Wrapper):
             obs = jax.image.resize(obs, shape=target_shape, method="nearest")
         return obs.astype(jnp.uint8)
 
-    def _walk_and_scale(self, node):
-        if not isinstance(node, dict):
-            return node
-        return {k: self._upscale(v) if k == "terminal_observation" else self._walk_and_scale(v) for k, v in node.items()}
-
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
-        info = eqx.tree_at(lambda x: x.data, info, self._walk_and_scale(info.data))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
         return transition, info, state
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
-        info = eqx.tree_at(lambda x: x.data, info, self._walk_and_scale(info.data))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
         return transition, info, next_state
 
     @property

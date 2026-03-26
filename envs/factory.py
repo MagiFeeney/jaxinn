@@ -3,7 +3,7 @@ from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, AutoReset, ActionRepeat, OneHotAction, ResizeImage
+from .wrapper import Batched, AutoReset, ActionRepeat, ChannelFirst, OneHotAction, ResizeImage
 from .environment import Environment
 
 
@@ -11,6 +11,7 @@ from .environment import Environment
 class EnvSpec:
     module: str
     cls_name: str
+    channel_first: bool = False
     native_batched: bool = False
     native_autoreset: bool = False
 
@@ -21,7 +22,7 @@ _FACTORY_REGISTRY = {
     "brax":      EnvSpec(".adapters.brax", "Brax"),
     "navix":     EnvSpec(".adapters.navix", "Navix"),
     "craftax":   EnvSpec(".adapters.craftax", "Craftax"),
-    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", native_batched=True, native_autoreset=True),
+    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
 }
 
 
@@ -49,6 +50,9 @@ def make_env(
     if spec.native_batched and "num_envs" in wrapper:
         creation["num_envs"] = wrapper["num_envs"]
     env = cls.create(env_name, **creation)
+
+    if not spec.channel_first:
+        env = ChannelFirst(env)
 
     if not spec.native_autoreset:
         env = AutoReset(env)
