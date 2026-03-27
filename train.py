@@ -9,13 +9,13 @@ import equinox as eqx
 
 from config import Config
 from custom import EnvSelector, get_config
-from envs import make_env, Transition
+from envs import make_env, Environment, Transition
 from agent import Agent
 from agent.models import LatentState, LatentStateWithParams
 
 
 class Trainer(eqx.Module):
-    env: Any = eqx.field(static=True)
+    env: Environment = eqx.field(static=True)
 
     num_environment_steps: int = eqx.field(static=True)
     prefill_steps: int = eqx.field(static=True)
