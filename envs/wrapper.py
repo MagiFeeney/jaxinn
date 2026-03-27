@@ -71,7 +71,12 @@ class AutoReset(Wrapper):
         done = step_transition.done
 
         def do_reset():
-            return self.env.reset(key_reset)
+            reset_transition, reset_env_info, reset_env_state = self.env.reset(key_reset)
+            dummy_env_info = jax.tree.map(
+                lambda x: jnp.zeros_like(x),
+                step_env_info
+            )
+            return reset_transition, dummy_env_info, reset_env_state
 
         def no_reset():
             return step_transition, step_env_info, step_env_state
