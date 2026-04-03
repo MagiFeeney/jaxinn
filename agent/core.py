@@ -101,7 +101,9 @@ class Agent(eqx.Module):
 
     @staticmethod
     def process(obs) -> jax.Array:
-        return obs.astype(jnp.float32) / 255.0 - 0.5
+        if obs.dtype == jnp.uint8 and obs.ndim > 3:
+            return obs.astype(jnp.float32) / 255.0 - 0.5
+        return obs
 
     def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
         key_perceive, key_action = jax.random.split(key, 2)
