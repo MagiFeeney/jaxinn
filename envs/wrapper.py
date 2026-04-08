@@ -223,7 +223,9 @@ class OneHotAction(Wrapper):
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
-        dummy_one_hot_action = jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype)
+        batch_shape = transition.reward.shape
+        target_shape = batch_shape + self.action_space.shape
+        dummy_one_hot_action = jnp.zeros(target_shape, dtype=self.action_space.dtype)
         transition = eqx.tree_at(lambda t: t.action, transition, dummy_one_hot_action)
         return transition, env_info, env_state
 

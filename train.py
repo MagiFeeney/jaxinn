@@ -8,7 +8,7 @@ from jax.sharding import Mesh, PartitionSpec as P
 import equinox as eqx
 
 from config import Config
-from custom import EnvSelector, get_config
+from custom import EnvSelector, get_config, post_process
 from envs import make_env, Environment, Transition
 from agent import Agent
 from agent.models import LatentState, LatentStateWithParams
@@ -18,7 +18,7 @@ class Trainer(eqx.Module):
     env: Environment = eqx.field(static=True)
 
     num_environment_steps: int = eqx.field(static=True)
-    prefill_steps: int = eqx.field(static=True)
+    num_prefill_episodes: int = eqx.field(static=True)
     eval_interval: int = eqx.field(static=True)
     train_interval: int = eqx.field(static=True)
     train_iterations: int = eqx.field(static=True)
@@ -71,7 +71,7 @@ class Trainer(eqx.Module):
             return:       {r}
             mean:         {e}
                 """,
-                k=(iteration + 1) * self.eval_interval + self.prefill_steps,
+                k=(iteration + 1) * self.eval_interval + self.num_prefill_episodes * self.episode_length,
                 **metrics,
                 n=self.num_eval_episodes,
                 r=episodic_returns,
@@ -89,8 +89,7 @@ class Trainer(eqx.Module):
         return final_agent, (metrics, evaluation)
 
     def prefill(self, agent: Agent, key: PRNGKeyArray) -> Agent:
-        num_prefill_episodes = self.prefill_steps // self.episode_length
-        keys = jax.random.split(key, num_prefill_episodes)
+        keys = jax.random.split(key, self.num_prefill_episodes)
         transitions, terminal_obs = jax.vmap(lambda k: self.interact(agent, k, prefill=True))(keys) # N x T x E
         agent = agent.add_experience(transitions, terminal_obs, source=2)
         return agent
@@ -266,6 +265,9 @@ if __name__ == "__main__":
         Config,
         default=get_config(env_id)
     )
+
+    # Post processing
+    config = post_process(env_id, config)
 
     # Run
     main(config)
