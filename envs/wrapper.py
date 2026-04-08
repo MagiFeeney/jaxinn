@@ -221,8 +221,8 @@ class OneHotAction(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
-        transition, env_info, env_state = self.env.reset(key)
+    def reset(self, key: PRNGKeyArray, **kwargs) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key, **kwargs)
         batch_shape = transition.reward.shape
         target_shape = batch_shape + self.action_space.shape
         dummy_one_hot_action = jnp.zeros(target_shape, dtype=self.action_space.dtype)
