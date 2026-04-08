@@ -80,3 +80,11 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
         config.update(custom_updates)
 
     return config
+
+
+def post_process(env_id: str, config: Config) -> Config:
+    env_family = env_id.split("/")[0] if "/" in env_id else None
+    if env_family == "envpool":
+        vmap_multiplier = config.num_seeds * max(config.exploration.num_prefill_episodes, config.exploration.num_eval_episodes)
+        config.env.creation["vmap_multiplier"] = vmap_multiplier
+    return config

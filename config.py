@@ -266,7 +266,7 @@ class Env(Base):
 @dataclass
 class Exploration(Base):
     num_environment_steps: int = 1000000
-    prefill_steps: int = 5000
+    num_prefill_episodes: int = 5
     eval_interval: int = 10000
     train_interval: int = 1000
     train_iterations: int = 100
