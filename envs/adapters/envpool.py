@@ -17,7 +17,6 @@ class EnvPoolVmapMixIn:
     def v_reset(self, key):
         data = self.env.reset()
         logical_size = key.shape[0]
-        print(f"[v_reset] logical_size {logical_size}")
 
         def get_logical(x):
             if x.ndim == 0: return x
@@ -28,7 +27,6 @@ class EnvPoolVmapMixIn:
 
     @v_reset.def_vmap
     def v_reset_batch(axis_size, in_batched, self, key):
-        print(f"[v_reset_batch] key.shape {key.shape}")
         flattened = key.ndim > 2
         if flattened:
             flatten_key = key.reshape(axis_size * key.shape[1], *key.shape[2:])
