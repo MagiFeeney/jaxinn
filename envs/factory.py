@@ -18,7 +18,7 @@ class EnvSpec:
 
 _FACTORY_REGISTRY = {
     "gymnax":    EnvSpec(".adapters.gymnax", "Gymnax", native_autoreset=True),
-    "mjx":       EnvSpec(".adapters.playground", "Playground"),
+    "mjx":       EnvSpec(".adapters.playground", "Playground", native_batched=True),
     "brax":      EnvSpec(".adapters.brax", "Brax"),
     "navix":     EnvSpec(".adapters.navix", "Navix"),
     "craftax":   EnvSpec(".adapters.craftax", "Craftax"),
@@ -63,7 +63,6 @@ def make_env(
     if wrapper.get("target_shape") is not None:
         env = ResizeImage(env, wrapper["target_shape"])
 
-    if not spec.native_batched:
-        env = Batched(env, num_envs=wrapper["num_envs"])
+    env = Batched(env, num_envs=wrapper["num_envs"])
 
     return env
