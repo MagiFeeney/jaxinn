@@ -61,3 +61,11 @@ class Environment(eqx.Module):
     @property
     def is_action_space_discrete(self) -> bool:
         return type(self.action_space).__name__ == "Discrete"
+
+    def __getattr__(self, name):
+        if isinstance(self.env_params, dict):
+            if name in self.env_params:
+                return self.env_params[name]
+        elif hasattr(self.env_params, name):
+            return getattr(self.env_params, name)
+        return getattr(self.env, name)
