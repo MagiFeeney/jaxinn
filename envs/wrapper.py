@@ -281,3 +281,27 @@ class ResizeImage(Wrapper):
             shape=new_shape,
             dtype=space.dtype
         )
+
+
+class Branched:
+    def __init__(self, env: Environment, separated: bool):
+        self.env = env
+        self.separated = separated
+
+    def reset(self, key: PRNGKeyArray, *, mode: str, **kwargs) -> Tuple[Transition, EnvInfo, EnvState]:
+        if self.separated:
+            return self.env[mode].reset(key, **kwargs)
+        else:
+            return self.env.reset(key, **kwargs)
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array, *, mode: str) -> Tuple[Transition, EnvInfo, EnvState]:
+        if self.separated:
+            return self.env[mode].step(key, env_state, action)
+        else:
+            return self.env.step(key, env_state, action)
+
+    def get(self, name: str, mode: str = "train"):
+        if name == "env":
+            raise AttributeError
+        target_env = self.env[mode] if self.separated else self.env
+        return getattr(target_env, name)

@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass, replace
 from typing import Any
-from config import Env, Config
+from config import Env, Config, Wrapper
 
 
 @dataclass
@@ -82,9 +82,33 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
     return config
 
 
+@dataclass
+class Separated:
+    train: Wrapper = field(default_factory=Wrapper)
+    eval: Wrapper = field(default_factory=Wrapper)
+    prefill: Wrapper = field(default_factory=Wrapper)
+
+    def __call__(self) -> dict[str, Any]:
+        return {k: v() for k, v in vars(self).items() if is_dataclass(v)}
+
+
 def post_process(env_id: str, config: Config) -> Config:
     env_family = env_id.split("/")[0] if "/" in env_id else None
     if env_family == "envpool":
-        vmap_multiplier = config.num_seeds * max(config.exploration.num_prefill_episodes, config.exploration.num_eval_episodes)
-        config.env.creation["vmap_multiplier"] = vmap_multiplier
+        if config.env.separated: # Multiple envs for different purposes
+            separated_creations = {
+                "train": {"vmap_multiplier": config.num_seeds, **config.env.creation},
+                "eval": {"vmap_multiplier": config.num_seeds * config.exploration.num_eval_episodes, **config.env.creation},
+                "prefill": {"vmap_multiplier": config.num_seeds * config.exploration.num_prefill_episodes, **config.env.creation},
+            }
+            separated_wrappers = Separated(
+                train=replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
+                eval=replace(config.env.wrapper, num_envs=1),
+                prefill=replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
+            )
+            config.env.creation = separated_creations
+            config.env.wrapper = separated_wrappers
+        else:
+            vmap_multiplier = config.num_seeds * max(config.exploration.num_prefill_episodes, config.exploration.num_eval_episodes) # Get upper bound so it can fit all
+            config.env.creation["vmap_multiplier"] = vmap_multiplier
     return config
