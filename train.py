@@ -132,19 +132,26 @@ class Trainer(eqx.Module):
             prefill: bool = False,
             num_envs: int | None = None
     ) -> Tuple[Transition, ...]:
+        if eval:
+            mode = "eval"
+        elif prefill:
+            mode = "prefill"
+        else:
+            mode = "train"
+
         key_reset, key_init, key_step = jax.random.split(key, 3)
         if num_envs is not None:
-            init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs)
+            init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
         else:
-            init_transition, info, env_state = self.env.reset(key_reset)
-            num_envs = self.env.num_envs
+            init_transition, info, env_state = self.env.reset(key_reset, mode=mode)
+            num_envs = self.env.get("num_envs", mode)
         init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,))
         init_terminal_obs = init_transition.next_obs # Zeros: for consistency
 
         def random_act_branch(operand):
             last_latent_state, _, _, key = operand
             keys = jax.random.split(key, num_envs)
-            action = jax.vmap(self.env.action_space.sample)(keys)
+            action = jax.vmap(self.env.get("action_space", mode).sample)(keys)
             return last_latent_state, action # For consistency
 
         def agent_act_branch(operand):
@@ -152,10 +159,10 @@ class Trainer(eqx.Module):
             key_act, key_noise = jax.random.split(key, 2)
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
             if not eval and self.action_noise > 0:
-                if self.env.is_action_space_discrete:
+                if self.env.get("is_action_space_discrete"):
                     key_idx, key_cond = jax.random.split(key_noise, 2)
-                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.action_size)
-                    expl_action = jax.nn.one_hot(random_idx, self.env.action_size)
+                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.get("action_size"))
+                    expl_action = jax.nn.one_hot(random_idx, self.env.get("action_size"))
 
                     should_explore = jax.random.uniform(key_cond, (*action.shape[:-1], 1)) < self.action_noise
                     action = jnp.where(should_explore, expl_action, action)
@@ -180,7 +187,7 @@ class Trainer(eqx.Module):
             else:
                 latent_state, action = agent_act_branch(operand)
 
-            transition, info, next_env_state = self.env.step(key_step, env_state, action)
+            transition, info, next_env_state = self.env.step(key_step, env_state, action, mode=mode)
             return (transition, info.terminal_observation, latent_state, next_env_state, key), (last_transition, last_terminal_obs)
 
         _, (transitions, terminal_obs) = jax.lax.scan(
@@ -193,8 +200,8 @@ class Trainer(eqx.Module):
 
 
 def resolve_agent_config(config: Config, env: Environment) -> Config:
-    obs_shape = env.observation_space.shape
-    action_size = env.action_size
+    obs_shape = env.get("observation_space").shape
+    action_size = env.get("action_size")
 
     config.agent.world.transition.update({"action_size": action_size})
     config.agent.actor.update({"action_size": action_size})

@@ -257,9 +257,9 @@ class Wrapper(Base):
 @dataclass
 class Env(Base):
     env_id: str = "gymnax/DeepSea-bsuite"
-    # creation: Dict[str, Any] = field(default_factory=dict)
     creation: Dict[str, Union[int, float, bool, str]] = field(default_factory=dict)
     wrapper: Wrapper = field(default_factory=Wrapper)
+    separated: bool = False
 
 
 # Exploration

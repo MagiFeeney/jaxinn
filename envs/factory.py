@@ -3,7 +3,7 @@ from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, AutoReset, ActionRepeat, ChannelFirst, OneHotAction, ResizeImage
+from .wrapper import Batched, AutoReset, ActionRepeat, ChannelFirst, OneHotAction, ResizeImage, Branched
 from .environment import Environment
 
 
@@ -28,8 +28,9 @@ _FACTORY_REGISTRY = {
 
 def make_env(
         env_id: str,
+        separated: bool,
         creation: Dict[str, Any],
-        wrapper: Dict[str, Any]
+        wrapper: Dict[str, Any],
 ) -> Environment:
     parts = re.split(r'[:/]', env_id, maxsplit=1)
     if len(parts) != 2:
@@ -47,22 +48,33 @@ def make_env(
     except (ImportError, TypeError) as e:
         raise ImportError(f"Failed to import adapter for '{source}'. Do you have '{spec.module}' installed?") from e
 
-    if spec.native_batched and "num_envs" in wrapper:
-        creation["num_envs"] = wrapper["num_envs"]
-    env = cls.create(env_name, **creation)
+    def create_single_env(creation, wrapper):
+        if spec.native_batched and "num_envs" in wrapper:
+            creation["num_envs"] = wrapper["num_envs"]
+        env = cls.create(env_name, **creation)
 
-    if not spec.channel_first:
-        env = ChannelFirst(env)
+        if not spec.channel_first:
+            env = ChannelFirst(env)
 
-    if not spec.native_autoreset:
-        env = AutoReset(env)
+        if not spec.native_autoreset:
+            env = AutoReset(env)
 
-    if env.is_action_space_discrete:
-        env = OneHotAction(env)
+        if env.is_action_space_discrete:
+            env = OneHotAction(env)
 
-    if wrapper.get("target_shape") is not None:
-        env = ResizeImage(env, wrapper["target_shape"])
+        if wrapper.get("target_shape") is not None:
+            env = ResizeImage(env, wrapper["target_shape"])
 
-    env = Batched(env, num_envs=wrapper["num_envs"])
+        env = Batched(env, num_envs=wrapper["num_envs"])
+        return env
 
+    if separated:
+        env = {
+            mode: create_single_env(creation[mode], wrapper[mode])
+            for mode in creation.keys()
+        }
+    else:
+        env = create_single_env(creation, wrapper)
+
+    env = Branched(env, separated)         # For unified interface
     return env
