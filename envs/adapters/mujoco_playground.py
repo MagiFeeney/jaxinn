@@ -214,7 +214,6 @@ class Playground(Environment, PlaygroundVmapMixIn):
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: MjxState, action: jax.Array) -> Tuple[Transition, EnvInfo, MjxState]:
-        """Step the environment."""
         next_env_state = self.v_step(self, key, env_state, action)
         transition = Transition(
             action=action,

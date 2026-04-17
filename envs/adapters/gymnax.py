@@ -26,11 +26,9 @@ class TerminalObservationWrapper:
         action: int | float | jax.Array,
         params: GymnaxEnvParams | None = None,
     ) -> tuple[jax.Array, GymnaxEnvState, jax.Array, jax.Array, dict[Any, Any]]:
-        """Performs step transitions in the environment."""
         if params is None:
             params = self.default_params
 
-        # Step
         key_step, key_reset = jax.random.split(key)
         obs_st, state_st, reward, done, info = self.step_env(
             key_step, state, action, params
@@ -42,6 +40,7 @@ class TerminalObservationWrapper:
             lambda x, y: jax.lax.select(done, x, y), state_re, state_st
         )
         obs = jax.lax.select(done, obs_re, obs_st)
+
         # Get terminal obs
         info['terminal_observation'] = obs_st
         return obs, state, reward, done, info
@@ -79,7 +78,6 @@ class Gymnax(Environment):
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
-        """Step the environment."""
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
         transition = Transition(
             action=action,
