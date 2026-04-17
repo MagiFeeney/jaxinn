@@ -146,7 +146,13 @@ class Agent(eqx.Module):
             flattened = jnp.moveaxis(x, source=source, destination=source - 1).reshape(-1, *x.shape[source + 1:])
             # For storage
             if x.dtype == jnp.float32 and x.ndim > 3:
-                return flattened.astype(jnp.uint8)
+                is_normalized = x.max() <= 1.0
+                return jax.lax.cond(
+                    is_normalized,
+                    lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
+                    lambda arr: arr.astype(jnp.uint8),
+                    flattened
+                )
             return flattened
 
         # flatten and cast dtype in one go

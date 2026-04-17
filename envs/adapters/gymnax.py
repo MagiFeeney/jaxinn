@@ -105,6 +105,6 @@ class Gymnax(Environment):
 
     @property
     def action_size(self):
-        if isinstance(self.action_space, Discrete):
+        if self.is_action_space_discrete:
             return self.action_space.n
         return math.prod(self.action_space.shape)

@@ -81,20 +81,33 @@ class AutoReset(Wrapper):
         def no_reset():
             return step_transition, step_env_info, step_env_state
 
-        # lax.cond executes only one branch (on single device) or handles masking (in vmap)
-        reset_transition, reset_env_info, reset_env_state = jax.lax.cond(
-            done,
-            do_reset,
-            no_reset
-        )                       # potentially saves computation for rendering when done is False
+        if done.ndim == 0:
+            reset_transition, reset_env_info, reset_env_state = jax.lax.cond(
+                done,
+                do_reset,
+                no_reset
+            )                   # potentially saves computation for rendering when done is False
+        else:
+            reset_transition, reset_env_info, reset_env_state = do_reset()
 
-        final_env_state = jax.tree.map(
-            lambda r, s: jnp.where(done, r, s),
+        def select_fn(path, reset_val, step_val):
+            if hasattr(self, "is_static_leaf") and self.is_static_leaf(path, step_val):
+                return step_val
+            done = step_transition.done
+            if done.ndim == 0:
+                return jnp.where(done, reset_val, step_val)
+            if done.shape[0] != reset_val.shape[0]:
+                return step_val
+            d = done.reshape((step_val.shape[0],) + (1,) * (step_val.ndim - 1))
+            return jnp.where(d, reset_val, step_val)
+
+        final_env_state = jax.tree.map_with_path(
+            select_fn,
             reset_env_state,
             step_env_state
         )
-        _next_obs = jax.tree.map(
-            lambda r, s: jnp.where(done, r, s),
+        _next_obs = jax.tree.map_with_path(
+            select_fn,
             reset_transition.next_obs,
             step_transition.next_obs
         )
@@ -171,18 +184,17 @@ class ChannelFirst(Wrapper):
     @staticmethod
     def process_obs(obs: jax.Array) -> jax.Array:
         """Process observation from NHWC to NCHW for the image input while turning the 2D input as gray image."""
-        if obs.ndim == 3 and obs.shape[-1] in (1, 3, 4, 6):
+        if obs.ndim in (3, 4) and obs.shape[-1] in (1, 3, 4, 6):
             obs = jnp.moveaxis(obs, source=-1, destination=-3)
-        elif obs.ndim == 2:
-            obs = obs[None, ...]    # Convert to gray image
+        elif obs.ndim in (2, 3):
+            obs = jnp.expand_dims(obs, axis=-3)    # Convert to gray image
 
         return obs
 
-    @staticmethod
-    def process_observation_space(space: Any) -> Any:
+    def process_observation_space(self, space: Any) -> Any:
         """Align with and reflect the processed observation."""
         if hasattr(space, 'spaces') and isinstance(space.spaces, dict):
-            new_spaces = {k: process_observation_space(v) for k, v in space.spaces.items()}
+            new_spaces = {k: self.process_observation_space(v) for k, v in space.spaces.items()}
             return type(space)(new_spaces)
 
         if hasattr(space, 'shape') and hasattr(space, 'low') and hasattr(space, 'high'):

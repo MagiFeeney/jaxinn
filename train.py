@@ -140,11 +140,11 @@ class Trainer(eqx.Module):
             mode = "train"
 
         key_reset, key_init, key_step = jax.random.split(key, 3)
-        if num_envs is not None:
-            init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
-        else:
+        if num_envs is None or self.env.separated:
             init_transition, info, env_state = self.env.reset(key_reset, mode=mode)
             num_envs = self.env.get("num_envs", mode)
+        else:
+            init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
         init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,))
         init_terminal_obs = init_transition.next_obs # Zeros: for consistency
 
