@@ -103,12 +103,9 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
         self._step = step
 
     @classmethod
-    def create(cls, env_name: str, num_envs: int, vmap_multiplier: int, **kwargs) -> "EnvPool":
-        capacity = num_envs * vmap_multiplier
-        env = envpool.make(env_name, env_type="gymnasium", num_envs=capacity, **kwargs)
-        env_params = {"num_envs": num_envs, "capacity": capacity}
-        env_params.update(kwargs)
-        return cls(env, env_params=env_params)
+    def create(cls, env_name: str, num_envs: int, **kwargs) -> "EnvPool":
+        env = envpool.make(env_name, env_type="gymnasium", num_envs=num_envs, **kwargs)
+        return cls(env, env_params={"capacity": num_envs, **kwargs})
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
         env_state, (obs, info) = self.v_reset(self, key)
@@ -151,4 +148,6 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
 
     @property
     def action_size(self):
-        return self.action_space.n
+        if self.is_action_space_discrete:
+            return self.action_space.n
+        return math.prod(self.action_space.shape)

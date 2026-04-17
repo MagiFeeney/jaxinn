@@ -49,8 +49,6 @@ def make_env(
         raise ImportError(f"Failed to import adapter for '{source}'. Do you have '{spec.module}' installed?") from e
 
     def create_single_env(creation, wrapper):
-        if spec.native_batched and "num_envs" in wrapper:
-            creation["num_envs"] = wrapper["num_envs"]
         env = cls.create(env_name, **creation)
 
         if not spec.channel_first:

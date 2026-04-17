@@ -206,7 +206,13 @@ class Dict(Space[PyDict[str, Any]]):
     """
     def __init__(self, spaces: PyDict[str, Space]):
         self.spaces = spaces
-        super().__init__(shape=(), dtype=None)
+
+        if len(self.spaces) == 1:
+            shape = next(iter(self.spaces.values())).shape
+        else:
+            shape = {k: space.shape for k, space in self.spaces.items()}
+
+        super().__init__(shape=shape, dtype=None)
 
     def sample(self, key: jax.Array) -> PyDict[str, Any]:
         keys = jax.random.split(key, len(self.spaces))
