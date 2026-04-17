@@ -122,7 +122,6 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
-        """Step the environment."""
         next_env_state, (next_obs, reward, terminated, truncated, info) = self.v_step(self, key, env_state, action)
         done = terminated | truncated
         transition = Transition(
