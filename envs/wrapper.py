@@ -68,27 +68,7 @@ class AutoReset(Wrapper):
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         key_step, key_reset = jax.random.split(key)
         step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
-        done = step_transition.done
-
-        def do_reset():
-            reset_transition, reset_env_info, reset_env_state = self.env.reset(key_reset)
-            dummy_env_info = jax.tree.map(
-                lambda x: jnp.zeros_like(x),
-                step_env_info
-            )
-            return reset_transition, dummy_env_info, reset_env_state
-
-        def no_reset():
-            return step_transition, step_env_info, step_env_state
-
-        if done.ndim == 0:
-            reset_transition, reset_env_info, reset_env_state = jax.lax.cond(
-                done,
-                do_reset,
-                no_reset
-            )                   # potentially saves computation for rendering when done is False
-        else:
-            reset_transition, reset_env_info, reset_env_state = do_reset()
+        reset_transition, reset_env_info, reset_env_state = self.env.reset(key_reset)
 
         def select_fn(path, reset_val, step_val):
             if hasattr(self, "is_static_leaf") and self.is_static_leaf(path, step_val):
