@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jax.sharding import Mesh, PartitionSpec as P
 import equinox as eqx
 
-from config import Config
+from config import Config, Agent as AgentConfig
 from custom import EnvSelector, get_config, post_process
 from envs import make_env, Environment, Transition
 from agent import Agent
@@ -199,20 +199,13 @@ class Trainer(eqx.Module):
         return transitions, terminal_obs
 
 
-def resolve_agent_config(config: Config, env: Environment) -> Config:
-    obs_shape = env.get("observation_space").shape
-    action_size = env.get("action_size")
-
-    config.agent.world.transition.update({"action_size": action_size})
-    config.agent.actor.update({"action_size": action_size})
-    config.agent.world.perception.encoder.update({"shape": obs_shape})
-    config.agent.world.perception.decoder.update({"shape": obs_shape})
-    if config.agent.memory.device == "cpu":
-        config.agent.memory.num_seeds = config.num_seeds # pre-allocate for all seeds upfront
-    else:
-        config.agent.memory.num_seeds = None             # vmap handles this
-
-    return config.agent
+def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
+    ctx = {
+        "obs_shape":   env.get("observation_space").shape,
+        "action_size": env.get("action_size"),
+        "num_seeds":   config.num_seeds,
+    }
+    return config.agent.resolve(ctx)
 
 
 def main(config):

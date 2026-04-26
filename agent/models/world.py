@@ -7,7 +7,7 @@ import distrax
 
 from typing import Optional, Callable, Union, Dict, Tuple, Any
 from jaxtyping import Array, Float, PRNGKeyArray
-from .utils import get_activation_fn, get_precision_fn, dx, StaticCallable
+from .utils import get_activation_fn, get_precision_fn, dx, StaticCallable, make_mlp
 
 
 class LatentState(eqx.Module):
@@ -231,7 +231,7 @@ class LinearEncoder(eqx.Module):
             self,
             shape: Tuple[int, ...],
             hidden_size: Optional[int] = None,
-            output_size: Optional[int] = None,
+            embedding_size: Optional[int] = None,
             num_layers: Optional[int] = None,
             activation_function: Union[str, Callable] = "elu",
             *,
@@ -244,13 +244,13 @@ class LinearEncoder(eqx.Module):
         activation = get_activation_fn(activation_function)
 
         if hidden_size is not None and \
-           output_size is not None and \
+           embedding_size is not None and \
            num_layers is not None:
             self.net = eqx.nn.MLP(
-                in_size = shape[0],
-                out_size = output_size,
-                width_size = hidden_size,
-                depth = num_layers,
+                input_size = shape[0],
+                hidden_size = hidden_size,
+                output_size = output_size,
+                num_layers = num_layers,
                 activation = StaticCallable(activation),
                 key = key
             )
@@ -284,11 +284,11 @@ class LinearDecoder(eqx.Module):
         )
         activation = get_activation_fn(activation_function)
 
-        self.net = eqx.nn.MLP(
-            in_size = belief_size + state_size,
-            out_size = shape[0],
-            width_size = hidden_size,
-            depth = num_layers,
+        self.net = make_mlp(
+            input_size = belief_size + state_size,
+            hidden_size = hidden_size,
+            output_size = shape[0],
+            num_layers = num_layers,
             activation = StaticCallable(activation),
             key = key
         )
