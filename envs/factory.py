@@ -18,7 +18,7 @@ class EnvSpec:
 
 _FACTORY_REGISTRY = {
     "gymnax":    EnvSpec(".adapters.gymnax", "Gymnax", native_autoreset=True),
-    "mjx":       EnvSpec(".adapters.playground", "Playground", native_batched=True),
+    "mjx":       EnvSpec(".adapters.mujoco_playground", "Playground", native_batched=True),
     "brax":      EnvSpec(".adapters.brax", "Brax"),
     "navix":     EnvSpec(".adapters.navix", "Navix"),
     "craftax":   EnvSpec(".adapters.craftax", "Craftax"),
