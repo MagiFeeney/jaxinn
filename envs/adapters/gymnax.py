@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from functools import partial
-from envs.environment import Transition, Environment, EnvInfo, process_obs, process_observation_space
+from envs.environment import Transition, Environment, EnvInfo
 
 import gymnax
 from gymnax import EnvParams as GymnaxEnvParams
@@ -26,11 +26,9 @@ class TerminalObservationWrapper:
         action: int | float | jax.Array,
         params: GymnaxEnvParams | None = None,
     ) -> tuple[jax.Array, GymnaxEnvState, jax.Array, jax.Array, dict[Any, Any]]:
-        """Performs step transitions in the environment."""
         if params is None:
             params = self.default_params
 
-        # Step
         key_step, key_reset = jax.random.split(key)
         obs_st, state_st, reward, done, info = self.step_env(
             key_step, state, action, params
@@ -42,6 +40,7 @@ class TerminalObservationWrapper:
             lambda x, y: jax.lax.select(done, x, y), state_re, state_st
         )
         obs = jax.lax.select(done, obs_re, obs_st)
+
         # Get terminal obs
         info['terminal_observation'] = obs_st
         return obs, state, reward, done, info
@@ -66,7 +65,6 @@ class Gymnax(Environment):
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
-        obs = process_obs(obs)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
@@ -80,11 +78,7 @@ class Gymnax(Environment):
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
-        """Step the environment."""
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
-        next_obs = process_obs(next_obs)
-        if "terminal_observation" in info:
-            info["terminal_observation"] = process_obs(info["terminal_observation"])
         transition = Transition(
             action=action,
             next_obs=next_obs,
@@ -100,7 +94,6 @@ class Gymnax(Environment):
     @property
     def observation_space(self):
         space = self.env.observation_space(self.env_params)
-        space = process_observation_space(space)
         return space
 
     @property
@@ -110,6 +103,6 @@ class Gymnax(Environment):
 
     @property
     def action_size(self):
-        if isinstance(self.action_space, Discrete):
+        if self.is_action_space_discrete:
             return self.action_space.n
         return math.prod(self.action_space.shape)

@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass, replace
 from typing import Any
-from config import Env, Config
+from config import Env, Config, Wrapper
 
 
 @dataclass
@@ -79,4 +79,44 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
     if custom_updates:
         config.update(custom_updates)
 
+    return config
+
+
+@dataclass
+class Separated:
+    train: Wrapper = field(default_factory=Wrapper)
+    eval: Wrapper = field(default_factory=Wrapper)
+    prefill: Wrapper = field(default_factory=Wrapper)
+
+    def __call__(self) -> dict[str, Any]:
+        return {k: v() for k, v in vars(self).items() if is_dataclass(v)}
+
+
+def get_separate_env_config(config):
+    train_num_envs = config.num_seeds * 1 * config.env.wrapper.num_envs
+    eval_num_envs = config.num_seeds * config.exploration.num_eval_episodes * 1
+    prefill_num_envs = config.num_seeds * config.exploration.num_prefill_episodes * config.env.wrapper.num_envs
+    separated_creations = {
+        "train": {"num_envs": train_num_envs, **config.env.creation},
+        "eval": {"num_envs": eval_num_envs, **config.env.creation},
+        "prefill": {"num_envs": prefill_num_envs, **config.env.creation},
+    }
+    separated_wrappers = Separated(
+        train=replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
+        eval=replace(config.env.wrapper, num_envs=1),
+        prefill=replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
+    )
+    return separated_creations, separated_wrappers
+
+
+def post_process(env_id: str, config: Config) -> Config:
+    env_family = env_id.split("/")[0] if "/" in env_id else None
+    if env_family == "envpool" or env_family == "mjx":
+        if config.env.separated: # Multiple envs for different purposes
+            separated_creations, separated_wrappers = get_separate_env_config(config)
+            config.env.creation = separated_creations
+            config.env.wrapper = separated_wrappers
+        else:
+            num_envs = config.num_seeds * max(config.exploration.num_prefill_episodes, config.exploration.num_eval_episodes) * config.env.wrapper.num_envs # Get upper bound so it can fit all
+            config.env.creation["num_envs"] = num_envs
     return config

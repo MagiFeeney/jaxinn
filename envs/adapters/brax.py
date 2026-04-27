@@ -21,8 +21,8 @@ class Brax(Environment):
 
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "Brax":
-        env = brax.envs.get_environment(env_name, **kwargs)
-        return cls(env, env_params=None)
+        env = brax.envs.get_environment(env_name.lower(), **kwargs)
+        return cls(env, env_params=kwargs)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, BraxEnvState]:
         env_state = self.env.reset(key)
@@ -33,7 +33,8 @@ class Brax(Environment):
             done=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
-            info={},            # TODO: fix mismatched pytree
+            info=env_state.info,
+            metrics=env_state.metrics,
             reset=True,
         )
         return transition, env_info, env_state
@@ -48,6 +49,7 @@ class Brax(Environment):
         )
         env_info = EnvInfo(
             info=next_env_state.info,
+            metrics=next_env_state.metrics,
             reset=False,
         )
         return transition, env_info, next_env_state

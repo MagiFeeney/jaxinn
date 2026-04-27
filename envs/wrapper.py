@@ -68,28 +68,26 @@ class AutoReset(Wrapper):
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         key_step, key_reset = jax.random.split(key)
         step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
-        done = step_transition.done
+        reset_transition, reset_env_info, reset_env_state = self.env.reset(key_reset)
 
-        def do_reset():
-            return self.env.reset(key_reset)
+        def select_fn(path, reset_val, step_val):
+            if hasattr(self, "is_static_leaf") and self.is_static_leaf(path, step_val):
+                return step_val
+            done = step_transition.done
+            if done.ndim == 0:
+                return jnp.where(done, reset_val, step_val)
+            if done.shape[0] != reset_val.shape[0]:
+                return step_val
+            d = done.reshape((step_val.shape[0],) + (1,) * (step_val.ndim - 1))
+            return jnp.where(d, reset_val, step_val)
 
-        def no_reset():
-            return step_transition, step_env_info, step_env_state
-
-        # lax.cond executes only one branch (on single device) or handles masking (in vmap)
-        reset_transition, reset_env_info, reset_env_state = jax.lax.cond(
-            done,
-            do_reset,
-            no_reset
-        )                       # potentially saves computation for rendering when done is False
-
-        final_env_state = jax.tree.map(
-            lambda r, s: jnp.where(done, r, s),
+        final_env_state = jax.tree.map_with_path(
+            select_fn,
             reset_env_state,
             step_env_state
         )
-        _next_obs = jax.tree.map(
-            lambda r, s: jnp.where(done, r, s),
+        _next_obs = jax.tree.map_with_path(
+            select_fn,
             reset_transition.next_obs,
             step_transition.next_obs
         )
@@ -145,13 +143,81 @@ class ActionRepeat(Wrapper):
         return transition, env_info, next_env_state
 
 
+def walk_and_apply(node, transform_fn, target_key="terminal_observation"):
+    """
+    Recursively walks a dictionary and applies transform_fn to the value
+    of any key matching target_key.
+    """
+    if not isinstance(node, dict):
+        return node
+
+    return {
+        k: transform_fn(v) if k == target_key else walk_and_apply(v, transform_fn, target_key)
+        for k, v in node.items()
+    }
+
+
+class ChannelFirst(Wrapper):
+    def __init__(self, env: Environment):
+        super().__init__(env)
+
+    @staticmethod
+    def process_obs(obs: jax.Array) -> jax.Array:
+        """Process observation from NHWC to NCHW for the image input while turning the 2D input as gray image."""
+        if obs.ndim in (3, 4) and obs.shape[-1] in (1, 3, 4, 6):
+            obs = jnp.moveaxis(obs, source=-1, destination=-3)
+        elif obs.ndim in (2, 3):
+            obs = jnp.expand_dims(obs, axis=-3)    # Convert to gray image
+
+        return obs
+
+    def process_observation_space(self, space: Any) -> Any:
+        """Align with and reflect the processed observation."""
+        if hasattr(space, 'spaces') and isinstance(space.spaces, dict):
+            new_spaces = {k: self.process_observation_space(v) for k, v in space.spaces.items()}
+            return type(space)(new_spaces)
+
+        if hasattr(space, 'shape') and hasattr(space, 'low') and hasattr(space, 'high'):
+            if len(space.shape) == 3 and space.shape[-1] in (1, 3, 4, 6):
+                new_shape = (space.shape[2], space.shape[0], space.shape[1])
+                low = jnp.moveaxis(space.low, -1, -3) if getattr(space.low, 'ndim', 0) == 3 else space.low
+                high = jnp.moveaxis(space.high, -1, -3) if getattr(space.high, 'ndim', 0) == 3 else space.high
+                return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
+            elif len(space.shape) == 2:
+                new_shape = (1, space.shape[0], space.shape[1])
+                low = space.low[None, ...] if getattr(space.low, 'ndim', 0) == 2 else space.low
+                high = space.high[None, ...] if getattr(space.high, 'ndim', 0) == 2 else space.high
+                return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
+        return space
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, state = self.env.reset(key)
+        transition = eqx.tree_at(lambda t: t.next_obs, transition, self.process_obs(transition.next_obs))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self.process_obs))
+        return transition, info, state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, next_state = self.env.step(key, env_state, action)
+        transition = eqx.tree_at(lambda t: t.next_obs, transition, self.process_obs(transition.next_obs))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self.process_obs))
+        return transition, info, next_state
+
+    @property
+    def observation_space(self):
+        space = self.env.observation_space
+        space = self.process_observation_space(space)
+        return space
+
+
 class OneHotAction(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
-        dummy_one_hot_action = jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype)
+        batch_shape = transition.reward.shape
+        target_shape = batch_shape + self.action_space.shape
+        dummy_one_hot_action = jnp.zeros(target_shape, dtype=self.action_space.dtype)
         transition = eqx.tree_at(lambda t: t.action, transition, dummy_one_hot_action)
         return transition, env_info, env_state
 
@@ -185,21 +251,16 @@ class ResizeImage(Wrapper):
             obs = jax.image.resize(obs, shape=target_shape, method="nearest")
         return obs.astype(jnp.uint8)
 
-    def _walk_and_scale(self, node):
-        if not isinstance(node, dict):
-            return node
-        return {k: self._upscale(v) if k == "terminal_observation" else self._walk_and_scale(v) for k, v in node.items()}
-
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
-        info = eqx.tree_at(lambda x: x.data, info, self._walk_and_scale(info.data))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
         return transition, info, state
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
-        info = eqx.tree_at(lambda x: x.data, info, self._walk_and_scale(info.data))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
         return transition, info, next_state
 
     @property
@@ -212,3 +273,27 @@ class ResizeImage(Wrapper):
             shape=new_shape,
             dtype=space.dtype
         )
+
+
+class Branched:
+    def __init__(self, env: Environment, separated: bool):
+        self.env = env
+        self.separated = separated
+
+    def reset(self, key: PRNGKeyArray, *, mode: str, **kwargs) -> Tuple[Transition, EnvInfo, EnvState]:
+        if self.separated:
+            return self.env[mode].reset(key, **kwargs)
+        else:
+            return self.env.reset(key, **kwargs)
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array, *, mode: str) -> Tuple[Transition, EnvInfo, EnvState]:
+        if self.separated:
+            return self.env[mode].step(key, env_state, action)
+        else:
+            return self.env.step(key, env_state, action)
+
+    def get(self, name: str, mode: str = "train"):
+        if name == "env":
+            raise AttributeError
+        target_env = self.env[mode] if self.separated else self.env
+        return getattr(target_env, name)

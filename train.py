@@ -7,19 +7,18 @@ import jax.numpy as jnp
 from jax.sharding import Mesh, PartitionSpec as P
 import equinox as eqx
 
-from config import Config
-from custom import EnvSelector, get_config
-from envs import make_env, Transition
+from config import Config, Agent as AgentConfig
+from custom import EnvSelector, get_config, post_process
+from envs import make_env, Environment, Transition
 from agent import Agent
 from agent.models import LatentState, LatentStateWithParams
 
 
 class Trainer(eqx.Module):
-    agent: Agent
-    env: Any = eqx.field(static=True)
+    env: Environment = eqx.field(static=True)
 
     num_environment_steps: int = eqx.field(static=True)
-    prefill_steps: int = eqx.field(static=True)
+    num_prefill_episodes: int = eqx.field(static=True)
     eval_interval: int = eqx.field(static=True)
     train_interval: int = eqx.field(static=True)
     train_iterations: int = eqx.field(static=True)
@@ -27,25 +26,16 @@ class Trainer(eqx.Module):
     num_eval_episodes: int = eqx.field(static=True)
     action_noise: float = eqx.field(static=True)
 
-    def __init__(self, config: Config, *, key: PRNGKeyArray, memory_id: jax.Array):
-        self.env = make_env(**config.env(), wrapper=config.env.wrapper())
-        # Update config with env particulars
-        config.agent.world.transition.update({"action_size": self.env.action_size})
-        config.agent.actor.update({"action_size": self.env.action_size})
-        config.agent.world.perception.encoder.update({"shape": self.env.observation_space.shape})
-        config.agent.world.perception.decoder.update({"shape": self.env.observation_space.shape})
-        if config.agent.memory.device == "cpu":
-            config.agent.memory.num_seeds = config.num_seeds # Manually allocate memory for all seeds
-        else:
-            config.agent.memory.num_seeds = None             # vmap handles this
-        self.agent = Agent(config.agent, key=key, memory_id=memory_id)
-        self.__dict__.update(config.exploration())
+    @classmethod
+    def create(cls, config: Config):
+        env = make_env(**config.env(), wrapper=config.env.wrapper())
+        return cls(env=env, **config.exploration())
 
-    def __call__(self, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
+    def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
-        agent = self.prefill(key_prefill)
+        agent = self.prefill(agent, key_prefill)
 
         # Train and evaluate
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
@@ -81,7 +71,7 @@ class Trainer(eqx.Module):
             return:       {r}
             mean:         {e}
                 """,
-                k=(iteration + 1) * self.eval_interval + self.prefill_steps,
+                k=(iteration + 1) * self.eval_interval + self.num_prefill_episodes * self.episode_length,
                 **metrics,
                 n=self.num_eval_episodes,
                 r=episodic_returns,
@@ -98,12 +88,10 @@ class Trainer(eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    def prefill(self, key: PRNGKeyArray) -> Agent:
-        # Start with the initial agent: self.agent
-        num_prefill_episodes = self.prefill_steps // self.episode_length
-        keys = jax.random.split(key, num_prefill_episodes)
-        transitions, terminal_obs = jax.vmap(lambda k: self.interact(self.agent, k, prefill=True))(keys) # N x T x E
-        agent = self.agent.add_experience(transitions, terminal_obs, source=2)
+    def prefill(self, agent: Agent, key: PRNGKeyArray) -> Agent:
+        keys = jax.random.split(key, self.num_prefill_episodes)
+        transitions, terminal_obs = jax.vmap(lambda k: self.interact(agent, k, prefill=True))(keys) # N x T x E
+        agent = agent.add_experience(transitions, terminal_obs, source=2)
         return agent
 
     def train(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Tuple[Agent, PRNGKeyArray], jax.Array]:
@@ -144,19 +132,26 @@ class Trainer(eqx.Module):
             prefill: bool = False,
             num_envs: int | None = None
     ) -> Tuple[Transition, ...]:
-        key_reset, key_init, key_step = jax.random.split(key, 3)
-        if num_envs is not None:
-            init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs)
+        if eval:
+            mode = "eval"
+        elif prefill:
+            mode = "prefill"
         else:
-            init_transition, info, env_state = self.env.reset(key_reset)
-            num_envs = self.env.num_envs
+            mode = "train"
+
+        key_reset, key_init, key_step = jax.random.split(key, 3)
+        if num_envs is None or self.env.separated:
+            init_transition, info, env_state = self.env.reset(key_reset, mode=mode)
+            num_envs = self.env.get("num_envs", mode)
+        else:
+            init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
         init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,))
         init_terminal_obs = init_transition.next_obs # Zeros: for consistency
 
         def random_act_branch(operand):
             last_latent_state, _, _, key = operand
             keys = jax.random.split(key, num_envs)
-            action = jax.vmap(self.env.action_space.sample)(keys)
+            action = jax.vmap(self.env.get("action_space", mode).sample)(keys)
             return last_latent_state, action # For consistency
 
         def agent_act_branch(operand):
@@ -164,10 +159,10 @@ class Trainer(eqx.Module):
             key_act, key_noise = jax.random.split(key, 2)
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
             if not eval and self.action_noise > 0:
-                if self.env.is_action_space_discrete:
+                if self.env.get("is_action_space_discrete"):
                     key_idx, key_cond = jax.random.split(key_noise, 2)
-                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.action_size)
-                    expl_action = jax.nn.one_hot(random_idx, self.env.action_size)
+                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.get("action_size"))
+                    expl_action = jax.nn.one_hot(random_idx, self.env.get("action_size"))
 
                     should_explore = jax.random.uniform(key_cond, (*action.shape[:-1], 1)) < self.action_noise
                     action = jnp.where(should_explore, expl_action, action)
@@ -192,7 +187,7 @@ class Trainer(eqx.Module):
             else:
                 latent_state, action = agent_act_branch(operand)
 
-            transition, info, next_env_state = self.env.step(key_step, env_state, action)
+            transition, info, next_env_state = self.env.step(key_step, env_state, action, mode=mode)
             return (transition, info.terminal_observation, latent_state, next_env_state, key), (last_transition, last_terminal_obs)
 
         _, (transitions, terminal_obs) = jax.lax.scan(
@@ -204,35 +199,54 @@ class Trainer(eqx.Module):
         return transitions, terminal_obs
 
 
-def main(args):
-    @eqx.filter_pmap
-    @eqx.filter_vmap
-    def train(key, memory_id):
-        key_agent, key_train = jax.random.split(key)
-        trainer = Trainer(args, key=key_agent, memory_id=memory_id)
-        return trainer(key_train)
+def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
+    ctx = {
+        "obs_shape":   env.get("observation_space").shape,
+        "action_size": env.get("action_size"),
+        "num_seeds":   config.num_seeds,
+    }
+    return config.agent.resolve(ctx)
 
-    key = jax.random.PRNGKey(args.seed)
+
+def main(config):
+    # Distribute RNG keys
+    key = jax.random.PRNGKey(config.seed)
     num_devices = jax.device_count()
-    if args.num_seeds % num_devices != 0:
-        closest_lower = (args.num_seeds // num_devices) * num_devices
+    if config.num_seeds % num_devices != 0:
+        closest_lower = (config.num_seeds // num_devices) * num_devices
         closest_higher = closest_lower + num_devices
         raise ValueError(
-            f"Mismatch: args.num_seeds ({args.num_seeds}) is not divisible by "
+            f"Mismatch: config.num_seeds ({config.num_seeds}) is not divisible by "
             f"num_devices ({num_devices}). \n"
             f"Please set --num_seeds to {closest_lower} or {closest_higher}."
         )
-    seeds_per_device = args.num_seeds // num_devices
-    keys = jax.random.split(key, args.num_seeds)
-    keys = keys.reshape(num_devices, seeds_per_device, -1)
-
+    seeds_per_device = config.num_seeds // num_devices
+    keys = jax.random.split(key, config.num_seeds * 2)
+    keys_agent, keys_train = keys.reshape(2, num_devices, seeds_per_device, -1)
     memory_ids = jnp.arange(num_devices * seeds_per_device).reshape(num_devices, seeds_per_device) # For anchoring cpu memory if enabled
 
-    # Parallel agents
-    final_agent, (metrics, evaluation) = train(keys, memory_ids)
-    final_eval_return = evaluation.reshape(args.num_seeds, -1)[:, -1]
+    # Initialize trainer with environment
+    trainer = Trainer.create(config)
+
+    # Resolve agent config with environment-specific information
+    agent_config = resolve_agent_config(config, trainer.env)
+
+    # Spawn parallel agents
+    def make_agent(key, memory_id):
+        return Agent(agent_config, key=key, memory_id=memory_id)
+
+    agents = jax.vmap(jax.vmap(make_agent))(keys_agent, memory_ids)
+
+    # Ready to train
+    @eqx.filter_pmap(donate="all") # shard across devices, donate buffer for memory efficiency
+    @eqx.filter_vmap               # vectorise within each device
+    def make_train(agent, key):
+        return trainer(agent, key)
+
+    final_agent, (metrics, evaluation) = make_train(agents, keys_train)
+    final_eval_return = evaluation.reshape(config.num_seeds, -1)[:, -1]
     print(
-        f"{args.num_seeds} agents/seeds training completed!\n"
+        f"{config.num_seeds} agents/seeds training completed!\n"
         f"Achieved return:\n"
         f"{final_eval_return}"
     )
@@ -247,10 +261,13 @@ if __name__ == "__main__":
     env_id = env_selector.env_id
 
     # Final CLI Pass
-    args = tyro.cli(
+    config = tyro.cli(
         Config,
         default=get_config(env_id)
     )
 
+    # Post processing
+    config = post_process(env_id, config)
+
     # Run
-    main(args)
+    main(config)

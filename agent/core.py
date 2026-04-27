@@ -99,8 +99,11 @@ class Agent(eqx.Module):
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = ()) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, self.random_init, batch_shape, key=key)
 
-    def process(self, obs) -> jax.Array:
-        return obs.astype(jnp.float32) / 255.0 - 0.5
+    @staticmethod
+    def process(obs) -> jax.Array:
+        if obs.dtype == jnp.uint8 and obs.ndim > 3:
+            return obs.astype(jnp.float32) / 255.0 - 0.5
+        return obs
 
     def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
         key_perceive, key_action = jax.random.split(key, 2)
@@ -143,7 +146,13 @@ class Agent(eqx.Module):
             flattened = jnp.moveaxis(x, source=source, destination=source - 1).reshape(-1, *x.shape[source + 1:])
             # For storage
             if x.dtype == jnp.float32 and x.ndim > 3:
-                return flattened.astype(jnp.uint8)
+                is_normalized = x.max() <= 1.0
+                return jax.lax.cond(
+                    is_normalized,
+                    lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
+                    lambda arr: arr.astype(jnp.uint8),
+                    flattened
+                )
             return flattened
 
         # flatten and cast dtype in one go
@@ -216,7 +225,7 @@ class Agent(eqx.Module):
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
         init_mask = jnp.ones_like(data.done[0][..., None], dtype=jnp.int32)
-        next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(self.process(data.next_obs)) # Launch kernel once
+        next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(data.next_obs) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
             latent_state, last_mask, key = carry
@@ -302,6 +311,11 @@ class Agent(eqx.Module):
         """Update world model, actor and critic."""
         key, key_memory, key_world, key_ac = jax.random.split(key, 4)
         data = self.memory.sample((self.batch_size, self.chunk_size), key_memory) # T x B
+        data = eqx.tree_at(
+            lambda d: d.next_obs,
+            data,
+            replace_fn=self.process
+        )
         metrics = {}
 
         @eqx.filter_value_and_grad(has_aux=True)
