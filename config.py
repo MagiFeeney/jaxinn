@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, asdict, is_dataclass
+from dataclasses import dataclass, field, fields, asdict, is_dataclass
 from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
 
@@ -22,6 +22,24 @@ class ConfigNamespace(SimpleNamespace):
     def __repr__(self):
         items = [f"{k}={v}" for k, v in self.items()]
         return f"Namespace({', '.join(items)})"
+
+
+@dataclass
+class Resolvable:
+    """Depth-first recursive resolution."""
+
+    def resolve(self, ctx: dict) -> "Resolvable":
+        """Check the child nodes."""
+        for f in fields(self):
+            child = getattr(self, f.name)
+            if isinstance(child, Resolvable):
+                child.resolve(ctx)
+        self._resolve(ctx)
+        return self
+
+    def _resolve(self, ctx: dict) -> None:
+        """Resolve current level."""
+        pass
 
 
 @dataclass
@@ -104,7 +122,7 @@ class CNNDecoder(ModelShared, PerceptionShared):
 @dataclass
 class LinearEncoder(PerceptionShared):
     hidden_size: Optional[int] = None
-    output_size: Optional[int] = None
+    embedding_size: Optional[int] = None
     num_layers: Optional[int] = None
 
 
@@ -133,48 +151,66 @@ def arch_to_domain(arch):
         raise NotImplementedError(f"Architecture {arch} is currently not supported or classified.")
 
 
-@dataclass
-class Perception(Model):
-    type: str = "cnn"
-    domain: Optional[str] = None
+def make_perception_class(name, encoder_cls, decoder_cls):
+    @dataclass
+    class Perception(Resolvable, Model):
+        encoder: encoder_cls = field(default_factory=encoder_cls)
+        decoder: decoder_cls = field(default_factory=decoder_cls)
+        domain: str = field(init=False, default=arch_to_domain(name))
+        type: str = name
 
-    encoder: Optional[Any] = None
-    decoder: Optional[Any] = None
+        def _resolve(self, ctx: dict) -> None:
+            self.encoder.shape = ctx["obs_shape"]
+            self.decoder.shape = ctx["obs_shape"]
 
-    def __post_init__(self):
-        if self.type not in CONFIG_REGISTRY:
-            raise ValueError(f"Unknown perception type: '{self.type}'")
+    Perception.__name__ = f"{name.capitalize()}Perception"
+    Perception.__qualname__ = Perception.__name__
+    return Perception
 
-        encoder_cls, decoder_cls = CONFIG_REGISTRY[self.type]
 
-        if self.encoder is None or not isinstance(self.encoder, encoder_cls):
-            if isinstance(self.encoder, dict):
-                self.encoder = encoder_cls(**self.encoder)
-            else:
-                self.encoder = encoder_cls()
+PERCEPTION_REGISTRY = {
+    name: make_perception_class(name, enc, dec)
+    for name, (enc, dec) in CONFIG_REGISTRY.items()
+}
 
-        if self.decoder is None or not isinstance(self.decoder, decoder_cls):
-            if isinstance(self.decoder, dict):
-                self.decoder = decoder_cls(**self.decoder)
-            else:
-                self.decoder = decoder_cls()
 
-        self.domain = arch_to_domain(self.type)
+PerceptionUnion = Union[tuple(PERCEPTION_REGISTRY.values())]
 
 
 @dataclass
-class Representation(ModelShared):
-    embedding_size: int = 1024
+class Representation(Resolvable, ModelShared):
+    embedding_size: Optional[int] = None
     hidden_size: int = 200
     activation_function: str = "elu"
     head_type: Literal['Normal', 'Categorical'] = "Normal"
 
+    def _resolve(self, ctx: dict) -> None:
+        perception_type = ctx.get("perception_type")
+        if "embedding_size" not in ctx or perception_type is None:
+            return
+
+        obs_shape = ctx["obs_shape"]
+        embedding_size = ctx["embedding_size"]
+
+        if embedding_size:
+            self.embedding_size = embedding_size
+        elif perception_type == "linear" and len(obs_shape) == 1:
+            self.embedding_size = obs_shape[0]
+        else:
+            raise NotImplementedError(
+                f"Cannot infer embedding_size for perception={perception_type!r} "
+                f"with obs_shape={obs_shape}"
+            )
+
 
 @dataclass
-class Transition(ModelShared):
+class Transition(Resolvable, ModelShared):
     hidden_size: int = 200
     activation_function: str = "elu"
     head_type: Literal['Normal', 'Categorical'] = "Normal"
+
+    def _resolve(self, ctx: dict) -> None:
+        self.action_size = ctx["action_size"]
 
 
 @dataclass
@@ -193,12 +229,34 @@ class WorldOptimizer(OptimizerShared):
 
 
 @dataclass
-class World(Model):
-    perception: Perception = field(default_factory=Perception)
+class World(Resolvable, Model):
+    perception: Optional[PerceptionUnion] = field(default=None)
     representation: Representation = field(default_factory=Representation)
     transition: Transition = field(default_factory=Transition)
     reward: Reward = field(default_factory=Reward)
     optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
+
+    def _resolve(self, ctx: dict) -> None:
+        obs_shape = ctx["obs_shape"]
+
+        # If perception is not given, fall back to defaults
+        if self.perception is None:
+            name = "cnn" if len(obs_shape) > 1 else "linear"
+            self.perception = PERCEPTION_REGISTRY[name]()
+            self.perception.resolve(ctx)
+
+        if len(obs_shape) == 1:
+            assert self.perception.domain == "state", (
+                f"1D obs requires a state module, got {self.perception.type!r}"
+            )
+        else:
+            assert self.perception.domain == "pixel", (
+                f"2D+ obs requires a pixel module, got {self.perception.type!r}"
+            )
+
+        ctx["embedding_size"] = self.perception.encoder.embedding_size
+        ctx["perception_type"] = self.perception.type
+        self.representation._resolve(ctx)
 
 
 # Actor
@@ -210,7 +268,7 @@ class ActorOptimizer(OptimizerShared):
 
 
 @dataclass
-class Actor(ModelShared):
+class Actor(Resolvable, ModelShared):
     hidden_size: int = 300
     activation_function: str = "elu"
     action_size: Optional[int] = None # Pass from the env params
@@ -218,6 +276,9 @@ class Actor(ModelShared):
     head_type: Literal['Tanh Normal', 'Beta', 'Categorical'] = "Tanh Normal"
 
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
+
+    def _resolve(self, ctx: dict) -> None:
+        self.action_size = ctx["action_size"]
 
 
 # Critic
@@ -241,10 +302,16 @@ class Critic(ModelShared):
 
 # Memory
 @dataclass
-class Memory(Base):
+class Memory(Resolvable, Base):
     capacity: int = 1000000
     device: Literal['cpu', 'gpu'] = 'gpu'
     type: Literal['uniform', 'prioritized'] = "uniform"
+
+    def _resolve(self, ctx: dict) -> None:
+        if self.device == "cpu":
+            self.num_seeds = ctx["num_seeds"] # pre-allocate for all seeds upfront
+        else:
+            self.num_seeds = None             # vmap handles this
 
 
 # Environment
@@ -257,16 +324,16 @@ class Wrapper(Base):
 @dataclass
 class Env(Base):
     env_id: str = "gymnax/DeepSea-bsuite"
-    # creation: Dict[str, Any] = field(default_factory=dict)
     creation: Dict[str, Union[int, float, bool, str]] = field(default_factory=dict)
     wrapper: Wrapper = field(default_factory=Wrapper)
+    separated: bool = False
 
 
 # Exploration
 @dataclass
 class Exploration(Base):
     num_environment_steps: int = 1000000
-    prefill_steps: int = 5000
+    num_prefill_episodes: int = 5
     eval_interval: int = 10000
     train_interval: int = 1000
     train_iterations: int = 100
@@ -287,7 +354,7 @@ class Optimization(Base):
 
 # All about agent
 @dataclass
-class Agent(Base):
+class Agent(Resolvable, Base):
     world: World = field(default_factory=World)
     actor: Actor = field(default_factory=Actor)
     critic: Critic = field(default_factory=Critic)

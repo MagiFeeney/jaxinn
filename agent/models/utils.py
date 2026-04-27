@@ -122,3 +122,30 @@ class ProxyDistrax:
 
 
 dx = ProxyDistrax()
+
+
+def make_mlp(
+        input_size: int,
+        hidden_size: int,
+        output_size: int,
+        num_layers: int,
+        activation: Union[str, Callable, StaticCallable],
+        *,
+        key: PRNGKeyArray
+):
+    sizes = [input_size] + [hidden_size] * num_layers + [output_size]
+
+    layers = []
+    keys = jax.random.split(key, len(sizes) - 1)
+
+    if isinstance(activation, str):
+        activation = get_activation_fn(activation)
+    if not isinstance(activation, StaticCallable):
+        activation = StaticCallable(activation)
+
+    for i in range(len(sizes) - 1):
+        layers.append(eqx.nn.Linear(sizes[i], sizes[i+1], key=keys[i]))
+        if i < len(sizes) - 2:
+            layers.append(activation)
+
+    return eqx.nn.Sequential(layers)

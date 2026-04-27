@@ -21,8 +21,8 @@ class Navix(Environment):
 
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "Navix":
-        env = navix.make(env_name, **kwargs)
-        return cls(env, env_params=None)
+        env = navix.make("Navix-" + env_name, **kwargs)
+        return cls(env, env_params=kwargs)
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, NavixTimestep]:
         env_state = self.env.reset(key)
@@ -33,7 +33,7 @@ class Navix(Environment):
             done=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
-            info={},            # TODO: fix mismatched pytree
+            info=env_state.info,
             reset=True,
         )
         return transition, env_info, env_state

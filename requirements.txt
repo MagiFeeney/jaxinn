@@ -1,6 +1,7 @@
 jax['cuda']
 equinox
 distrax
+optax
 tyro
 gymnax
 playground
