@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, asdict, is_dataclass
+from dataclasses import dataclass, field, fields, asdict, is_dataclass
 from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
 
