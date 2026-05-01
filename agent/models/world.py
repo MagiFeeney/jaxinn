@@ -246,10 +246,10 @@ class LinearEncoder(eqx.Module):
         if hidden_size is not None and \
            embedding_size is not None and \
            num_layers is not None:
-            self.net = eqx.nn.MLP(
+            self.net = make_mlp(
                 input_size = shape[0],
                 hidden_size = hidden_size,
-                output_size = output_size,
+                output_size = embedding_size,
                 num_layers = num_layers,
                 activation = StaticCallable(activation),
                 key = key
