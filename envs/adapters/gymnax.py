@@ -1,15 +1,14 @@
 import math
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
+
 from functools import partial
-from envs.environment import Transition, Environment, EnvInfo
+from envs.environment import Environment, EnvInfo, Transition
 
 import gymnax
-from gymnax import EnvParams as GymnaxEnvParams
-from gymnax.environments.spaces import Discrete, Box
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
 
@@ -71,10 +70,7 @@ class Gymnax(Environment):
             reward=jnp.zeros(()),
             done=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(
-            info={'discount': jnp.array(1.0)},
-            reset=True,
-        )
+        env_info = EnvInfo(terminal_observation=jnp.zeros_like(obs)) # dummy
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
@@ -85,10 +81,7 @@ class Gymnax(Environment):
             reward=reward,
             done=done,
         )
-        env_info = EnvInfo(
-            info=info,
-            reset=False,
-        )
+        env_info = EnvInfo(info=info)
         return transition, env_info, next_env_state
 
     @property

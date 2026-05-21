@@ -1,14 +1,15 @@
-import numpy as np
-from typing import Any, Callable, Optional, Tuple, List
+from typing import Any, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Transition, Environment, EnvInfo
-from envs.spaces import Discrete, Box, Dict
+from jax._src.tree_util import DictKey, FlattenedIndexKey, GetAttrKey, SequenceKey
+
+from envs.environment import Environment, EnvInfo, Transition
+from envs.spaces import Box, Dict
+from envs.vmap import VmapTransformation
 
 from mujoco_playground import registry
-from mujoco.mjx import Model as MjxModel
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
 from mujoco.mjx.warp import types as mjx_warp_types
@@ -22,9 +23,6 @@ def _build_static_leaf_names() -> frozenset[str]:
     """
     batch_dim = mjx_warp_types._BATCH_DIM['Data']
     return frozenset(k for k, is_batched in batch_dim.items() if not is_batched)
-
-
-from jax._src.tree_util import DictKey, FlattenedIndexKey, GetAttrKey, SequenceKey
 
 
 def get_leaf_name(path: tuple) -> str | None:
@@ -47,77 +45,7 @@ def is_static_leaf(path, x) -> bool:
     return get_leaf_name(path) in _STATIC_LEAF_NAMES
 
 
-def make_get_logical(logical_shape):
-    logical_size = 1 if len(logical_shape) == 0 else logical_shape[0]
-
-    def body(path, x):
-        if is_static_leaf(path, x):
-            return x
-        if not hasattr(x, 'ndim') or x.ndim == 0:
-            return x
-        if len(logical_shape) == 0:
-            return x[0]
-        return x[:logical_size]
-
-    return body
-
-
-def make_unflatten(axis_size, inner_size, flattened):
-    expected = axis_size * inner_size
-
-    def body(path, x):
-        if is_static_leaf(path, x):
-            return x
-        if not hasattr(x, 'ndim') or x.ndim == 0:
-            return x
-        if flattened and x.shape[0] == expected:
-            return x.reshape(axis_size, inner_size, *x.shape[1:])
-        return x
-
-    return body
-
-
-def make_out_batching(axis_size, inner_size, flattened):
-    expected = axis_size * inner_size
-
-    def body(path, x):
-        if is_static_leaf(path, x):
-            return False
-        if not hasattr(x, 'ndim') or x.ndim == 0:
-            return False
-        return x.shape[0] == expected
-
-    return body
-
-
-def make_pad_leaf(logical_shape, capacity):
-    logical_size = 1 if len(logical_shape) == 0 else logical_shape[0]
-    pad_size = capacity - logical_size
-
-    def body(path, x):
-        if is_static_leaf(path, x):
-            return x
-        if len(logical_shape) == 0:
-            x = jnp.expand_dims(x, 0)
-        if not hasattr(x, 'ndim') or x.ndim == 0:
-            return x
-        pw = ((0, pad_size),) + ((0, 0),) * (x.ndim - 1)
-        return jnp.pad(x, pw, mode='constant', constant_values=0)
-
-    return body
-
-
-def make_flatten(axis_size):
-    def body(path, x):
-        if is_static_leaf(path, x):
-            return x
-        if not hasattr(x, 'ndim') or x.ndim < 2:
-            return x
-        return x.reshape(axis_size * x.shape[1], *x.shape[2:])
-    return body
-
-
-class PlaygroundVmapMixIn:
+class PlaygroundVmapMixIn(VmapTransformation):
     is_static_leaf = staticmethod(is_static_leaf)
 
     def _reset(self, key):
@@ -135,7 +63,7 @@ class PlaygroundVmapMixIn:
             key = key.at[0].set(key_replacement)
 
         env_state = self._reset(key_reset)
-        return jax.tree.map_with_path(make_get_logical(logical_shape), env_state)
+        return jax.tree.map_with_path(self.make_get_logical(logical_shape), env_state)
 
     @v_reset.def_vmap
     def v_reset_batch(axis_size, in_batched, self, key):
@@ -145,8 +73,8 @@ class PlaygroundVmapMixIn:
 
         env_state = self.v_reset(self, flatten_key) # Recursion
 
-        new_env_state = jax.tree.map_with_path(make_unflatten(axis_size, inner, flattened), env_state)
-        out_batched = jax.tree.map_with_path(make_out_batching(axis_size, inner, flattened), env_state)
+        new_env_state = jax.tree.map_with_path(self.make_unflatten(axis_size, inner, flattened), env_state)
+        out_batched = jax.tree.map_with_path(self.make_out_batching(axis_size, inner, flattened), env_state)
         return new_env_state, out_batched
 
     @jax.custom_batching.custom_vmap
@@ -154,11 +82,11 @@ class PlaygroundVmapMixIn:
         logical_shape = key.shape[:-1]
 
         # Pad actions to satisfy the C++ primitive if logical_size < capacity
-        padded_env_state = jax.tree.map_with_path(make_pad_leaf(logical_shape, self.capacity), env_state)
-        padded_action = jax.tree.map_with_path(make_pad_leaf(logical_shape, self.capacity), action)
+        padded_env_state = jax.tree.map_with_path(self.make_pad_leaf(logical_shape, self.capacity), env_state)
+        padded_action = jax.tree.map_with_path(self.make_pad_leaf(logical_shape, self.capacity), action)
 
         next_env_state = jax.vmap(self.env.step)(padded_env_state, padded_action)
-        return jax.tree.map_with_path(make_get_logical(logical_shape), next_env_state)
+        return jax.tree.map_with_path(self.make_get_logical(logical_shape), next_env_state)
 
     @v_step.def_vmap
     def v_step_batch(axis_size, in_batched, self, key, env_state, action):
@@ -168,21 +96,21 @@ class PlaygroundVmapMixIn:
         if flattened:
             flatten_action = action.reshape(axis_size * inner, *action.shape[2:])
             flatten_key = key.reshape(axis_size * inner, *key.shape[2:])
-            flatten_env_state = jax.tree.map_with_path(make_flatten(axis_size), env_state)
+            flatten_env_state = jax.tree.map_with_path(self.make_flatten(axis_size), env_state)
         else:
             flatten_action, flatten_key, flatten_env_state = action, key, env_state
 
         next_env_state = self.v_step(self, flatten_key, flatten_env_state, flatten_action)
 
-        new_env_state = jax.tree.map_with_path(make_unflatten(axis_size, inner, flattened), next_env_state)
-        out_batched = jax.tree.map_with_path(make_out_batching(axis_size, inner, flattened), next_env_state)
+        new_env_state = jax.tree.map_with_path(self.make_unflatten(axis_size, inner, flattened), next_env_state)
+        out_batched = jax.tree.map_with_path(self.make_out_batching(axis_size, inner, flattened), next_env_state)
         return new_env_state, out_batched
 
 
 class Playground(Environment, PlaygroundVmapMixIn):
     def __init__(
             self,
-            env: MjxModel,
+            env: MjxEnv,
             env_params: Optional[Any] = None,
     ):
         super().__init__(env, env_params)
@@ -209,7 +137,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
         env_info = EnvInfo(
             info=env_state.info,
             metrics=env_state.metrics,
-            reset=True,
+            terminal_observation=jnp.zeros_like(transition.next_obs), # dummy
         )
         return transition, env_info, env_state
 
@@ -224,7 +152,6 @@ class Playground(Environment, PlaygroundVmapMixIn):
         env_info = EnvInfo(
             info=next_env_state.info,
             metrics=next_env_state.metrics,
-            reset=False,
         )
         return transition, env_info, next_env_state
 

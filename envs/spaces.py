@@ -125,13 +125,13 @@ class Box(Space[jax.Array]):
     def sample(self, key: jax.Array) -> jax.Array:
         def bounded_sample(key):
             if jnp.issubdtype(self.dtype, jnp.integer):
-                 return jax.random.randint(
-                     key,
-                     shape=self.shape,
-                     minval=self.low,
-                     maxval=self.high + 1,
-                     dtype=self.dtype
-                 )
+                return jax.random.randint(
+                    key,
+                    shape=self.shape,
+                    minval=self.low,
+                    maxval=self.high + 1,
+                    dtype=self.dtype
+                )
             return jax.random.uniform(
                 key,
                 shape=self.shape,
@@ -236,3 +236,26 @@ class Dict(Space[PyDict[str, Any]]):
         keys = aux_data
         spaces = dict(zip(keys, children))
         return cls(spaces)
+
+
+def to_jax_dtype(dtype: Any) -> jnp.dtype:
+    parsed_dtype = jnp.dtype(dtype)
+    if parsed_dtype.name == 'float64':
+        return jnp.float64      # Return concrete dtype to avoid being caught by float dtype
+    elif parsed_dtype.name == 'int64':
+        return jnp.int64
+    return parsed_dtype
+
+
+CONVERTERS = {
+    "Box": lambda s: Box(s.low, s.high, s.shape, to_jax_dtype(s.dtype)),
+    "Discrete": lambda s: Discrete(s.n),
+}
+
+
+def to_jax_space(space: Any):
+    """Dynamically maps gym/gymnasium space to a JAX space by class name."""
+    cls_name = space.__class__.__name__
+    if cls_name not in CONVERTERS:
+        raise NotImplementedError(f"Space '{cls_name}' is not supported for conversion.")
+    return CONVERTERS[cls_name](space)

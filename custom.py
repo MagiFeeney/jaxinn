@@ -95,23 +95,26 @@ class Separated:
 def get_separate_env_config(config):
     train_num_envs = config.num_seeds * 1 * config.env.wrapper.num_envs
     eval_num_envs = config.num_seeds * config.exploration.num_eval_episodes * 1
-    prefill_num_envs = config.num_seeds * config.exploration.num_prefill_episodes * config.env.wrapper.num_envs
     separated_creations = {
         "train": {"num_envs": train_num_envs, **config.env.creation},
         "eval": {"num_envs": eval_num_envs, **config.env.creation},
-        "prefill": {"num_envs": prefill_num_envs, **config.env.creation},
     }
-    separated_wrappers = Separated(
-        train=replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
-        eval=replace(config.env.wrapper, num_envs=1),
-        prefill=replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
-    )
-    return separated_creations, separated_wrappers
+    separated_wrappers_kwargs = {
+        "train": replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs),
+        "eval": replace(config.env.wrapper, num_envs=1),
+    }
+    if config.env.prefill_mode == "batched":
+        prefill_num_envs = config.num_seeds * config.exploration.num_prefill_episodes * config.env.wrapper.num_envs
+        separated_creations["prefill"] = {"num_envs": prefill_num_envs, **config.env.creation}
+        separated_wrappers_kwargs["prefill"] = replace(config.env.wrapper, num_envs=config.env.wrapper.num_envs)
+    return separated_creations, Separated(**separated_wrappers_kwargs)
 
 
 def post_process(env_id: str, config: Config) -> Config:
+    config.exploration.action_repeat = config.env.wrapper.action_repeat
+    config.exploration.prefill_mode = config.env.prefill_mode
     env_family = env_id.split("/")[0] if "/" in env_id else None
-    if env_family == "envpool" or env_family == "mjx":
+    if env_family == "envpool" or env_family == "mjx" or env_family == "gymnasium" or env_family == "dmc":
         if config.env.separated: # Multiple envs for different purposes
             separated_creations, separated_wrappers = get_separate_env_config(config)
             config.env.creation = separated_creations

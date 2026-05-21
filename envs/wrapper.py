@@ -1,11 +1,10 @@
-import math
 import jax
 import jax.numpy as jnp
 from typing import Any, Callable, Tuple
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from envs.environment import Transition, Environment, EnvInfo, EnvState
+from envs.environment import Environment, EnvInfo, EnvState, Transition
 from envs.spaces import OneHotDiscrete
 
 
@@ -113,21 +112,15 @@ class ActionRepeat(Wrapper):
             key, key_step = jax.random.split(key, 2)
             prev_done = transition.done
 
-            def do_step(operand):
-                operand = env_state, key
-                transition, env_info, next_env_state = self.env.step(key, env_state, action)
-                return transition, env_info, next_env_state
+            step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
 
-            def skip_step(operand): # skip if done
-                operand = env_state, key
-                return transition, env_info, env_state
+            def select_fn(old_val, new_val):
+                return jnp.where(prev_done, old_val, new_val)
 
-            transition, env_info, next_env_state = jax.lax.cond(
-                transition.done,
-                skip_step,
-                do_step,
-                (env_state, key_step)
-            )
+            transition = jax.tree.map(select_fn, transition, step_transition)
+            env_info = jax.tree.map(select_fn, env_info, step_env_info)
+            next_env_state = jax.tree.map(select_fn, env_state, step_env_state)
+
             reward = jnp.where(prev_done, 0.0, transition.reward)
             return (transition, env_info, next_env_state, key), reward
 
@@ -207,6 +200,29 @@ class ChannelFirst(Wrapper):
         space = self.env.observation_space
         space = self.process_observation_space(space)
         return space
+
+
+class UnsqueezeScalar(Wrapper):
+    def __init__(self, env: Environment):
+        super().__init__(env)
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, state = self.env.reset(key)
+        transition = eqx.tree_at(
+            lambda t: (t.reward, t.done),
+            transition,
+            (jnp.atleast_1d(transition.reward), jnp.atleast_1d(transition.done))
+        )
+        return transition, info, state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, info, next_state = self.env.step(key, env_state, action)
+        transition = eqx.tree_at(
+            lambda t: (t.reward, t.done),
+            transition,
+            (jnp.atleast_1d(transition.reward), jnp.atleast_1d(transition.done))
+        )
+        return transition, info, next_state
 
 
 class OneHotAction(Wrapper):
