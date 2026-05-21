@@ -43,7 +43,7 @@ class Interactor:
 
     def resolve_episode_length(self, num_envs: int, mode: InteractionMode) -> int:
         episode_length = self.episode_length // num_envs // self.action_repeat
-        if self.prefill_option1 and mode == "prefill" and self.prefill_mode == "serial":
+        if mode == "prefill" and self.prefill_mode == "serial":
             episode_length *= self.num_prefill_episodes
         return episode_length
 
