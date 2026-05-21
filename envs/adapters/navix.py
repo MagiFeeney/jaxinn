@@ -3,7 +3,8 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Transition, Environment, EnvInfo
+
+from envs.environment import Environment, EnvInfo, Transition
 from envs.spaces import Box, Discrete
 
 import navix
@@ -34,7 +35,7 @@ class Navix(Environment):
         )
         env_info = EnvInfo(
             info=env_state.info,
-            reset=True,
+            terminal_observation=jnp.zeros_like(transition.next_obs), # dummy
         )
         return transition, env_info, env_state
 
@@ -46,10 +47,7 @@ class Navix(Environment):
             reward=next_env_state.reward,
             done=next_env_state.is_done(),
         )
-        env_info = EnvInfo(
-            info=next_env_state.info,
-            reset=False,
-        )
+        env_info = EnvInfo(info=next_env_state.info)
         return transition, env_info, next_env_state
 
     @property

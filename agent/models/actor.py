@@ -134,7 +134,7 @@ class Actor(eqx.Module):
 
         activation = get_activation_fn(activation_function)
 
-        keys = jax.random.split(key, 5)
+        keys = jax.random.split(key, 4)
         # Build network
         self.net = eqx.nn.Sequential([
             eqx.nn.Linear(belief_size + state_size, hidden_size, key=keys[0]),
@@ -143,9 +143,7 @@ class Actor(eqx.Module):
             StaticCallable(activation),
             eqx.nn.Linear(hidden_size, hidden_size, key=keys[2]),
             StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, hidden_size, key=keys[3]),
-            StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, output_size, key=keys[4]),
+            eqx.nn.Linear(hidden_size, output_size, key=keys[3]),
         ])
 
         self.head_type = head_type

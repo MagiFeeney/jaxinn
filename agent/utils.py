@@ -16,19 +16,19 @@ def differentiable(fields: Union[str, List[str]]):
     def wrapper(func):
         @functools.wraps(func)
         def body(agent, *args, **kwargs):
-            diff, static = partition(agent)
-            static = jax.lax.stop_gradient(static)
-            return call(diff, static, *args, **kwargs)
+            stopped_agent = jax.tree.map(
+                lambda x: jax.lax.stop_gradient(x) if eqx.is_inexact_array(x) else x,
+                agent
+            )
 
-        def call(diff_part, static_part, *args, **kwargs):
-            agent = eqx.combine(diff_part, static_part)
-            return func(agent, *args, **kwargs)
-
-        def partition(agent):
-            mask = jax.tree.map(lambda _: False, agent)
             def selector(a):
                 return tuple(getattr(a, field) for field in fields)
-            mask = eqx.tree_at(selector, mask, replace_fn=lambda _: True)
-            return eqx.partition(agent, mask)
+
+            mixed_agent = eqx.tree_at(
+                selector,
+                stopped_agent,
+                selector(agent)
+            )
+            return func(mixed_agent, *args, **kwargs)
         return body
     return wrapper

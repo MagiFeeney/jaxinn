@@ -102,7 +102,7 @@ class OptimizerShared(Base):
     """Shared parameters across optimizers."""
     b1: float = 0.9
     b2: float = 0.999
-    eps: float = 1e-8
+    eps: float = 1e-7
 
 
 # World Model
@@ -129,7 +129,7 @@ class LinearEncoder(PerceptionShared):
 @dataclass
 class LinearDecoder(ModelShared, PerceptionShared):
     hidden_size: int = 300
-    num_layers: int = 3
+    num_layers: int = 2
 
 
 CONFIG_REGISTRY = {
@@ -278,6 +278,8 @@ class Actor(Resolvable, ModelShared):
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
+        if ctx["is_action_space_discrete"] ^ (self.head_type == 'Categorical'):
+            raise ValueError(f"Inconsistent actor head: action space is discrete={ctx['is_action_space_discrete']}, but received head type {self.head_type!r}.")
         self.action_size = ctx["action_size"]
 
 
@@ -318,6 +320,7 @@ class Memory(Resolvable, Base):
 @dataclass
 class Wrapper(Base):
     num_envs: int = 1                # num. of envs for collecting data
+    action_repeat: int = 2
     target_shape: Optional[Tuple[int, int]] = None
 
 
@@ -327,6 +330,7 @@ class Env(Base):
     creation: Dict[str, Union[int, float, bool, str]] = field(default_factory=dict)
     wrapper: Wrapper = field(default_factory=Wrapper)
     separated: bool = False
+    prefill_mode: Literal['batched', 'serial', 'external'] = "serial" # TODO: handle external dataset
 
 
 # Exploration
@@ -337,9 +341,11 @@ class Exploration(Base):
     eval_interval: int = 10000
     train_interval: int = 1000
     train_iterations: int = 100
+    pretrain_iterations: int = 0
     episode_length: int = 1000
     num_eval_episodes: int = 10
     action_noise: float = 0.3
+    restart: bool = True
 
 
 # Optimization
@@ -350,6 +356,9 @@ class Optimization(Base):
     uae_lambda: float = 0.95
     batch_size: int = 50
     chunk_size: int = 50
+    free_nats: float = 3.0
+    kl_average: bool = False
+    kl_balance: float = 0.0
 
 
 # All about agent
@@ -372,3 +381,4 @@ class Config(Base):
 
     seed: int = 42                   # master seed
     num_seeds: int = 50              # num. of agents
+    log_dir: Optional[str] = None

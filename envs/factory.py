@@ -3,7 +3,7 @@ from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, AutoReset, ActionRepeat, ChannelFirst, OneHotAction, ResizeImage, Branched
+from .wrapper import Batched, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, ResizeImage, Branched
 from .environment import Environment
 
 
@@ -12,23 +12,29 @@ class EnvSpec:
     module: str
     cls_name: str
     channel_first: bool = False
-    native_batched: bool = False
+    native_batched: bool = True
     native_autoreset: bool = False
 
 
 _FACTORY_REGISTRY = {
+    # JAX envs
     "gymnax":    EnvSpec(".adapters.gymnax", "Gymnax", native_autoreset=True),
-    "mjx":       EnvSpec(".adapters.mujoco_playground", "Playground", native_batched=True),
+    "mjx":       EnvSpec(".adapters.mujoco_playground", "Playground"),
     "brax":      EnvSpec(".adapters.brax", "Brax"),
     "navix":     EnvSpec(".adapters.navix", "Navix"),
     "craftax":   EnvSpec(".adapters.craftax", "Craftax"),
     "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
+
+    # Non-JAX envs
+    "gymnasium": EnvSpec(".adapters.gymnasium", "Gymnasium", native_autoreset=True),
+    "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True)
 }
 
 
 def make_env(
         env_id: str,
         separated: bool,
+        prefill_mode: str,
         creation: Dict[str, Any],
         wrapper: Dict[str, Any],
 ) -> Environment:
@@ -51,8 +57,11 @@ def make_env(
     def create_single_env(creation, wrapper):
         env = cls.create(env_name, **creation)
 
-        if not spec.channel_first:
+        if (not spec.channel_first) and len(env.observation_space.shape) > 1:
             env = ChannelFirst(env)
+
+        if wrapper.get("action_repeat"):
+            env = ActionRepeat(env, wrapper["action_repeat"])
 
         if not spec.native_autoreset:
             env = AutoReset(env)
@@ -63,7 +72,10 @@ def make_env(
         if wrapper.get("target_shape") is not None:
             env = ResizeImage(env, wrapper["target_shape"])
 
-        env = Batched(env, num_envs=wrapper["num_envs"])
+        env = UnsqueezeScalar(env)
+
+        if spec.native_batched:
+            env = Batched(env, num_envs=wrapper["num_envs"])
         return env
 
     if separated:
@@ -71,6 +83,8 @@ def make_env(
             mode: create_single_env(creation[mode], wrapper[mode])
             for mode in creation.keys()
         }
+        if prefill_mode == "serial": # Share the same env as train if the prefill mode is serial
+            env["prefill"] = env["train"]
     else:
         env = create_single_env(creation, wrapper)
 

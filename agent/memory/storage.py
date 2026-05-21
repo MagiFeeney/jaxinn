@@ -14,8 +14,8 @@ class HostRAM:
         self.data = Transition(
             action=np.zeros((num_seeds, capacity, action_size), dtype=np.float32),
             next_obs=np.zeros((num_seeds, capacity, *obs_shape), dtype=np.uint8),
-            reward=np.zeros((num_seeds, capacity), dtype=np.float32),
-            done=np.zeros((num_seeds, capacity), dtype=bool)
+            reward=np.zeros((num_seeds, capacity, 1), dtype=np.float32),
+            done=np.zeros((num_seeds, capacity, 1), dtype=bool)
         )
 
     def write(self, seed_idx: jax.Array, index: np.ndarray, transition: Transition):
@@ -89,8 +89,8 @@ class GPUStorage(Storage):
         self.data = Transition(
             action=jnp.zeros((capacity, action_size), dtype=jnp.float32),
             next_obs=jnp.zeros((capacity, *obs_shape), dtype=jnp.uint8),
-            reward=jnp.zeros(capacity, dtype=jnp.float32),
-            done=jnp.zeros(capacity, dtype=bool)
+            reward=jnp.zeros((capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
+            done=jnp.zeros((capacity, 1), dtype=bool)
         )
 
     def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition):

@@ -3,7 +3,7 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Transition, Environment, EnvInfo
+from envs.environment import Environment, EnvInfo, Transition
 from envs.spaces import Box
 
 import brax
@@ -35,7 +35,7 @@ class Brax(Environment):
         env_info = EnvInfo(
             info=env_state.info,
             metrics=env_state.metrics,
-            reset=True,
+            terminal_observation=jnp.zeros_like(transition.next_obs), # dummy
         )
         return transition, env_info, env_state
 
@@ -50,7 +50,6 @@ class Brax(Environment):
         env_info = EnvInfo(
             info=next_env_state.info,
             metrics=next_env_state.metrics,
-            reset=False,
         )
         return transition, env_info, next_env_state
 

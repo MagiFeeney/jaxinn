@@ -1,4 +1,4 @@
-from .core import Agent
+from .core import Agent, Experience
 
 
-__all__ = ['Agent']
+__all__ = ['Agent', "Experience"]

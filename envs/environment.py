@@ -1,6 +1,5 @@
 import abc
 import jax
-import jax.numpy as jnp
 from typing import Tuple, Any, Dict
 from jaxtyping import PRNGKeyArray, Array, Bool, Float
 import equinox as eqx
@@ -25,7 +24,7 @@ class EnvInfo(eqx.Module):
         raise AttributeError(f"'{type(self).__name__}' has no attribute '{item}'")
 
 
-class EnvState(eqx.Module):
+class EnvState(EnvInfo):
     pass
 
 
@@ -60,7 +59,8 @@ class Environment(eqx.Module):
 
     @property
     def is_action_space_discrete(self) -> bool:
-        return type(self.action_space).__name__ == "Discrete"
+        valid_names = ("Discrete", "OneHotDiscrete")
+        return type(self.action_space).__name__ in valid_names
 
     def __getattr__(self, name):
         if isinstance(self.env_params, dict):

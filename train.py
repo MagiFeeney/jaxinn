@@ -1,152 +1,92 @@
 import tyro
-from typing import Optional, Tuple, Literal, Any, Dict
+from typing import Optional, Tuple, Any, Dict, Literal, TypeVar, Generic
 from jaxtyping import PRNGKeyArray
 
 import jax
 import jax.numpy as jnp
-from jax.sharding import Mesh, PartitionSpec as P
 import equinox as eqx
 
 from config import Config, Agent as AgentConfig
 from custom import EnvSelector, get_config, post_process
-from envs import make_env, Environment, Transition
-from agent import Agent
-from agent.models import LatentState, LatentStateWithParams
+from envs import make_env, Environment
+from logger import Logger
+
+from agent import Agent, Experience
+from agent.models import LatentState
 
 
-class Trainer(eqx.Module):
-    env: Environment = eqx.field(static=True)
+EnvState = TypeVar("EnvState")
 
-    num_environment_steps: int = eqx.field(static=True)
-    num_prefill_episodes: int = eqx.field(static=True)
-    eval_interval: int = eqx.field(static=True)
-    train_interval: int = eqx.field(static=True)
-    train_iterations: int = eqx.field(static=True)
-    episode_length: int = eqx.field(static=True)
-    num_eval_episodes: int = eqx.field(static=True)
-    action_noise: float = eqx.field(static=True)
 
-    @classmethod
-    def create(cls, config: Config):
-        env = make_env(**config.env(), wrapper=config.env.wrapper())
-        return cls(env=env, **config.exploration())
+class InteractionState(eqx.Module, Generic[EnvState]):
+    experience: Experience
+    latent_state: LatentState
+    env_state: EnvState
 
-    def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
-        key_prefill, key_interleaved = jax.random.split(key, 2)
 
-        # Prefill
-        agent = self.prefill(agent, key_prefill)
+InteractionMode = Literal["train", "prefill", "eval"]
 
-        # Train and evaluate
-        def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
-            agent, key = carry
-            key, key_train, key_evaluate = jax.random.split(key, 3)
 
-            # Training
-            (agent, _), metrics = jax.lax.scan(
-                lambda carry, _: self.train(*carry),
-                (agent, key_train),
-                None,
-                self.eval_interval // self.train_interval
-            )
+class Interactor:
+    @staticmethod
+    def resolve_mode(eval: bool, prefill: bool) -> InteractionMode:
+        if eval:
+            return "eval"
+        if prefill:
+            return "prefill"
+        return "train"
 
-            # Evaluation
-            episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
-            evaluation = jnp.mean(episodic_returns)
+    def resolve_num_envs(self, mode: InteractionMode, num_envs: int | None) -> int:
+        if num_envs is None or self.env.separated:
+            return self.env.get("num_envs", mode)
+        return num_envs
 
-            jax.debug.print(    # Callback
-                """Step {k}: Train
+    def resolve_episode_length(self, num_envs: int, mode: InteractionMode) -> int:
+        episode_length = self.episode_length // num_envs // self.action_repeat
+        if self.prefill_option1 and mode == "prefill" and self.prefill_mode == "serial":
+            episode_length *= self.num_prefill_episodes
+        return episode_length
 
-            --- Model Loss ---
-            reward:       {model/reward}
-            observation:  {model/observation}
-            kl:           {model/kl}
-            total:        {model/total}
-
-            --- Actor and Critic Loss ---
-            actor:        {actor}
-            critic:       {critic}
-
-            --- Evaluation ({n} episodes) ---
-            return:       {r}
-            mean:         {e}
-                """,
-                k=(iteration + 1) * self.eval_interval + self.num_prefill_episodes * self.episode_length,
-                **metrics,
-                n=self.num_eval_episodes,
-                r=episodic_returns,
-                e=evaluation,
-            )
-
-            return (agent, key), (metrics, evaluation)
-
-        (final_agent, _), (metrics, evaluation) = jax.lax.scan(
-            interleaved_step_fn,
-            (agent, key_interleaved),
-            jnp.arange(self.num_environment_steps // self.eval_interval),
-        )
-
-        return final_agent, (metrics, evaluation)
-
-    def prefill(self, agent: Agent, key: PRNGKeyArray) -> Agent:
-        keys = jax.random.split(key, self.num_prefill_episodes)
-        transitions, terminal_obs = jax.vmap(lambda k: self.interact(agent, k, prefill=True))(keys) # N x T x E
-        agent = agent.add_experience(transitions, terminal_obs, source=2)
-        return agent
-
-    def train(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Tuple[Agent, PRNGKeyArray], jax.Array]:
-        key, key_interact, key_learn = jax.random.split(key, 3)
-        transitions, terminal_obs = self.interact(agent, key_interact)
-
-        # Store them
-        agent = agent.add_experience(transitions, terminal_obs, source=1)
-
-        def learn_step_fn(carry, _):
-            agent, key = carry
-            key, key_learn = jax.random.split(key, 2)
-            new_agent, metrics = agent.learn(key_learn)
-            return (new_agent, key), metrics
-
-        (agent, _), metrics = jax.lax.scan(
-            learn_step_fn,
-            (agent, key_learn),
-            None,
-            self.train_iterations
-        )
-
-        avg_metrics = jax.tree.map(jnp.mean, metrics)
-        return (agent, key), avg_metrics
-
-    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1) -> jax.Array:
-        transitions, _ = self.interact(agent, key, eval=True, num_envs=num_envs)
-        masks = 1 - jnp.maximum.accumulate(transitions.done, axis=0)
-        shifted_masks = jnp.concatenate([jnp.ones_like(masks[0:1]), masks[:-1]])
-        cumulative_rewards = jnp.sum(transitions.reward * shifted_masks) # Return up to the first termination inclusively
-        return cumulative_rewards
-
-    def interact(
+    def init_interaction_state(
             self,
             agent: Agent,
             key: PRNGKeyArray,
             eval: bool = False,
             prefill: bool = False,
             num_envs: int | None = None
-    ) -> Tuple[Transition, ...]:
-        if eval:
-            mode = "eval"
-        elif prefill:
-            mode = "prefill"
-        else:
-            mode = "train"
+    ) -> InteractionState:
+        mode = self.resolve_mode(eval, prefill)
+        key_reset, key_init = jax.random.split(key, 2)
 
-        key_reset, key_init, key_step = jax.random.split(key, 3)
         if num_envs is None or self.env.separated:
             init_transition, info, env_state = self.env.reset(key_reset, mode=mode)
             num_envs = self.env.get("num_envs", mode)
         else:
             init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
-        init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,))
-        init_terminal_obs = init_transition.next_obs # Zeros: for consistency
+        init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,), eval=eval)
+        init_terminal_obs = info.terminal_observation
+        interaction_state = InteractionState(
+            experience = Experience(
+                transition=init_transition,
+                terminal_observation=init_terminal_obs
+            ),
+            latent_state=init_latent_state,
+            env_state=env_state
+        )
+        return interaction_state
+
+    def interact(
+            self,
+            agent: Agent,
+            interaction_state: InteractionState,
+            key: PRNGKeyArray,
+            eval: bool = False,
+            prefill: bool = False,
+            num_envs: int | None = None
+    ) -> Tuple[InteractionState, Experience]:
+        mode = self.resolve_mode(eval, prefill)
+        num_envs = self.resolve_num_envs(mode, num_envs)
+        episode_length = self.resolve_episode_length(num_envs, mode)
 
         def random_act_branch(operand):
             last_latent_state, _, _, key = operand
@@ -173,13 +113,19 @@ class Trainer(eqx.Module):
             return latent_state, action
 
         def interact_step_fn(carry, _):
-            last_transition, last_terminal_obs, last_latent_state, env_state, key = carry
-            key, key_action, key_step = jax.random.split(key, 3)
+            interaction_state, key = carry
+            key, key_init, key_action, key_step = jax.random.split(key, 4)
 
-            mask = 1 - last_transition.done[..., None]
-            last_latent_state = last_latent_state * mask
-            last_action = last_transition.action * mask
-            obs = last_transition.next_obs
+            # Isolate the reset observation in current-step autoreset environments.
+            mask = 1 - interaction_state.experience.transition.done # fixed
+            last_latent_state = jax.tree.map(
+                lambda current, reset: jnp.where(mask, current, reset),
+                interaction_state.latent_state,
+                agent.init_state(key_init, batch_shape=(num_envs,))
+            )
+            last_action = interaction_state.experience.transition.action * mask
+            obs = interaction_state.experience.transition.next_obs
+            env_state = interaction_state.env_state
 
             operand = (last_latent_state, last_action, obs, key_action)
             if prefill:
@@ -188,22 +134,209 @@ class Trainer(eqx.Module):
                 latent_state, action = agent_act_branch(operand)
 
             transition, info, next_env_state = self.env.step(key_step, env_state, action, mode=mode)
-            return (transition, info.terminal_observation, latent_state, next_env_state, key), (last_transition, last_terminal_obs)
 
-        _, (transitions, terminal_obs) = jax.lax.scan(
+            # Decouple terminal and reset observation in next-step autoreset environments.
+            last_done = getattr(env_state, "last_done", None)
+            if last_done is not None:
+                latent_state = jax.tree.map(
+                    lambda reset, current: jnp.where(last_done, reset, current),
+                    agent.init_state(key_init, batch_shape=(num_envs,)),
+                    latent_state
+                )
+            new_interaction_state = InteractionState(
+                experience = Experience(
+                    transition=transition,
+                    terminal_observation=info.terminal_observation
+                ),
+                latent_state=latent_state,
+                env_state=next_env_state
+            )
+
+            return (new_interaction_state, key), interaction_state.experience
+
+        (interaction_state, _), experiences = jax.lax.scan(
             interact_step_fn,
-            (init_transition, init_terminal_obs, init_latent_state, env_state, key_step),
+            (interaction_state, key),
             None,
-            self.episode_length // num_envs,
+            episode_length
         )
-        return transitions, terminal_obs
+        return interaction_state, experiences
+
+
+class Trainer(Interactor, eqx.Module):
+    env: Environment = eqx.field(static=True)
+    logger: Logger = eqx.field(static=True)
+
+    num_environment_steps: int = eqx.field(static=True)
+    num_prefill_episodes: int = eqx.field(static=True)
+    eval_interval: int = eqx.field(static=True)
+    train_interval: int = eqx.field(static=True)
+    train_iterations: int = eqx.field(static=True)
+    pretrain_iterations: int = eqx.field(static=True)
+    episode_length: int = eqx.field(static=True)
+    num_eval_episodes: int = eqx.field(static=True)
+    action_repeat: int = eqx.field(static=True)
+    action_noise: float = eqx.field(static=True)
+    prefill_mode: str = eqx.field(static=True)
+    restart: bool = eqx.field(static=True)
+
+    @classmethod
+    def create(cls, config: Config):
+        env = make_env(**config.env(), wrapper=config.env.wrapper())
+        logger = Logger(config.log_dir)
+        return cls(env=env, logger=logger, **config.exploration())
+
+    def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
+        key_prefill, key_interleaved = jax.random.split(key, 2)
+
+        # Prefill
+        agent, interaction_state, metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
+
+        if metrics is not None:
+            jax.debug.callback(
+                self.logger.log_dict,
+                metrics,
+                step=self.num_prefill_episodes * self.episode_length,
+            )
+
+        # Train and evaluate
+        def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
+            agent, interaction_state, key = carry
+            key, key_train, key_evaluate = jax.random.split(key, 3)
+
+            # Training
+            (agent, interaction_state, _), metrics = jax.lax.scan(
+                lambda carry, _: self.train(*carry),
+                (agent, interaction_state, key_train),
+                None,
+                self.eval_interval // self.train_interval
+            )
+
+            start_step = iteration * self.eval_interval + self.num_prefill_episodes * self.episode_length
+            jax.debug.callback(
+                self.logger.log_sequence,
+                metrics,
+                start_step=start_step,
+                interval=self.train_interval,
+            )
+
+            # Evaluation
+            episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
+            evaluation = jnp.mean(episodic_returns)
+
+            eval_metrics = {"eval/mean": evaluation}
+            eval_step = self.eval_interval + start_step
+            jax.debug.callback(
+                self.logger.log_dict,
+                eval_metrics,
+                step=eval_step,
+            )
+
+            extra = {"eval/return": episodic_returns}
+            group_configs={
+                "eval": {
+                    "headline": {
+                        "format": "--- Evaluation ({n} episodes) ---",
+                        "params": {"n": self.num_eval_episodes},
+                    }
+                }
+            }
+            self.logger.print_summary(
+                step=eval_step,
+                metrics=metrics | eval_metrics | extra,
+                group_configs=group_configs
+            )
+
+            return (agent, interaction_state, key), (metrics, evaluation)
+
+        if self.prefill_mode != "serial" or self.restart:
+            key, key_init = jax.random.split(key, 2)
+            interaction_state = self.init_interaction_state(agent, key_init)
+
+        (final_agent, _, _), (metrics, evaluation) = jax.lax.scan(
+            interleaved_step_fn,
+            (agent, interaction_state, key_interleaved),
+            jnp.arange(self.num_environment_steps // self.eval_interval),
+        )
+
+        return final_agent, (metrics, evaluation)
+
+    def learn(self, agent: Agent, key: PRNGKeyArray, prefill: bool = False) -> Tuple[Agent, Optional[Dict[str, jax.Array]]]:
+        def learn_step_fn(carry, _):
+            agent, key = carry
+            key, key_learn = jax.random.split(key, 2)
+            new_agent, metrics = agent.learn(key_learn)
+            return (new_agent, key), metrics
+
+        num_iterations = self.train_iterations if not prefill else self.pretrain_iterations
+
+        if num_iterations > 0:
+            (agent, _), metrics = jax.lax.scan(
+                learn_step_fn,
+                (agent, key),
+                None,
+                num_iterations
+            )
+            avg_metrics = jax.tree.map(jnp.mean, metrics)
+            return agent, avg_metrics
+        return agent, None
+
+    def prefill(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, InteractionState, Dict[str, jax.Array]]:
+        key_init, key_interact, key_learn = jax.random.split(key, 3)
+
+        def prefill_fn(key):
+            key, key_init, key_interact = jax.random.split(key, 3)
+            interaction_state = self.init_interaction_state(agent, key_init, prefill=True)
+            interaction_state, experiences = self.interact(agent, interaction_state, key_interact, prefill=True)
+            return interaction_state, experiences
+
+        if self.prefill_mode == "batched":
+            keys = jax.random.split(key_interact, self.num_prefill_episodes)
+            interaction_state, experiences = jax.vmap(prefill_fn)(keys)
+            source = 2
+        elif self.prefill_mode == "serial":
+            interaction_state, experiences = prefill_fn(key_interact)
+            source = 1
+        else:
+            raise ValueError(f"Unknown prefill_mode: {self.prefill_mode}. Expected 'batched' or 'serial'.")
+        agent = agent.add_experience(experiences, source=source)
+
+        agent, metrics = self.learn(agent, key_learn, prefill=True)
+        return agent, interaction_state, metrics
+
+    def train(
+           self,
+            agent: Agent,
+            interaction_state: InteractionState,
+            key: PRNGKeyArray,
+            prefill: bool = False
+    ) -> Tuple[Tuple[Agent, InteractionState, PRNGKeyArray], Dict[str, jax.Array]]:
+        key, key_interact, key_learn = jax.random.split(key, 3)
+        interaction_state, experiences = self.interact(agent, interaction_state, key_interact, prefill=prefill)
+
+        # Store them
+        agent = agent.add_experience(experiences, source=1)
+
+        # Update
+        agent, metrics = self.learn(agent, key_learn)
+        return (agent, interaction_state, key), metrics
+
+    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1) -> jax.Array:
+        key_init, key_interact = jax.random.split(key, 2)
+        interaction_state = self.init_interaction_state(agent, key_init, eval=True, num_envs=num_envs)
+        _, experiences = self.interact(agent, interaction_state, key_interact, eval=True, num_envs=num_envs)
+        masks = 1 - jnp.maximum.accumulate(experiences.transition.done, axis=0)
+        shifted_masks = jnp.concatenate([jnp.ones_like(masks[0:1]), masks[:-1]])
+        cumulative_rewards = jnp.sum(experiences.transition.reward * shifted_masks) # Return up to the first termination inclusively
+        return cumulative_rewards
 
 
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     ctx = {
-        "obs_shape":   env.get("observation_space").shape,
-        "action_size": env.get("action_size"),
-        "num_seeds":   config.num_seeds,
+        "obs_shape":                env.get("observation_space").shape,
+        "action_size":              env.get("action_size"),
+        "num_seeds":                config.num_seeds,
+        "is_action_space_discrete": env.get("is_action_space_discrete")
     }
     return config.agent.resolve(ctx)
 
@@ -252,6 +385,18 @@ def main(config):
     )
 
 
+def setup_context(vectorization_mode: Optional[str]):
+    if vectorization_mode == "async":
+        try:
+            import multiprocessing as mp
+            if mp.get_start_method(allow_none=True) != 'spawn':
+                mp.set_start_method('spawn')
+        except RuntimeError:
+            pass
+    else:
+        print("Skipping 'multiprocessing' setup: Environment is JAX-native or in 'sync' mode.")
+
+
 if __name__ == "__main__":
     # Grab the env id
     env_selector, _ = tyro.cli(
@@ -265,6 +410,9 @@ if __name__ == "__main__":
         Config,
         default=get_config(env_id)
     )
+
+    # Setup multiprocessing context if the env is cpu-based
+    setup_context(config.env.creation.get("vectorization_mode"))
 
     # Post processing
     config = post_process(env_id, config)
