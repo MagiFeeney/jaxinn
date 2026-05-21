@@ -117,7 +117,7 @@ class Interactor:
             key, key_init, key_action, key_step = jax.random.split(key, 4)
 
             # Isolate the reset observation in current-step autoreset environments.
-            mask = 1 - interaction_state.experience.transition.done # fixed
+            mask = 1 - interaction_state.experience.transition.done
             last_latent_state = jax.tree.map(
                 lambda current, reset: jnp.where(mask, current, reset),
                 interaction_state.latent_state,
