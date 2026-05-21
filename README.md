@@ -1,10 +1,14 @@
-# Jaxinn
+# Jaxinn: An Ultra Fast Implementation of Dreamer in JAX
 
 ## Structure
 
 ```
 Jaxinn/
 ├─ agent/
+│  ├─ memory/
+│  │  ├─ __init__.py
+│  │  ├─ buffer.py
+│  │  └─ storage.py
 │  ├─ models/
 │  │  ├─ __init__.py
 │  │  ├─ actor.py
@@ -13,41 +17,26 @@ Jaxinn/
 │  │  └─ world.py
 │  ├─ __init__.py
 │  ├─ core.py
-│  └─ memory.py
+│  └─ utils.py
 ├─ envs/
+│  ├─ adapters/
+│  │  ├─ __init__.py
+│  │  ├─ brax.py
+│  │  ├─ craftax.py
+│  │  ├─ dm_control.py
+│  │  ├─ envpool.py
+│  │  ├─ gymnasium.py
+│  │  ├─ gymnax.py
+│  │  ├─ mujoco_playground.py
+│  │  └─ navix.py
 │  ├─ __init__.py
 │  ├─ environment.py
+│  ├─ factory.py
+│  ├─ spaces.py
+│  ├─ vmap.py
 │  └─ wrapper.py
 ├─ config.py
-├─ README.md
-├─ requirements.txt
+├─ custom.py
+├─ logger.py
 └─ train.py
 ```
-
-## Prototyping
-- observe
-  - interaction
-  - inference
-- imagine
-  - rollout
-    - vmap: batch operator
-- update
-  - model
-    - jax parameter update
-  - policy
-    - jax parameter update
-  - value
-    - jax parameter update
-  - return
-    - jax scan
-  - all in one
-    - jax lax fori loop
-- interaction
-  - parallel envs
-  - batched loop
-
-## TODO
-- [ ] Wrap the env to get the next real obs that is overwritten by the reset one.
-- [ ] Handle the last time step being terminated, which is meaningless when sampled.
-- [ ] Memory shape should follow the env shape.
-  - [ ] Flatten according to env axis, so different trajectories are stacked in order.
