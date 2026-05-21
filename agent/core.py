@@ -233,7 +233,7 @@ class Agent(eqx.Module):
         """
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
-        init_mask = jnp.ones_like(data.done[0], dtype=jnp.int32) # fixed
+        init_mask = jnp.ones_like(data.done[0], dtype=jnp.int32)
         next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(data.next_obs) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
@@ -246,7 +246,7 @@ class Agent(eqx.Module):
             prior, posterior = self.perceive(latent_state, action, obs, key_perceive)
 
             # Update mask
-            mask = 1 - done # fixed
+            mask = 1 - done
             return (posterior.latent_state, mask, key), (prior, posterior)
 
         _, (priors, posteriors) = jax.lax.scan(
@@ -341,7 +341,7 @@ class Agent(eqx.Module):
             prior, posterior = agent.reason(data, key)
 
             reward_dist = jax.vmap(jax.vmap(agent.world.reward))(posterior.latent_state)
-            reward_log_prob = reward_dist.log_prob(data.reward) # fixed
+            reward_log_prob = reward_dist.log_prob(data.reward)
             reward_loss = -reward_log_prob.mean()
 
             observation_dist = jax.vmap(jax.vmap(agent.world.perception.decoder))(posterior.latent_state)
@@ -375,7 +375,7 @@ class Agent(eqx.Module):
             total_loss = reward_loss + observation_loss + kl_loss
 
             # For logging
-            reward_mse = jnp.mean((reward_dist.mean() - data.reward)**2) # fixed
+            reward_mse = jnp.mean((reward_dist.mean() - data.reward)**2)
             observation_mse = jnp.mean((observation_dist.mean() - data.next_obs)**2)
 
             metrics = {
