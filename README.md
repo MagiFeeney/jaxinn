@@ -47,21 +47,21 @@ Jaxinn/
 
 ## Adapters
 ### JAX Native Environments
-- [X] **Brax**
-- [X] **Craftax**
-- [X] **Gymnax**
-- [X] **MuJoCo Playground**
-- [X] **Navix**
-- [ ] **Jumanji**
-- [ ] **JaxARC**
-- [ ] **JaxGCRL**
+- [X] Brax
+- [X] Craftax
+- [X] Gymnax
+- [X] MuJoCo Playground
+- [X] Navix
+- [ ] Jumanji
+- [ ] JaxARC
+- [ ] JaxGCRL
 
 ### Non-JAX Environments
-- [X] **EnvPool**
-- [X] **Gymnasium**
-- [X] **DeepMind Control Suite**
-- [ ] **ARC-AGI-3**
-- [ ] **MineRL**
+- [X] EnvPool
+- [X] Gymnasium
+- [X] DeepMind Control Suite
+- [ ] ARC-AGI-3
+- [ ] MineRL
 
 ## Examples
 
