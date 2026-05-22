@@ -1,5 +1,30 @@
 import jax
-from typing import Dict, Any, Optional, Sequence
+from typing import Tuple, Dict, Any, Optional, Sequence
+
+
+default_group_configs = {
+    "eval": {
+        "headline": {
+            "format": "--- Evaluation ({n} episodes) ---",
+            "params": {"n": "unknown"} # Default fallback placeholder
+        }
+    },
+    "ac": {
+        "headline": {
+            "format": "--- Actor and Critic Loss ---"
+        }
+    },
+    "model": {
+        "headline": {
+            "format": "--- Model Loss ---"
+        }
+    },
+    "aux": {
+        "headline": {
+            "format": "--- Auxiliary ---"
+        }
+    }
+}
 
 
 class Logger:
@@ -43,6 +68,7 @@ class Logger:
         step: int,
         metrics: Dict[str, Any],
         signature: str = "Train",
+        headline_params: Optional[Dict[str, Dict[str, Any]]] = None,
         group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
         use_jax_debug: bool = True
     ):
@@ -63,10 +89,7 @@ class Logger:
         # Grouping
         for k in metrics.keys():
             parts = k.split("/", 1)
-            if len(parts) == 2:
-                group, name = parts
-            else:
-                group, name = "General", k
+            group, name = parts if len(parts) == 2 else ("General", k)
 
             if group not in grouped_metrics:
                 grouped_metrics[group] = []
@@ -75,23 +98,40 @@ class Logger:
         # Formatting
         lines = [f"\n=== Step {{step}}: {signature} ==="]
 
-        for group, items in grouped_metrics.items():
-            headline = f"--- {group.capitalize()} ---"
+        def get_headline(configs: Dict[str, Any], current_group: str, fallback: str) -> Tuple[str, Dict[str, Any]]:
+            print_kwargs_update = {}
+            headline = fallback
 
-            # Apply custom config if provided
-            if group_configs and group in group_configs:
-                group_config = group_configs[group]
-
+            if configs and current_group in configs:
+                group_config = configs[current_group]
                 if "headline" in group_config:
                     headline_data = group_config["headline"]
-
                     if isinstance(headline_data, dict):
                         headline = headline_data.get("format", headline)
                         if "params" in headline_data:
-                            print_kwargs.update(headline_data["params"])
-
+                            print_kwargs_update = headline_data["params"]
                     elif isinstance(headline_data, str):
                         headline = headline_data
+
+            return headline, print_kwargs_update
+
+        def merge_configs(base: Dict[str, Any], custom: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+            merged = {k: v.copy() if isinstance(v, dict) else v for k, v in base.items()}
+            if custom:
+                for group, config in custom.items():
+                    if group in merged and isinstance(merged[group], dict) and isinstance(config, dict):
+                        merged[group] = {**merged[group], **config}
+                    else:
+                        merged[group] = config
+            return merged
+
+        merged_group_configs = merge_configs(default_group_configs, group_configs)
+
+        for group, items in grouped_metrics.items():
+            fallback_headline = f"--- {group.capitalize()} ---"
+
+            headline, print_kwargs_update = get_headline(merged_group_configs, group, fallback_headline)
+            print_kwargs.update(print_kwargs_update)
 
             lines.append(f"\n{headline}")
 
@@ -101,6 +141,11 @@ class Logger:
                 lines.append(f"    {name + ':':<{max_name_len + 1}}  {{{k}}}")
 
         fmt_string = "\n".join(lines) + "\n"
+
+        # Update additional headline parameters if any.
+        # They should strictly adhere to the headline format.
+        if headline_params:
+            print_kwargs.update(headline_params)
 
         if use_jax_debug:
             jax.debug.print(fmt_string, **print_kwargs)
