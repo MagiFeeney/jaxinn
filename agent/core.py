@@ -176,7 +176,10 @@ class Agent(eqx.Module):
         terminal_obs_flatten = flatten_fn(experiences.terminal_observation)
 
         # Indices for step transitions; we replenish ones at done = True with terminal_obs
-        shifts = jnp.concatenate([jnp.array([False]), mask[:-1]])
+        shifts = jnp.concatenate([
+            jnp.zeros((1,) + mask.shape[1:], dtype=bool),
+            mask[:-1]
+        ], axis=0)
         step_indices = jnp.arange(N) + jnp.cumsum(shifts)
 
         # Indices for reset transitions
