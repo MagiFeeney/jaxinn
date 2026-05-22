@@ -114,12 +114,14 @@ class ActionRepeat(Wrapper):
 
             step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
 
-            def select_fn(old_val, new_val):
+            def select_fn(path, old_val, new_val):
+                if hasattr(self, "is_static_leaf") and self.is_static_leaf(path, old_val):
+                    return old_val
                 return jnp.where(prev_done, old_val, new_val)
 
-            transition = jax.tree.map(select_fn, transition, step_transition)
-            env_info = jax.tree.map(select_fn, env_info, step_env_info)
-            next_env_state = jax.tree.map(select_fn, env_state, step_env_state)
+            transition = jax.tree.map_with_path(select_fn, transition, step_transition)
+            env_info = jax.tree.map_with_path(select_fn, env_info, step_env_info)
+            next_env_state = jax.tree.map_with_path(select_fn, env_state, step_env_state)
 
             reward = jnp.where(prev_done, 0.0, transition.reward)
             return (transition, env_info, next_env_state, key), reward

@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Any, Optional, Tuple
 
 import jax
@@ -179,10 +180,6 @@ class Playground(Environment, PlaygroundVmapMixIn):
             )
 
     @property
-    def observation_size(self) -> int:
-        return self.env.observation_size
-
-    @property
     def action_space(self) -> Box:
         return Box(
             low=-1.0,
@@ -190,6 +187,22 @@ class Playground(Environment, PlaygroundVmapMixIn):
             shape=(self.action_size,),
             dtype=jnp.float32
         )
+
+    @property
+    def observation_size(self) -> int:
+        key = jax.random.PRNGKey(0)
+
+        if self.vision:
+            keys = jax.random.split(key, self.capacity)
+            abstract_state = jax.eval_shape(jax.vmap(self.env.reset), keys)
+        else:
+            abstract_state = jax.eval_shape(self.env.reset, key)
+
+        obs = abstract_state.obs
+
+        if isinstance(obs, Mapping):
+            return jax.tree.map(lambda x: x.shape[1:] if self.vision else x.shape, obs)
+        return obs.shape[-1]
 
     @property
     def action_size(self) -> int:

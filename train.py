@@ -233,18 +233,10 @@ class Trainer(Interactor, eqx.Module):
             )
 
             extra = {"eval/return": episodic_returns}
-            group_configs={
-                "eval": {
-                    "headline": {
-                        "format": "--- Evaluation ({n} episodes) ---",
-                        "params": {"n": self.num_eval_episodes},
-                    }
-                }
-            }
             self.logger.print_summary(
                 step=eval_step,
                 metrics=metrics | eval_metrics | extra,
-                group_configs=group_configs
+                headline_params={"n": self.num_eval_episodes}
             )
 
             return (agent, interaction_state, key), (metrics, evaluation)
