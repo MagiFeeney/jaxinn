@@ -98,7 +98,7 @@ class Logger:
             max_name_len = max([len(name) for name, _ in items]) if items else 0
 
             for name, k in items:
-                lines.append(f"{name + ':':<{max_name_len + 1}}  {{{k}}}")
+                lines.append(f"    {name + ':':<{max_name_len + 1}}  {{{k}}}")
 
         fmt_string = "\n".join(lines) + "\n"
 

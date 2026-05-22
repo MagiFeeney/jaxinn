@@ -113,6 +113,10 @@ def get_separate_env_config(config):
 def post_process(env_id: str, config: Config) -> Config:
     config.exploration.action_repeat = config.env.wrapper.action_repeat
     config.exploration.prefill_mode = config.env.prefill_mode
+    if config.env.prefill_mode == "external":
+        raise NotImplementedError(
+            "Prefill with external dataset is not implemented."
+        )
     env_family = env_id.split("/")[0] if "/" in env_id else None
     if env_family == "envpool" or env_family == "mjx" or env_family == "gymnasium" or env_family == "dmc":
         if config.env.separated: # Multiple envs for different purposes
