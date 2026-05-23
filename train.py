@@ -183,7 +183,7 @@ class Trainer(Interactor, eqx.Module):
     @classmethod
     def create(cls, config: Config):
         env = make_env(**config.env(), wrapper=config.env.wrapper())
-        logger = Logger(config.log_dir)
+        logger = Logger.create(config.log_dir)
         return cls(env=env, logger=logger, **config.exploration())
 
     def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
@@ -193,10 +193,9 @@ class Trainer(Interactor, eqx.Module):
         agent, interaction_state, metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
 
         if metrics is not None:
-            jax.debug.callback(
-                self.logger.log_dict,
+            self.logger.log_dict(
                 metrics,
-                step=self.num_prefill_episodes * self.episode_length,
+                step=self.num_prefill_episodes * self.episode_length
             )
 
         # Train and evaluate
@@ -213,11 +212,10 @@ class Trainer(Interactor, eqx.Module):
             )
 
             start_step = iteration * self.eval_interval + self.num_prefill_episodes * self.episode_length
-            jax.debug.callback(
-                self.logger.log_sequence,
+            self.logger.log_sequence(
                 metrics,
                 start_step=start_step,
-                interval=self.train_interval,
+                interval=self.train_interval
             )
 
             # Evaluation
@@ -226,8 +224,7 @@ class Trainer(Interactor, eqx.Module):
 
             eval_metrics = {"eval/mean": evaluation}
             eval_step = self.eval_interval + start_step
-            jax.debug.callback(
-                self.logger.log_dict,
+            self.logger.log_dict(
                 eval_metrics,
                 step=eval_step,
             )
