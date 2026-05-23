@@ -319,6 +319,18 @@ class Trainer(Interactor, eqx.Module):
         cumulative_rewards = jnp.sum(experiences.transition.reward * shifted_masks) # Return up to the first termination inclusively
         return cumulative_rewards
 
+    def close(self):
+        if hasattr(self.logger, "close"):
+            self.logger.close()
+        if hasattr(self.env, "close"):
+            self.env.close()
+
+    def __enter__(self) -> "Trainer":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.close()
+
 
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     ctx = {
@@ -372,6 +384,9 @@ def main(config):
         f"Achieved return:\n"
         f"{final_eval_return}"
     )
+
+    # Close trainer
+    trainer.close()
 
 
 def setup_context(vectorization_mode: Optional[str]):
