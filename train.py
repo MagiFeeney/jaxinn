@@ -9,7 +9,7 @@ import equinox as eqx
 from config import Config, Agent as AgentConfig
 from custom import EnvSelector, get_config, post_process
 from envs import make_env, Environment
-from logger import Logger
+from logger import JaxLogger as Logger
 
 from agent import Agent, Experience
 from agent.models import LatentState
@@ -222,7 +222,7 @@ class Trainer(Interactor, eqx.Module):
             episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
             evaluation = jnp.mean(episodic_returns)
 
-            eval_metrics = {"eval/return": evaluation}
+            eval_metrics = {"eval/mean": evaluation}
             eval_step = self.eval_interval + start_step
             self.logger.log_dict(
                 eval_metrics,
