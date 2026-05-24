@@ -40,7 +40,7 @@ class HostLogger:
             self,
             log_dir: Optional[str] = None,
             backend: str = "tensorboard",
-            aggregate_keywords: tuple = ("eval", "test", "reward", "return"),
+            aggregate_keywords: tuple = ("eval", "test"),
             shaded_method: Literal["std", "se", "ci", "iqr"] = "std"
     ):
         if backend == "tensorboard":
