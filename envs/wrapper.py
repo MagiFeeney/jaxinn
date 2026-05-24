@@ -70,7 +70,7 @@ class AutoReset(Wrapper):
         reset_transition, reset_env_info, reset_env_state = self.env.reset(key_reset)
 
         def select_fn(path, reset_val, step_val):
-            if hasattr(self, "is_static_leaf") and self.is_static_leaf(path, step_val):
+            if hasattr(self, "is_static_leaf") and callable(self.is_static_leaf) and self.is_static_leaf(path, step_val):
                 return step_val
             done = step_transition.done
             if done.ndim == 0:
@@ -115,7 +115,7 @@ class ActionRepeat(Wrapper):
             step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
 
             def select_fn(path, old_val, new_val):
-                if hasattr(self, "is_static_leaf") and self.is_static_leaf(path, old_val):
+                if hasattr(self, "is_static_leaf") and callable(self.is_static_leaf) and self.is_static_leaf(path, old_val):
                     return old_val
                 return jnp.where(prev_done, old_val, new_val)
 
