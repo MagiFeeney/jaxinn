@@ -1,7 +1,7 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-from typing import Tuple, Dict, Any, Optional, Sequence
+from typing import Tuple, Dict, Any, Optional, Sequence, Literal
 
 import equinox as eqx
 
@@ -36,12 +36,57 @@ class HostLogger:
     A standard Python logger, handling I/O
     """
 
-    def __init__(self, log_dir: Optional[str] = None, backend: str = "tensorboard"):
+    def __init__(
+            self,
+            log_dir: Optional[str] = None,
+            backend: str = "tensorboard",
+            aggregate_keywords: tuple = ("eval", "test", "reward", "return"),
+            shaded_method: Literal["std", "se", "ci", "iqr"] = "std"
+    ):
         if backend == "tensorboard":
             from tensorboardX import SummaryWriter
             self.writer = SummaryWriter(log_dir) if log_dir is not None else SummaryWriter()
         else:
             raise NotImplementedError(f"Backend '{backend}' is not supported.")
+
+        self.aggregate_keywords = aggregate_keywords
+        self.shaded_method = shaded_method.lower()
+
+        self.layout = {"Aggregated Metrics (Shaded)": {}}
+        self.known_keys = set()
+
+    def compute_bounds(self, x: np.ndarray) -> tuple[float, float, float]:
+        mean = np.mean(x)
+
+        if self.shaded_method == "std":
+            # Standard deviation
+            offset = np.std(x)
+            return mean, mean - offset, mean + offset
+        elif self.shaded_method == "se":
+            # Standard error
+            offset = np.std(x, ddof=1) / np.sqrt(x.size)
+            return mean, mean - offset, mean + offset
+        elif self.shaded_method == "iqr":
+            # Interquartile range
+            return mean, np.percentile(x, 25), np.percentile(x, 75)
+        elif self.shaded_method == "ci":
+            # 95% Confidence Interval
+            stderr = np.std(x, ddof=1) / np.sqrt(x.size)
+            offset = 1.96 * stderr
+            return mean, mean - offset, mean + offset
+        else:
+            raise ValueError(f"Unknown shaded method: {self.shaded_method}")
+
+    def register_layout(self, k: str):
+        """Update layout if a new key is first time seen."""
+        if k not in self.known_keys:
+            self.known_keys.add(k)
+
+            self.layout["Aggregated Metrics (Shaded)"][k] = [
+                "Margin",
+                [f"shaded/{k}/mean", f"shaded/{k}/lower", f"shaded/{k}/upper"]
+            ]
+            self.writer.add_custom_scalars(self.layout)
 
     def log_dict(self, metrics: Dict[str, Any], step: Any):
         if self.writer is None:
@@ -62,6 +107,20 @@ class HostLogger:
                     {f"seed_{'_'.join(map(str, idx))}": float(x) for idx, x in np.ndenumerate(val)},
                     s
                 )
+
+                should_aggregate = (
+                    val.size > 1 and
+                    any(keyword in k.lower() for keyword in self.aggregate_keywords)
+                )
+
+                if should_aggregate:
+                    self.register_layout(k)
+
+                    mean, lower, upper = self.compute_bounds(val)
+
+                    self.writer.add_scalar(f"shaded/{k}/mean", float(mean), s)
+                    self.writer.add_scalar(f"shaded/{k}/lower", float(lower), s)
+                    self.writer.add_scalar(f"shaded/{k}/upper", float(upper), s)
 
     def log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any):
         if self.writer is None:
@@ -251,7 +310,7 @@ class LoggerVmapMixIn:
 
 
 class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
-    """The main user interface, which is JAX safe."""
+    """A JAX-safe user interface."""
 
     @classmethod
     def create(cls, log_dir: Optional[str] = None, backend: str = "tensorboard"):
