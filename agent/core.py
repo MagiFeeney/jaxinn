@@ -58,6 +58,11 @@ class Learner(eqx.Module, Generic[ModelType]):
 
 
 class AgentLossMixIn:
+    """Provides customizable loss functions for the agent.
+
+    Designed to be easily adapted and extended via inheritance or composition.
+    """
+
     def _compute_kl_loss(self, prior: LatentStateWithParams, posterior: LatentStateWithParams) -> jax.Array:
         if self.kl_balance > 0:
             kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist).sum(-1)
