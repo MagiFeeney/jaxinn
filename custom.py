@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, is_dataclass, replace
-from typing import Any
+from typing import Any, Optional
 from config import Env, Config, Wrapper
 
 
