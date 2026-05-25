@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, fields, asdict, is_dataclass
+from dataclasses import dataclass, field, fields, asdict, is_dataclass, MISSING
 from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
 
@@ -74,6 +74,40 @@ class Base:
                 setattr(self, key, value)
 
 
+def _sync_statics(root_node: any) -> None:
+    """Two-pass structural sweep to sync all StaticShared dataclasses."""
+    updates = {}
+
+    def gather(obj):
+        if isinstance(obj, StaticShared):
+            for f in fields(obj):
+                val = getattr(obj, f.name)
+                default = f.default_factory() if f.default_factory is not MISSING else f.default
+                # If there is a difference, cache the change
+                if val != default:
+                    updates[f.name] = val
+
+        # Traverse child nodes
+        if is_dataclass(obj):
+            for f in fields(obj):
+                gather(getattr(obj, f.name))
+
+    gather(root_node)
+
+    # Sync all StaticShared nodes
+    def apply(obj):
+        if isinstance(obj, StaticShared):
+            for k, v in updates.items():
+                if hasattr(obj, k):
+                    setattr(obj, k, v)
+
+        if is_dataclass(obj):
+            for f in fields(obj):
+                apply(getattr(obj, f.name))
+
+    apply(root_node)
+
+
 @dataclass
 class Model(Base):
     def __call__(self):
@@ -83,8 +117,13 @@ class Model(Base):
         return ConfigNamespace(**models) # Dot notation compatibility
 
 
+class StaticShared:
+    """Marker: Fields in subclasses will sync globally across all instances."""
+    pass
+
+
 @dataclass
-class ModelShared(Model):
+class ModelShared(Model, StaticShared):
     """Shared parameters across different models."""
     belief_size: int = 200
     state_size: int = 30
@@ -370,6 +409,9 @@ class Agent(Resolvable, Base):
     memory: Memory = field(default_factory=Memory)
     optimization: Optimization = field(default_factory=Optimization)
     random_init: bool = False   # Whether to initialize the state by following a simple distribution
+
+    def _resolve(self, ctx: dict) -> None:
+        _sync_statics(self)
 
 
 # console
