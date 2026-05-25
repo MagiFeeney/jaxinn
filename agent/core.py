@@ -57,7 +57,104 @@ class Learner(eqx.Module, Generic[ModelType]):
         return self.model(*args, **kwargs)
 
 
-class Agent(eqx.Module):
+class AgentLossMixIn:
+    def _compute_kl_loss(self, prior: LatentStateWithParams, posterior: LatentStateWithParams) -> jax.Array:
+        if self.kl_balance > 0:
+            kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist).sum(-1)
+            kl_loss_prior = jax.lax.stop_gradient(posterior).kl_divergence(prior.dist).sum(-1)
+
+            if self.kl_average:
+                kl_loss_post = kl_loss_post.mean()
+                kl_loss_prior = kl_loss_prior.mean()
+
+            if self.free_nats > 0:
+                kl_loss_post = jnp.clip(kl_loss_post, min=self.free_nats)
+                kl_loss_prior = jnp.clip(kl_loss_prior, min=self.free_nats)
+
+            kl_loss = self.kl_balance * kl_loss_prior + (1 - self.kl_balance) * kl_loss_post
+        else:
+            kl_loss = posterior.kl_divergence(prior.dist).sum(-1)
+
+            if self.kl_average:
+                kl_loss = kl_loss.mean()
+
+            if self.free_nats > 0:
+                kl_loss = jnp.clip(kl_loss, min=self.free_nats)
+
+        return kl_loss if self.kl_average else kl_loss.mean()
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['world'])
+    def world_loss_fn(
+            self,
+            data: Transition,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], LatentStateWithParams]]:
+        prior, posterior = self.reason(data, key)
+
+        reward_dist = jax.vmap(jax.vmap(self.world.reward))(posterior.latent_state)
+        reward_log_prob = reward_dist.log_prob(data.reward)
+        reward_loss = -reward_log_prob.mean()
+
+        observation_dist = jax.vmap(jax.vmap(self.world.perception.decoder))(posterior.latent_state)
+        observation_log_prob = observation_dist.log_prob(data.next_obs)
+        observation_loss = -observation_log_prob.mean()
+
+        kl_loss = self._compute_kl_loss(prior, posterior)
+
+        total_loss = reward_loss + observation_loss + kl_loss
+
+        # For logging
+        reward_mse = jnp.mean((reward_dist.mean() - data.reward)**2)
+        observation_mse = jnp.mean((observation_dist.mean() - data.next_obs)**2)
+
+        metrics = {
+            "model/reward": reward_loss,
+            "model/observation": observation_loss,
+            "model/kl": kl_loss,
+            "model/total": total_loss,
+            "model/reward_mse": reward_mse,
+            "model/observation_mse": observation_mse
+        }
+        return total_loss, (metrics, posterior)
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['actor'])
+    def actor_loss_fn(
+            self,
+            posterior: LatentStateWithParams,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], jax.Array, jax.Array]]:  # TODO: add PG
+        imagined_latent_states = self.plan(posterior.latent_state.flatten(), key)
+        return_prediction, imagined_rewards = self.process(imagined_latent_states)
+
+        actor_loss = -return_prediction.mean()
+        metrics = {
+            "ac/actor": actor_loss,
+            "aux/return_prediction": return_prediction.mean(),
+            "aux/imagined_rewards": imagined_rewards.mean(),
+        }
+        return actor_loss, (metrics, imagined_latent_states, return_prediction)
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['critic'])
+    def critic_loss_fn(
+            self,
+            imagined_latent_states: jax.Array,
+            return_prediction: jax.Array,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+        value_dist = jax.vmap(jax.vmap(self.critic))(imagined_latent_states[:-1].detach())
+        critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction))
+        critic_loss = critic_loss.mean()
+
+        metrics = {
+            "ac/critic": critic_loss,
+        }
+        return critic_loss, metrics
+
+
+class Agent(AgentLossMixIn, eqx.Module):
     world: Learner[World]
     actor: Learner[Actor]
     critic: Learner[Critic]
@@ -334,118 +431,22 @@ class Agent(eqx.Module):
         )
         metrics = {}
 
-        @eqx.filter_value_and_grad(has_aux=True)
-        @differentiable(['world'])
-        def world_loss_fn(
-                agent: Agent,
-                data: Transition,
-                key: PRNGKeyArray,
-        ):
-            prior, posterior = agent.reason(data, key)
-
-            reward_dist = jax.vmap(jax.vmap(agent.world.reward))(posterior.latent_state)
-            reward_log_prob = reward_dist.log_prob(data.reward)
-            reward_loss = -reward_log_prob.mean()
-
-            observation_dist = jax.vmap(jax.vmap(agent.world.perception.decoder))(posterior.latent_state)
-            observation_log_prob = observation_dist.log_prob(data.next_obs)
-            observation_loss = -observation_log_prob.mean()
-
-            if self.kl_balance > 0:
-                kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist).sum(-1)
-                kl_loss_prior = jax.lax.stop_gradient(posterior).kl_divergence(prior.dist).sum(-1)
-
-                if self.kl_average:
-                    kl_loss_post = kl_loss_post.mean()
-                    kl_loss_prior = kl_loss_prior.mean()
-
-                if self.free_nats > 0:
-                    kl_loss_post = jnp.clip(kl_loss_post, min=self.free_nats)
-                    kl_loss_prior = jnp.clip(kl_loss_prior, min=self.free_nats)
-
-                kl_loss = self.kl_balance * kl_loss_prior + (1 - self.kl_balance) * kl_loss_post
-            else:
-                kl_loss = posterior.kl_divergence(prior.dist).sum(-1)
-
-                if self.kl_average:
-                    kl_loss = kl_loss.mean()
-
-                if self.free_nats > 0:
-                    kl_loss = jnp.clip(kl_loss, min=self.free_nats)
-
-            kl_loss = kl_loss if self.kl_average else kl_loss.mean()
-
-            total_loss = reward_loss + observation_loss + kl_loss
-
-            # For logging
-            reward_mse = jnp.mean((reward_dist.mean() - data.reward)**2)
-            observation_mse = jnp.mean((observation_dist.mean() - data.next_obs)**2)
-
-            metrics = {
-                "model/reward": reward_loss,
-                "model/observation": observation_loss,
-                "model/kl": kl_loss,
-                "model/total": total_loss,
-                "model/reward_mse": reward_mse,
-                "model/observation_mse": observation_mse
-            }
-            return total_loss, (metrics, posterior)
-
-        (loss, (aux, posterior)), grads = world_loss_fn(self, data, key_world)
+        # Update world model
+        (loss, (aux, posterior)), grads = self.world_loss_fn(data, key_world)
         new_world = self.world.update(grads.world)
         agent = eqx.tree_at(lambda x: x.world, self, new_world)
         metrics.update(**aux)
 
-        @eqx.filter_value_and_grad(has_aux=True)
-        @differentiable(['actor'])
-        def actor_loss_fn(
-                agent: Agent,
-                posterior: LatentStateWithParams,
-                key: PRNGKeyArray,
-        ):  # TODO: add PG
-            imagined_latent_states = agent.plan(posterior.latent_state.flatten(), key)
-            return_prediction, imagined_rewards = agent.process(imagined_latent_states)
-
-            actor_loss = -return_prediction.mean()
-            metrics = {
-                "ac/actor": actor_loss,
-                "aux/return_prediction": return_prediction.mean(),
-                "aux/imagined_rewards": imagined_rewards.mean(),
-            }
-            return actor_loss, (metrics, imagined_latent_states, return_prediction)
-
-        (loss, (aux, imagined_latent_states, return_prediction)), grads = actor_loss_fn(agent, posterior, key_actor)
-        new_actor = self.actor.update(grads.actor)
-        agent = eqx.tree_at(
-            lambda x: x.actor,
-            agent,
-            new_actor
-        )
+        # Update actor
+        (loss, (aux, imagined_latent_states, return_prediction)), grads = agent.actor_loss_fn(posterior, key_actor)
+        new_actor = agent.actor.update(grads.actor)
+        agent = eqx.tree_at(lambda x: x.actor, agent, new_actor)
         metrics.update(**aux)
 
-        @eqx.filter_value_and_grad(has_aux=True)
-        @differentiable(['critic'])
-        def critic_loss_fn(
-                agent: Agent,
-                imagined_latent_states: jax.Array,
-                return_prediction: jax.Array,
-                key: PRNGKeyArray,
-        ):  # TODO: add PG
-            value_dist = jax.vmap(jax.vmap(agent.critic))(imagined_latent_states[:-1].detach())
-            critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction))
-            critic_loss = critic_loss.mean()
-
-            metrics = {
-                "ac/critic": critic_loss,
-            }
-            return critic_loss, metrics
-
-        (loss, aux), grads = critic_loss_fn(agent, imagined_latent_states, return_prediction, key_critic)
-        new_critic = self.critic.update(grads.critic)
-        agent = eqx.tree_at(
-            lambda x: x.critic,
-            agent,
-            new_critic
-        )
+        # Update critic
+        (loss, aux), grads = agent.critic_loss_fn(imagined_latent_states, return_prediction, key_critic)
+        new_critic = agent.critic.update(grads.critic)
+        agent = eqx.tree_at(lambda x: x.critic, agent, new_critic)
         metrics.update(**aux)
+
         return agent, metrics
