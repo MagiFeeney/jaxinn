@@ -86,10 +86,10 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
 class Separated:
     train: Wrapper = field(default_factory=Wrapper)
     eval: Wrapper = field(default_factory=Wrapper)
-    prefill: Wrapper = field(default_factory=Wrapper)
+    prefill: Optional[Wrapper] = None
 
     def __call__(self) -> dict[str, Any]:
-        return {k: v() for k, v in vars(self).items() if is_dataclass(v)}
+        return {k: v() for k, v in vars(self).items() if v is not None and is_dataclass(v)}
 
 
 def get_separate_env_config(config):
