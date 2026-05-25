@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, fields, asdict, is_dataclass, MISSING
 from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
+from functools import cache
 
 
 class ConfigNamespace(SimpleNamespace):
@@ -76,11 +77,29 @@ class Base:
 
 def _sync_statics(root_node: any) -> None:
     """Two-pass structural sweep to sync all StaticShared dataclasses."""
+
+    @cache
+    def get_static_fields(cls: type, marker: type) -> frozenset:
+        """Recursively finds fields from classes that directly inherit the marker."""
+
+        if marker in cls.__bases__:
+            return frozenset(f.name for f in fields(cls))
+
+        static_fields = set()
+        for base in cls.__bases__:
+            if is_dataclass(base):
+                static_fields.update(get_static_fields(base, marker))
+
+        return frozenset(static_fields)
+
     updates = {}
 
     def gather(obj):
         if isinstance(obj, StaticShared):
+            valid_fields = get_static_fields(obj.__class__, StaticShared)
             for f in fields(obj):
+                if f.name not in valid_fields:
+                    continue
                 val = getattr(obj, f.name)
                 default = f.default_factory() if f.default_factory is not MISSING else f.default
                 # If there is a difference, cache the change
@@ -97,8 +116,9 @@ def _sync_statics(root_node: any) -> None:
     # Sync all StaticShared nodes
     def apply(obj):
         if isinstance(obj, StaticShared):
+            valid_fields = get_static_fields(obj.__class__, StaticShared)
             for k, v in updates.items():
-                if hasattr(obj, k):
+                if k in valid_fields and hasattr(obj, k):
                     setattr(obj, k, v)
 
         if is_dataclass(obj):
