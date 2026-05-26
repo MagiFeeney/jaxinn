@@ -7,8 +7,7 @@ from typing import Union, List
 
 def differentiable(fields: Union[str, List[str]]):
     """
-    Decorator that partitions the first argument (the module/agent)
-    so that only the specified sub-modules (diff_names) are differentiable.
+    Decorator that selects differentiable sub-modules by input names.
     """
     if isinstance(fields, str):
         fields = [fields]
