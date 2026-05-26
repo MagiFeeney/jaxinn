@@ -336,8 +336,9 @@ def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     ctx = {
         "obs_shape":                env.get("observation_space").shape,
         "action_size":              env.get("action_size"),
-        "num_seeds":                config.num_seeds,
         "is_action_space_discrete": env.get("is_action_space_discrete")
+        "num_seeds":                config.num_seeds,
+        "num_environment_steps":    config.exploration.num_environment_steps,
     }
     return config.agent.resolve(ctx)
 
