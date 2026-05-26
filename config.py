@@ -374,6 +374,16 @@ class Memory(Resolvable, Base):
         else:
             self.num_seeds = None             # vmap handles this
 
+        num_environment_steps = ctx.get("num_environment_steps", 0)
+        original_capacity = self.capacity
+        self.capacity = min(original_capacity, num_environment_steps)
+
+        if 0 < self.capacity < original_capacity:
+            print(
+                f"Memory is overcapacity ({original_capacity}). "
+                f"Truncated to actual number of environment steps: {self.capacity}."
+            )
+
 
 # Environment
 @dataclass
