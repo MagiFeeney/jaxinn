@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jaxinn"
+version = "0.1.0"
+readme = "README.md"
+authors = [
+    {name = "Magi Feeney", email = "matrixfeeney@gmail.com"},
+]
+requires-python = ">=3.11"
+dynamic = ["description"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "jax['cuda']<0.10.1",
+    "equinox",
+    "distrax",
+    "optax",
+    "tyro",
+    "tensorboardX"
+]
+keywords = ["model-based RL"]
+
+[project.optional-dependencies]
+atari = ["envpool", "ale-py"]
+dm_control = ["dm-control"]
+gymnasium = ["gymnasium"]
+envpool = ["envpool"]
+gymnax = ["gymnax"]
+playground = [
+    "playground",
+    "mujoco",
+    "mujoco-mjx",
+    "warp-lang<1.13.0",
+]
+brax = ["brax"]
+navix = ["navix"]
+craftax = ["craftax"]
+all = [
+    "jaxinn[atari]",
+    "jaxinn[dm_control]",
+    "jaxinn[gymnasium]",
+    "jaxinn[envpool]",
+    "jaxinn[gymnax]",
+    "jaxinn[playground]",
+    "jaxinn[brax]",
+    "jaxinn[navix]",
+    "jaxinn[craftax]",
+]
+
+[[tool.uv.index]]
+name = "mujoco"
+url = "https://py.mujoco.org"
+explicit = true
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+explicit = true
+
+[tool.uv.sources]
+mujoco = { index = "mujoco" }
+warp-lang = { index = "nvidia" }
+mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", subdirectory = "mjx" }
+brax = { git = "https://github.com/google/brax", rev = "main" }
+
+[project.urls]
+Homepage = "https://github.com/MagiFeeney/Jaxinn"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+indent-width = 4
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors.
+    "F",  # Pyflakes rules.
+    "PLC",  # Pylint convention warnings.
+    "PLE",  # Pylint errors.
+    "PLR",  # Pylint refactor recommendations.
+    "PLW",  # Pylint warnings.
+    "I"  # Import sorting.
+]
+ignore = [
+    "E741", # Ambiguous variable name. (l, O, or I)
+    "E501",  # Line too long.
+    "PLR2004",  # Magic value used in comparison.
+    "PLR0915",  # Too many statements.
+    "PLR0913",  # Too many arguments.
+    "PLC0414",  # Import alias does not rename variable. (this is used for exporting names)
+    "PLC1901",  # Use falsey strings.
+    "PLR5501",  # Use `elif` instead of `else if`.
+    "PLR0911",  # Too many return statements.
+    "PLR0912",  # Too many branches.
+    "PLW0603",  # Global statement updates are discouraged.
+    "PLW2901"  # For loop variable overwritten.
+]
