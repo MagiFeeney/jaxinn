@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass, field, fields, asdict, is_dataclass, MISSING
 from typing import Tuple, Any, Optional, Literal, Dict, Union
 from types import SimpleNamespace
@@ -379,9 +380,11 @@ class Memory(Resolvable, Base):
         self.capacity = min(original_capacity, num_environment_steps)
 
         if 0 < self.capacity < original_capacity:
-            print(
+            warnings.warn(
                 f"Memory is overcapacity ({original_capacity}). "
-                f"Truncated to actual number of environment steps: {self.capacity}."
+                f"Truncated to actual number of environment steps: {self.capacity}.",
+                category=UserWarning,
+                stacklevel=2,
             )
 
 
