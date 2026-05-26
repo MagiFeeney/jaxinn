@@ -74,7 +74,7 @@ mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", 
 brax = { git = "https://github.com/google/brax", rev = "main" }
 
 [project.urls]
-Homepage = "https://github.com/MagiFeeney/Jaxinn"
+Homepage = "https://github.com/MagiFeeney/jaxinn"
 
 [tool.ruff]
 target-version = "py311"
