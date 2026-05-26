@@ -256,8 +256,8 @@ class Agent(AgentLossMixIn, eqx.Module):
             # (T, B, ...) -> (B*T, ...)
             flattened = jnp.moveaxis(x, source=source, destination=source - 1).reshape(-1, *x.shape[source + 1:])
             # For storage
-            if x.dtype == jnp.float32 and x.ndim > 3:
-                is_normalized = x.max() <= 1.0
+            if flattened.dtype == jnp.float32 and flattened.ndim > 3:
+                is_normalized = flattened.max() <= 1.0
                 return jax.lax.cond(
                     is_normalized,
                     lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
