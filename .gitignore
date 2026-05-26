@@ -1,2 +1,6 @@
+**/__pycache__
+*.egg-info/
 .ruff_cache
-__pycache__/
+.python-version
+.DS_Store
+uv.lock
