@@ -35,13 +35,13 @@ def main(config):
             f"num_devices ({num_devices}). \n"
             f"Please set --num_seeds to {closest_lower} or {closest_higher}."
         )
-    seeds_per_device = config.num_seeds // num_devices
+    num_seeds_per_device = config.num_seeds // num_devices
     keys = jax.random.split(key, config.num_seeds * 2)
-    keys_agent, keys_train = keys.reshape(2, num_devices, seeds_per_device, -1)
-    memory_ids = jnp.arange(num_devices * seeds_per_device).reshape(num_devices, seeds_per_device) # For anchoring cpu memory if enabled
+    keys_agent, keys_train = keys.reshape(2, num_devices, num_seeds_per_device, -1)
+    memory_ids = jnp.arange(num_devices * num_seeds_per_device).reshape(num_devices, num_seeds_per_device) # For anchoring cpu memory if enabled
 
     # Initialize trainer with environment
-    trainer = Trainer.create(config)
+    trainer = Trainer.create(config, num_seeds_per_device)
 
     # Resolve agent config with environment-specific information
     agent_config = resolve_agent_config(config, trainer.env)
@@ -53,7 +53,10 @@ def main(config):
     agents = jax.vmap(jax.vmap(make_agent))(keys_agent, memory_ids)
 
     # Ready to train
-    @eqx.filter_pmap(donate="all") # shard across devices, donate buffer for memory efficiency
+    @eqx.filter_pmap(
+        axis_name=config.axis_name,
+        donate="all"
+    )                              # shard across devices, donate buffer for memory efficiency
     @eqx.filter_vmap               # vectorise within each device
     def make_train(agent, key):
         return trainer(agent, key)

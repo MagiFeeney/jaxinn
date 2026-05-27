@@ -178,9 +178,9 @@ class Trainer(Interactor, eqx.Module):
     restart: bool = eqx.field(static=True)
 
     @classmethod
-    def create(cls, config: Config):
+    def create(cls, config: Config, num_seeds_per_device: Optional[int] = None):
         env = make_env(**config.env(), wrapper=config.env.wrapper())
-        logger = Logger.create(config.log_dir)
+        logger = Logger.create(**config.logger(), num_seeds_per_device=num_seeds_per_device, axis_name=config.axis_name)
         return cls(env=env, logger=logger, **config.exploration())
 
     def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
