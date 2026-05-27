@@ -21,12 +21,14 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "jax['cuda']<0.10.1",
+    "jax[cuda]<0.10.1",
     "equinox",
     "distrax",
     "optax",
     "tyro",
-    "tensorboardX"
+    "tensorboard",
+    "tensorboardX",
+    "setuptools<82",
 ]
 keywords = ["model-based RL"]
 
