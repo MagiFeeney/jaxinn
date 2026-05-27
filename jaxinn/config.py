@@ -447,13 +447,23 @@ class Agent(Resolvable, Base):
         _sync_statics(self)
 
 
+# Logger
+@dataclass
+class Logger(Base):
+    log_dir: Optional[str] = None
+    backend: str = "tensorboard"
+    shaded_method: Literal["std", "se", "ci", "iqr"] = "std"
+    aggregate_keywords: Tuple[str, ...] = ("eval",)
+
+
 # console
 @dataclass
 class Config(Base):
     agent: Agent = field(default_factory=Agent)
     env: Env = field(default_factory=Env)
     exploration: Exploration = field(default_factory=Exploration)    # Trainer particulars
+    logger: Logger = field(default_factory=Logger)
 
+    axis_name: str = "p"             # pmap axis name
     seed: int = 42                   # master seed
     num_seeds: int = 50              # num. of agents
-    log_dir: Optional[str] = None
