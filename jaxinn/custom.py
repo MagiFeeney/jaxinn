@@ -23,7 +23,7 @@ FAMILY_OVERRIDES = {
 
 
 ENV_OVERRIDES = {
-    # Examples
+    # Examples for illustration
     "gymnax/CartPole-v1": {
         "exploration": {
             "episode_length": 100,
@@ -35,9 +35,6 @@ ENV_OVERRIDES = {
             },
             "world": {
                 "optimizer": {"lr": 3e-4},
-                "perception": {
-                    "type": "linear" # state-based
-                }
             }
         }
     },
@@ -52,9 +49,6 @@ ENV_OVERRIDES = {
             },
             "world": {
                 "optimizer": {"lr": 3e-4},
-                "perception": {
-                    "type": "cnn"    # pixel-based
-                }
             }
         }
     },
