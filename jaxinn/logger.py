@@ -292,7 +292,7 @@ class LoggerJaxConverter(eqx.Module):
             signature: str = "Train",
             headline_params: Optional[Dict[str, Any]] = None,
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> None:
+    ) -> None:                  # TODO: fix print order
         fmt_string, static_params = self.host_logger._get_summary_template(
             metric_keys=list(metrics.keys()),
             signature=signature,

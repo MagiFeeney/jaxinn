@@ -467,3 +467,6 @@ class Config(Base):
     axis_name: str = "p"             # pmap axis name
     seed: int = 42                   # master seed
     num_seeds: int = 50              # num. of agents
+
+    save_model_path: str = ""
+    load_model_path: str = ""

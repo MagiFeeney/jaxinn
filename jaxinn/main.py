@@ -52,6 +52,10 @@ def main(config):
 
     agents = jax.vmap(jax.vmap(make_agent))(keys_agent, memory_ids)
 
+    # Load agent from a checkpoint
+    if bool(config.load_model_path):
+        agents = eqx.tree_deserialise_leaves(config.load_model_path, agents)
+
     # Ready to train
     @eqx.filter_pmap(
         axis_name=config.axis_name,
@@ -68,6 +72,10 @@ def main(config):
         f"Achieved return:\n"
         f"{final_eval_return}"
     )
+
+    # Save the final agent
+    if bool(config.save_model_path):
+        eqx.tree_serialise_leaves(config.save_model_path, final_agent)
 
     # Close the trainer
     trainer.close()
