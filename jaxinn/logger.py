@@ -55,7 +55,7 @@ class HostLogger:
         self.layout = {"Aggregated Metrics (Shaded)": {}}
         self.known_keys = set()
 
-    def compute_bounds(self, x: np.ndarray) -> tuple[float, float, float]:
+    def _compute_bounds(self, x: np.ndarray) -> tuple[float, float, float]:
         mean = np.mean(x)
 
         if self.shaded_method == "std":
@@ -77,7 +77,7 @@ class HostLogger:
         else:
             raise ValueError(f"Unknown shaded method: {self.shaded_method}")
 
-    def register_layout(self, k: str):
+    def _register_layout(self, k: str):
         """Update layout if a new key is first time seen."""
         if k not in self.known_keys:
             self.known_keys.add(k)
@@ -88,7 +88,7 @@ class HostLogger:
             ]
             self.writer.add_custom_scalars(self.layout)
 
-    def log_dict(self, metrics: Dict[str, Any], step: Any, seed_offset: Optional[int] = 0):
+    def log_dict(self, metrics: Dict[str, Any], step: Any) -> None:
         if self.writer is None:
             return
 
@@ -97,19 +97,17 @@ class HostLogger:
             raise ValueError(f"log: 'step' must be identical across seeds, got {s_arr}.")
         s = int(s_arr[0])
 
-        seed_offset = int(np.asarray(seed_offset).ravel()[0])
-
         for k, v in metrics.items():
             val = np.asarray(v)
+
+            if val.ndim > 1:
+                raise ValueError(f"log_dict: '{k}' has shape {val.shape}. Expected scalar or 1D.")
+
             if val.ndim == 0:
                 self.writer.add_scalar(k, float(val), s)
             else:
-                shifted_seeds = {}
-                for idx, x in np.ndenumerate(val):
-                    global_idx = idx[0] + seed_offset
-                    shifted_seeds[f"seed_{global_idx}"] = float(x)
-
-                self.writer.add_scalars(k, shifted_seeds, s)
+                seed_val = {f"seed_{'_'.join(map(str, idx))}": float(x) for idx, x in np.ndenumerate(val)}
+                self.writer.add_scalars(k, seed_val, s)
 
                 should_aggregate = (
                     val.size > 1 and
@@ -117,15 +115,15 @@ class HostLogger:
                 )
 
                 if should_aggregate:
-                    self.register_layout(k)
+                    self._register_layout(k)
 
-                    mean, lower, upper = self.compute_bounds(val) # TODO: fix aggregation
+                    mean, lower, upper = self._compute_bounds(val)
 
                     self.writer.add_scalar(f"shaded/{k}/mean", float(mean), s)
                     self.writer.add_scalar(f"shaded/{k}/lower", float(lower), s)
                     self.writer.add_scalar(f"shaded/{k}/upper", float(upper), s)
 
-    def log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any, seed_offset: Optional[int] = 0):
+    def log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any) -> None:
         if self.writer is None:
             return
 
@@ -136,10 +134,10 @@ class HostLogger:
             arr = np.asarray(values)
             if arr.ndim == 1:
                 for i, val in enumerate(arr):
-                    self.log_dict({k: val}, st + (i + 1) * inv, seed_offset)
+                    self.log_dict({k: val}, st + (i + 1) * inv)
             elif arr.ndim == 2:
                 for i, val in enumerate(arr.T): # Transpose to time axis so that the logging is correct
-                    self.log_dict({k: val}, st + (i + 1) * inv, seed_offset)
+                    self.log_dict({k: val}, st + (i + 1) * inv)
             else:
                 raise ValueError(f"log_sequence: '{k}' shape must be (T,) or (N, T).")
 
@@ -150,8 +148,8 @@ class HostLogger:
             signature: str = "Train",
             headline_params: Optional[Dict[str, Any]] = None,
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
-    ):
-        fmt_string, static_params = self.get_summary_template(
+    ) -> None:
+        fmt_string, static_params = self._get_summary_template(
             metric_keys=list(metrics.keys()),
             signature=signature,
             group_configs=group_configs
@@ -166,7 +164,7 @@ class HostLogger:
         print(fmt_string.format(**print_kwargs))
 
     @classmethod
-    def get_summary_template(
+    def _get_summary_template(
             cls,
             metric_keys: Sequence[str],
             signature: str = "Train",
@@ -188,12 +186,12 @@ class HostLogger:
             grouped_metrics[group].append((name, k))
 
         lines = [f"\n=== Step {{step}}: {signature} ==="]
-        merged_group_configs = cls.merge_configs(default_group_configs, group_configs)
+        merged_group_configs = cls._merge_configs(default_group_configs, group_configs)
 
         # Formatting
         for group, items in grouped_metrics.items():
             fallback_headline = f"--- {group.capitalize()} ---"
-            headline, print_kwargs_update = cls.get_headline(merged_group_configs, group, fallback_headline)
+            headline, print_kwargs_update = cls._get_headline(merged_group_configs, group, fallback_headline)
             static_params.update(print_kwargs_update)
             lines.append(f"\n{headline}")
 
@@ -205,7 +203,7 @@ class HostLogger:
         return fmt_string, static_params
 
     @staticmethod
-    def get_headline(configs: Dict[str, Any], current_group: str, fallback: str) -> Tuple[str, Dict[str, Any]]:
+    def _get_headline(configs: Dict[str, Any], current_group: str, fallback: str) -> Tuple[str, Dict[str, Any]]:
         print_kwargs_update = {}
         headline = fallback
 
@@ -223,7 +221,7 @@ class HostLogger:
         return headline, print_kwargs_update
 
     @staticmethod
-    def merge_configs(base: Dict[str, Any], custom: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _merge_configs(base: Dict[str, Any], custom: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         merged = {k: v.copy() if isinstance(v, dict) else v for k, v in base.items()}
         if custom:
             for group, config in custom.items():
@@ -248,25 +246,44 @@ class LoggerJaxConverter(eqx.Module):
     A bridge from JAX to Python via `jax.debug.callback`.
     """
 
+    axis_name: str = eqx.field(static=True)
     host_logger: HostLogger = eqx.field(static=True)
-    num_seeds_per_device: Optional[int] = eqx.field(static=True)
 
-    def _calculate_offset(self, metrics: Dict[str, Any], device_idx: int, expected_ndim: int) -> int:
-        if self.num_seeds_per_device is not None:
-            seeds_per_device = self.num_seeds_per_device
-        else:
-            first_val = next(iter(metrics.values()))
-            seeds_per_device = first_val.shape[0] if first_val.ndim > expected_ndim else 1
+    @property
+    def _in_pmap(self) -> bool:
+        return bool(self.axis_name)
 
-        return device_idx * seeds_per_device
+    def _get_device_idx(self) -> Any:
+        if not self._in_pmap:
+            return 0
+        return jax.lax.axis_index(self.axis_name)
 
-    def _log_dict(self, metrics: Dict[str, Any], step: Any, device_idx: int):
-        seed_offset = self._calculate_offset(metrics, device_idx, expected_ndim=0)
-        return jax.debug.callback(self.host_logger.log_dict, metrics, step, seed_offset, ordered=False)
+    def _gather_all(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._in_pmap:
+            return metrics
+        gathered = jax.lax.all_gather(metrics, axis_name=self.axis_name)
+        return jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), gathered)
 
-    def _log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any, device_idx: int):
-        seed_offset = self._calculate_offset(metrics, device_idx, expected_ndim=1)
-        return jax.debug.callback(self.host_logger.log_sequence, metrics, start_step, interval, seed_offset, ordered=False)
+    def _dispatch(
+        self,
+        host_fn: Callable,
+        metrics: Dict[str, Any],
+        *args: Any,
+    ) -> None:
+        """Gather metrics from devices and invoke `host_fn` on device 0 only."""
+        gathered = self._gather_all(metrics)
+        is_primary = self._get_device_idx() == 0
+        jax.lax.cond(
+            is_primary,
+            lambda: jax.debug.callback(host_fn, gathered, *args, ordered=False),
+            lambda: None,
+        )
+
+    def _log_dict(self, metrics: Dict[str, Any], step: Any) -> None:
+        self._dispatch(self.host_logger.log_dict, metrics, step)
+
+    def _log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any) -> None:
+        self._dispatch(self.host_logger.log_sequence, metrics, start_step, interval)
 
     def print_summary(
             self,
@@ -275,8 +292,8 @@ class LoggerJaxConverter(eqx.Module):
             signature: str = "Train",
             headline_params: Optional[Dict[str, Any]] = None,
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
-    ):
-        fmt_string, static_params = self.host_logger.get_summary_template(
+    ) -> None:
+        fmt_string, static_params = self.host_logger._get_summary_template(
             metric_keys=list(metrics.keys()),
             signature=signature,
             group_configs=group_configs
@@ -301,33 +318,31 @@ class LoggerVmapMixIn:
     """A mixin with custom `vmap` rules that intercept batched data."""
 
     @jax.custom_batching.custom_vmap
-    def v_log_dict(self, metrics, step, device_idx):
-        self._log_dict(metrics, step, device_idx)
+    def v_log_dict(self, metrics, step):
+        self._log_dict(metrics, step)
         return ()
 
     @v_log_dict.def_vmap
-    def v_log_dict_batch(axis_size, in_batched, self, metrics, step, device_idx):
+    def v_log_dict_batch(axis_size, in_batched, self, metrics, step):
         s = step[0] if in_batched[2] else step
-        self._log_dict(metrics, s, device_idx)
+        self._log_dict(metrics, s)
         return (), ()
 
     @jax.custom_batching.custom_vmap
-    def v_log_sequence(self, metrics, start_step, interval, device_idx):
-        self._log_sequence(metrics, start_step, interval, device_idx)
+    def v_log_sequence(self, metrics, start_step, interval):
+        self._log_sequence(metrics, start_step, interval)
         return ()
 
     @v_log_sequence.def_vmap
-    def v_log_sequence_batch(axis_size, in_batched, self, metrics, start_step, interval, device_idx):
+    def v_log_sequence_batch(axis_size, in_batched, self, metrics, start_step, interval):
         st = start_step[0] if in_batched[2] else start_step
         inv = interval[0] if in_batched[3] else interval
-        self._log_sequence(metrics, st, inv, device_idx)
+        self._log_sequence(metrics, st, inv)
         return (), ()
 
 
 class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
     """A JAX-safe user interface."""
-
-    axis_name: str = eqx.field(static=True)
 
     @classmethod
     def create(
@@ -336,9 +351,8 @@ class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
             backend: str = "tensorboard",
             aggregate_keywords: tuple = ("eval", "test"),
             shaded_method: Literal["std", "se", "ci", "iqr"] = "std",
-            num_seeds_per_device: Optional[int] = None,
             *,
-            axis_name: str
+            axis_name: str = "",
     ):
         host_logger = HostLogger(
             log_dir=log_dir,
@@ -346,31 +360,22 @@ class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
             aggregate_keywords=aggregate_keywords,
             shaded_method=shaded_method
         ) # For LoggerJaxConverter
-        return cls(axis_name=axis_name, num_seeds_per_device=num_seeds_per_device, host_logger=host_logger)
-
-    def _get_device_idx(self):
-        try:
-            return jax.lax.axis_index(self.axis_name)
-        except NameError:
-            return 0
+        return cls(axis_name=axis_name, host_logger=host_logger)
 
     def log_scalar(self, key: str, value: Any, step: int) -> None:
-        device_idx = self._get_device_idx()
-        self.v_log_dict(self, {key: value}, step, device_idx)
+        self.v_log_dict(self, {key: value}, step)
 
     def log_dict(self, metrics: Dict[str, Any], step: int, prefix: Optional[str] = None) -> None:
         if prefix:
             metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
-        device_idx = self._get_device_idx()
-        self.v_log_dict(self, metrics, step, device_idx)
+        self.v_log_dict(self, metrics, step)
 
     def log_sequence(self, metrics: Dict[str, Sequence[Any]], start_step: int, interval: int, prefix: Optional[str] = None) -> None:
         if prefix:
             metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
 
         metrics = {k: jnp.asarray(v) for k, v in metrics.items()}
-        device_idx = self._get_device_idx()
-        self.v_log_sequence(self, metrics, start_step, interval, device_idx)
+        self.v_log_sequence(self, metrics, start_step, interval)
 
     def __enter__(self) -> "JaxLogger":
         return self
