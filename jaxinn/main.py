@@ -41,7 +41,7 @@ def main(config):
     memory_ids = jnp.arange(num_devices * num_seeds_per_device).reshape(num_devices, num_seeds_per_device) # For anchoring cpu memory if enabled
 
     # Initialize trainer with environment
-    trainer = Trainer.create(config, num_seeds_per_device)
+    trainer = Trainer.create(config)
 
     # Resolve agent config with environment-specific information
     agent_config = resolve_agent_config(config, trainer.env)
