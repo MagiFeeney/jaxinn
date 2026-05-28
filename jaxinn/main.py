@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 import tyro
@@ -75,6 +76,9 @@ def main(config):
 
     # Save the final agent
     if bool(config.save_model_path):
+        save_dir = os.path.dirname(config.save_model_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
         eqx.tree_serialise_leaves(config.save_model_path, final_agent)
 
     # Close the trainer
