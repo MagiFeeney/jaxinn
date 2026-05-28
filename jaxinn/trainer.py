@@ -228,8 +228,8 @@ class Trainer(Interactor, eqx.Module):
 
             extra = {"eval/return": episodic_returns}
             self.logger.print_summary(
-                step=eval_step,
                 metrics=metrics | eval_metrics | extra,
+                step=eval_step,
                 headline_params={"n": self.num_eval_episodes}
             )
 

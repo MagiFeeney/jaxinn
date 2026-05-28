@@ -1,7 +1,7 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-from typing import Tuple, Dict, Any, Optional, Sequence, Literal
+from typing import Tuple, Dict, Any, Optional, Sequence, Literal, Callable
 
 import equinox as eqx
 
@@ -143,8 +143,8 @@ class HostLogger:
 
     def print_summary(
             self,
-            step: int,
             metrics: Dict[str, Any],
+            step: int,
             signature: str = "Train",
             headline_params: Optional[Dict[str, Any]] = None,
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -287,8 +287,8 @@ class LoggerJaxConverter(eqx.Module):
 
     def print_summary(
             self,
-            step: int,
             metrics: Dict[str, Any],
+            step: int,
             signature: str = "Train",
             headline_params: Optional[Dict[str, Any]] = None,
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
