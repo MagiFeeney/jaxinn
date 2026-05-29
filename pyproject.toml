@@ -26,6 +26,7 @@ dependencies = [
     "distrax",
     "optax",
     "tyro",
+    "rich",
     "tensorboard",
     "tensorboardX",
     "setuptools<82",
