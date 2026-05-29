@@ -197,6 +197,7 @@ class HostLogger:
             metric_shapes: Dict[str, Tuple[int, ...]],
             signature: str = "Train",
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+            group_order: Sequence[str] = ("model", "ac", "auxiliary", "evaluation")
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Pure Python formatter. Generates the template string and static parameters.
@@ -216,8 +217,13 @@ class HostLogger:
         lines = [f"\n[bold black on magenta]  Step {{step}}: {signature}  [/bold black on magenta]"]
         merged_group_configs = cls._merge_configs(default_group_configs, group_configs)
 
+        sorted_group_metrics = sorted(
+            grouped_metrics.items(),
+            key=lambda x: group_order.index(x[0].lower()) if x[0].lower() in group_order else float('inf')
+        )
+
         # Formatting
-        for group, items in grouped_metrics.items():
+        for group, items in sorted_group_metrics:
             fallback_headline = f"━━━ {group.capitalize()} ━━━"
             headline, print_kwargs_update = cls._get_headline(merged_group_configs, group, fallback_headline)
             static_params.update(print_kwargs_update)
