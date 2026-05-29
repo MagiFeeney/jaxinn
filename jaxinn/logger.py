@@ -7,6 +7,12 @@ from rich import print as rprint
 import equinox as eqx
 
 
+class FormatParams(eqx.Module):
+    signature: str = eqx.field(static=True, default="Train")
+    headline_params: Optional[Dict] = eqx.field(static=True, default=None)
+    group_configs: Optional[Dict] = eqx.field(static=True, default=None)
+
+
 default_group_configs = {
     "eval": {
         "headline": {
@@ -228,7 +234,7 @@ class HostLogger:
                 elif len(shape) == 1:
                     lines.append(
                         f"    [green]{name}:[/green] "
-                        f"[bold white]{{{k}_mean:.4f}} ± {{{k}_std:.4f}}[/bold white]  "
+                        f"[bold red]{{{k}_mean:.4f}} ± {{{k}_std:.4f}}[/bold red]  "
                         f"[dim white](Raw: {{{k}_raw}})[/dim white]"
                     )
                 else:
@@ -336,12 +342,6 @@ class LoggerJaxConverter(eqx.Module):
 
     def close(self):
         self.host_logger.close()
-
-
-class FormatParams(eqx.Module):
-    signature: str = eqx.field(static=True, default="Train")
-    headline_params: Optional[Dict] = eqx.field(static=True, default=None)
-    group_configs: Optional[Dict] = eqx.field(static=True, default=None)
 
 
 class LoggerVmapMixIn:

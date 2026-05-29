@@ -80,7 +80,7 @@ def main(config):
     summary_message = (
         f"[bold green]🚀 Training Completed Successfully![/bold green]\n\n"
         f"[cyan]Agents/Seeds:[/cyan]   [bold white]{config.num_seeds}[/bold white]\n"
-        f"[cyan]Achieved Return:[/cyan] [bold yellow]{mean:.4f} ± {std:.4f}[/bold yellow]  "
+        f"[cyan]Achieved Return:[/cyan] [bold red]{mean:.4f} ± {std:.4f}[/bold red]  "
         f"[dim white](Raw: {raw_str})[/dim white]"
     )
     rprint(
