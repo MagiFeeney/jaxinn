@@ -2,6 +2,8 @@ import os
 from typing import Optional
 
 import tyro
+from rich import print as rprint
+from rich.panel import Panel
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -68,10 +70,26 @@ def main(config):
 
     final_agent, (metrics, evaluation) = make_train(agents, keys_train)
     final_eval_return = evaluation.reshape(config.num_seeds, -1)[:, -1]
-    print(
-        f"{config.num_seeds} agents/seeds training completed!\n"
-        f"Achieved return:\n"
-        f"{final_eval_return}"
+
+    # Get statistics of the final eval return
+    mean = final_eval_return.mean().item()
+    std = final_eval_return.std().item()
+    raw_str = jnp.array_str(final_eval_return, precision=4, suppress_small=True)
+
+    # Training summary
+    summary_message = (
+        f"[bold green]🚀 Training Completed Successfully![/bold green]\n\n"
+        f"[cyan]Agents/Seeds:[/cyan]   [bold white]{config.num_seeds}[/bold white]\n"
+        f"[cyan]Achieved Return:[/cyan] [bold yellow]{mean:.4f} ± {std:.4f}[/bold yellow]  "
+        f"[dim white](Raw: {raw_str})[/dim white]"
+    )
+    rprint(
+        Panel(
+            summary_message,
+            title="[bold magenta]Run Summary",
+            border_style="green",
+            expand=False
+        )
     )
 
     # Save the final agent

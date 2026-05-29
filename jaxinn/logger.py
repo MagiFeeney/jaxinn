@@ -3,29 +3,30 @@ import jax
 import jax.numpy as jnp
 from typing import Tuple, Dict, Any, Optional, Sequence, Literal, Callable
 
+from rich import print as rprint
 import equinox as eqx
 
 
 default_group_configs = {
     "eval": {
         "headline": {
-            "format": "--- Evaluation ({n} episodes) ---",
+            "format": "━━━ Evaluation ({n} episodes) ━━━",
             "params": {"n": "unknown"} # Default fallback placeholder
         }
     },
     "ac": {
         "headline": {
-            "format": "--- Actor and Critic Loss ---"
+            "format": "━━━ Actor and Critic Loss ━━━"
         }
     },
     "model": {
         "headline": {
-            "format": "--- Model Loss ---"
+            "format": "━━━ Model Loss ━━━"
         }
     },
     "aux": {
         "headline": {
-            "format": "--- Auxiliary ---"
+            "format": "━━━ Auxiliary ━━━"
         }
     }
 }
@@ -149,24 +150,45 @@ class HostLogger:
             headline_params: Optional[Dict[str, Any]] = None,
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> None:
+        metric_shapes = {}
+        print_kwargs = {}
+
+        for k, v in metrics.items():
+            shape = getattr(v, "shape", ())
+            metric_shapes[k] = shape
+
+            if v.ndim == 2:
+                for i, row in enumerate(v):
+                    print_kwargs[f"{k}_seed_{i}"] = np.array2string(
+                        row, precision=4, separator=' ', suppress_small=True
+                    )
+            elif v.ndim == 1:
+                print_kwargs[f"{k}_mean"] = float(v.mean())
+                print_kwargs[f"{k}_std"] = float(v.std())
+                print_kwargs[f"{k}_raw"] = np.array2string(
+                    v, precision=4, separator=', ', suppress_small=True
+                )
+            else:
+                print_kwargs[k] = float(v) if hasattr(v, "item") else v
+
         fmt_string, static_params = self._get_summary_template(
-            metric_keys=list(metrics.keys()),
+            metric_shapes=metric_shapes,
             signature=signature,
             group_configs=group_configs
         )
 
-        print_kwargs = dict(metrics)
         print_kwargs["step"] = int(np.asarray(step).ravel()[0])
         print_kwargs.update(static_params)
+
         if headline_params:
             print_kwargs.update(headline_params)
 
-        print(fmt_string.format(**print_kwargs))
+        rprint(fmt_string.format(**print_kwargs))
 
     @classmethod
     def _get_summary_template(
             cls,
-            metric_keys: Sequence[str],
+            metric_shapes: Dict[str, Tuple[int, ...]],
             signature: str = "Train",
             group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Tuple[str, Dict[str, Any]]:
@@ -178,26 +200,39 @@ class HostLogger:
         static_params = {}
 
         # Grouping
-        for k in metric_keys:
+        for k, shape in metric_shapes.items():
             parts = k.split("/", 1)
             group, name = parts if len(parts) == 2 else ("General", k)
             if group not in grouped_metrics:
                 grouped_metrics[group] = []
-            grouped_metrics[group].append((name, k))
+            grouped_metrics[group].append((name, k, shape))
 
-        lines = [f"\n=== Step {{step}}: {signature} ==="]
+        lines = [f"\n[bold black on magenta]  Step {{step}}: {signature}  [/bold black on magenta]"]
         merged_group_configs = cls._merge_configs(default_group_configs, group_configs)
 
         # Formatting
         for group, items in grouped_metrics.items():
-            fallback_headline = f"--- {group.capitalize()} ---"
+            fallback_headline = f"━━━ {group.capitalize()} ━━━"
             headline, print_kwargs_update = cls._get_headline(merged_group_configs, group, fallback_headline)
             static_params.update(print_kwargs_update)
-            lines.append(f"\n{headline}")
+            lines.append(f"\n[bold yellow]{headline}[/bold yellow]")
 
-            max_name_len = max([len(name) for name, _ in items]) if items else 0
-            for name, k in items:
-                lines.append(f"    {name + ':':<{max_name_len + 1}}  {{{k}}}")
+            for name, k, shape in items:
+                if len(shape) == 2:
+                    num_seeds = shape[0]
+                    pad_len = len(str(num_seeds - 1))
+                    lines.append(f"    [green]{name}:[/green]")
+                    for i in range(num_seeds):
+                        lines.append(f"        [cyan]Seed {i:>{pad_len}}:[/cyan] [bold white]{{{k}_seed_{i}}}[/bold white]")
+
+                elif len(shape) == 1:
+                    lines.append(
+                        f"    [green]{name}:[/green] "
+                        f"[bold white]{{{k}_mean:.4f}} ± {{{k}_std:.4f}}[/bold white]  "
+                        f"[dim white](Raw: {{{k}_raw}})[/dim white]"
+                    )
+                else:
+                    lines.append(f"    [green]{name}:[/green] [bold white]{{{k}}}[/bold white]")
 
         fmt_string = "\n".join(lines) + "\n"
         return fmt_string, static_params
@@ -285,33 +320,28 @@ class LoggerJaxConverter(eqx.Module):
     def _log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any) -> None:
         self._dispatch(self.host_logger.log_sequence, metrics, start_step, interval)
 
-    def print_summary(
+    def _print_summary(
             self,
             metrics: Dict[str, Any],
             step: int,
-            signature: str = "Train",
-            headline_params: Optional[Dict[str, Any]] = None,
-            group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> None:                  # TODO: fix print order
-        fmt_string, static_params = self.host_logger._get_summary_template(
-            metric_keys=list(metrics.keys()),
-            signature=signature,
-            group_configs=group_configs
-        )
-
-        print_kwargs = dict(metrics)
-        print_kwargs["step"] = step
-        print_kwargs.update(static_params)
-        if headline_params:
-            print_kwargs.update(headline_params)
-
-        jax.debug.print(fmt_string, **print_kwargs)
+            format_params: FormatParams,
+    ) -> None:
+        signature = format_params.signature
+        headline_params = format_params.headline_params
+        group_configs = format_params.group_configs
+        self._dispatch(self.host_logger.print_summary, metrics, step, signature, headline_params, group_configs)
 
     def flush(self):
         self.host_logger.flush()
 
     def close(self):
         self.host_logger.close()
+
+
+class FormatParams(eqx.Module):
+    signature: str = eqx.field(static=True, default="Train")
+    headline_params: Optional[Dict] = eqx.field(static=True, default=None)
+    group_configs: Optional[Dict] = eqx.field(static=True, default=None)
 
 
 class LoggerVmapMixIn:
@@ -338,6 +368,17 @@ class LoggerVmapMixIn:
         st = start_step[0] if in_batched[2] else start_step
         inv = interval[0] if in_batched[3] else interval
         self._log_sequence(metrics, st, inv)
+        return (), ()
+
+    @jax.custom_batching.custom_vmap
+    def v_print_summary(self, metrics, step, format_params: FormatParams):
+        self._print_summary(metrics, step, format_params)
+        return ()
+
+    @v_print_summary.def_vmap
+    def v_print_summary_batch(axis_size, in_batched, self, metrics, step, format_params: FormatParams):
+        s = step[0] if in_batched[2] else step
+        self._print_summary(metrics, s, format_params)
         return (), ()
 
 
@@ -376,6 +417,22 @@ class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
 
         metrics = {k: jnp.asarray(v) for k, v in metrics.items()}
         self.v_log_sequence(self, metrics, start_step, interval)
+
+    def print_summary(
+            self,
+            metrics: Dict[str, Any],
+            step: int,
+            signature: str = "Train",
+            headline_params: Optional[Dict[str, Any]] = None,
+            group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> None:
+        # Close over the non-JAX arguments
+        format_params = FormatParams(
+            signature=signature,
+            headline_params=headline_params,
+            group_configs=group_configs
+        )
+        self.v_print_summary(self, metrics, step, format_params)
 
     def __enter__(self) -> "JaxLogger":
         return self
