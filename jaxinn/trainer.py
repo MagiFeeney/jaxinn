@@ -295,10 +295,9 @@ class Trainer(Interactor, eqx.Module):
             agent: Agent,
             interaction_state: InteractionState,
             key: PRNGKeyArray,
-            prefill: bool = False
     ) -> Tuple[Tuple[Agent, InteractionState, PRNGKeyArray], Dict[str, jax.Array]]:
         key, key_interact, key_learn = jax.random.split(key, 3)
-        interaction_state, experiences = self.interact(agent, interaction_state, key_interact, prefill=prefill)
+        interaction_state, experiences = self.interact(agent, interaction_state, key_interact)
 
         # Store them
         agent = agent.add_experience(experiences, source=1)
