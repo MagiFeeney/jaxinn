@@ -21,16 +21,16 @@ from mujoco_playground._src import dm_control_suite, locomotion, manipulation
 
 
 def get_default_vision_config(env_name: str, num_envs: int = 1) -> config_dict.ConfigDict:
+    # common
     config = config_dict.create(
         nworld=num_envs,
         cam_res=(64, 64),
         use_shadows=False,
-        render_rgb=(True,),
-        render_depth=(False,),
+        render_rgb=True,
+        render_depth=False,
         enabled_geom_groups=[0, 1, 2],
     )
 
-    # 2. Apply suite-specific overrides
     if env_name in dm_control_suite.ALL_ENVS:
         config.use_textures = False
         config.cam_active = (True, False)  # [fixed, lookatcart]
@@ -70,9 +70,22 @@ class MjxVisionWrapper:
         else:
             raise TypeError(f"Vision config must be convertible to ConfigDict, but got {type(vision_config)}.")
 
+        vision_kwargs = self._vision_config.to_dict()
+
+        if "cam_active" in vision_kwargs and vision_kwargs["cam_active"] is not None:
+            cam_active = list(vision_kwargs["cam_active"])
+            ncam = self._env.mj_model.ncam
+
+            if len(cam_active) < ncam:   # Default to use the first camera
+                cam_active.extend([False] * (ncam - len(cam_active)))
+            elif len(cam_active) > ncam: # Truncate if have more than required
+                cam_active = cam_active[:ncam]
+
+            vision_kwargs["cam_active"] = tuple(cam_active)
+
         self._rc = mjx.create_render_context(
             mjm=self._env.mj_model,
-            **self._vision_config.to_dict()
+            **vision_kwargs
         )
         self._rc_pytree = self._rc.pytree()
 
