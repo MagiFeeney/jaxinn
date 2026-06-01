@@ -1,3 +1,4 @@
+from ml_collections import config_dict
 from collections.abc import Mapping
 from typing import Any, Optional, Tuple
 
@@ -13,7 +14,120 @@ from envs.vmap import VmapTransformation
 from mujoco_playground import registry
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
+from mujoco import mjx
 from mujoco.mjx.warp import types as mjx_warp_types
+
+from mujoco_playground._src import dm_control_suite, locomotion, manipulation
+
+
+def get_default_vision_config(env_name: str, num_envs: int = 1) -> config_dict.ConfigDict:
+    config = config_dict.create(
+        nworld=num_envs,
+        cam_res=(64, 64),
+        use_shadows=False,
+        render_rgb=(True,),
+        render_depth=(False,),
+        enabled_geom_groups=[0, 1, 2],
+    )
+
+    # 2. Apply suite-specific overrides
+    if env_name in dm_control_suite.ALL_ENVS:
+        config.use_textures = False
+        config.cam_active = (True, False)  # [fixed, lookatcart]
+
+    elif env_name in manipulation.ALL_ENVS:
+        config.use_textures = False
+        config.cam_active = None           # Use all cameras
+
+    elif env_name in locomotion.ALL_ENVS:
+        config.use_textures = True
+        config.cam_active = (True,)        # Use primary camera
+
+    else:
+        raise ValueError(f"Env '{env_name}' not found in available suites.")
+
+    return config
+
+
+class MjxVisionWrapper:
+    def __init__(
+        self,
+        env: MjxEnv,
+        vision_config: Any,
+        pixels_only: bool = True,
+        obs_noise: Optional[Any] = None
+    ):
+        self._env = env
+        self._pixels_only = pixels_only
+        self._obs_noise = obs_noise
+
+        if isinstance(vision_config, config_dict.ConfigDict):
+            self._vision_config = vision_config
+        elif isinstance(vision_config, dict):
+            self._vision_config = config_dict.ConfigDict(vision_config)
+        elif hasattr(vision_config, "__dict__"):
+            self._vision_config = config_dict.ConfigDict(vars(vision_config))
+        else:
+            raise TypeError(f"Vision config must be convertible to ConfigDict, but got {type(vision_config)}.")
+
+        self._rc = mjx.create_render_context(
+            mjm=self._env.mj_model,
+            **self._vision_config.to_dict()
+        )
+        self._rc_pytree = self._rc.pytree()
+
+    @property
+    def mj_model(self):
+        return self._env.mj_model
+
+    @property
+    def mjx_model(self):
+        return self._env.mjx_model
+
+    @property
+    def action_size(self):
+        return self._env.action_size
+
+    def reset(self, rng: jax.Array) -> MjxState:
+        rng_reset, rng_noise = jax.random.split(rng, 2)
+        state = self._env.reset(rng_reset)
+
+        if self._obs_noise is not None and hasattr(self._obs_noise, "brightness"):
+            brightness = jax.random.uniform(
+                rng_noise,
+                (1,),
+                minval=self._obs_noise.brightness[0],
+                maxval=self._obs_noise.brightness[1],
+            )
+            state.info['brightness'] = brightness
+
+        state = state.replace(info=state.info)
+        return self._render_and_update_obs(state)
+
+    def step(self, state: MjxState, action: jax.Array) -> MjxState:
+        state = self._env.step(state, action)
+        return self._render_and_update_obs(state)
+
+    @staticmethod
+    def _adjust_brightness(img, scale):
+        return jnp.clip(img * scale, 0, 1)
+
+    def _render_and_update_obs(self, state: MjxState) -> MjxState:
+        render_data = mjx.refit_bvh(self.mjx_model, state.data, self._rc_pytree)
+        out = mjx.render(self.mjx_model, render_data, self._rc_pytree)
+        rgb = mjx.get_rgb(self._rc_pytree, 0, out[0])
+
+        if 'brightness' in state.info:
+            rgb = self._adjust_brightness(rgb, state.info['brightness'])
+
+        if self._pixels_only:
+            obs = {"pixels/view_0": rgb}
+        else:
+            obs = {
+                "state": state.obs,
+                "pixels/view_0": rgb
+            }
+        return state.replace(obs=obs)
 
 
 def _build_static_leaf_names() -> frozenset[str]:
@@ -119,11 +233,34 @@ class Playground(Environment, PlaygroundVmapMixIn):
     @classmethod
     def create(cls, env_name: str, num_envs: int = 1, vision: bool = True, **kwargs) -> "Playground":
         env_params = registry.get_default_config(env_name)
-        env_params.vision = vision
+
+        has_native_vision = "vision_config" in env_params
         if vision:
-            env_params.vision_config.nworld = num_envs
+            if "vision_config" in kwargs:
+                vision_config = kwargs.pop("vision_config")
+            elif hasattr(env_params, "vision_config"):
+                vision_config = env_params.vision_config
+            else:
+                vision_config = get_default_vision_config(env_name, num_envs)
+            vision_config.nworld = num_envs
+
+            if has_native_vision: # Override in time
+                env_params.vision = vision
+                env_params.vision_config = vision_config
+
         env_params.update(kwargs)
+
         env = registry.load(env_name, config_overrides=env_params)
+
+        if vision and not has_native_vision: # Post-hoc processing for non-native vision environments
+            env = MjxVisionWrapper(
+                env,
+                vision_config,
+                pixels_only=getattr(env_params, "pixels_only", True),
+                obs_noise=getattr(env_params, "obs_noise", None)
+            )
+            env_params.vision = vision
+
         env_params["capacity"] = num_envs
         return cls(env, env_params)
 
