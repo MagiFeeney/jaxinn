@@ -291,16 +291,17 @@ class Trainer(Interactor, eqx.Module):
         return agent, interaction_state, metrics
 
     def train(
-           self,
+            self,
             agent: Agent,
             interaction_state: InteractionState,
             key: PRNGKeyArray,
     ) -> Tuple[Tuple[Agent, InteractionState, PRNGKeyArray], Dict[str, jax.Array]]:
         key, key_interact, key_learn = jax.random.split(key, 3)
-        interaction_state, experiences = self.interact(agent, interaction_state, key_interact)
+        keys_interact = jax.random.split(key_interact, self.train_interval // self.episode_length)
+        interaction_state, experiences = jax.lax.scan(lambda s, k: self.interact(agent, s, k), interaction_state, keys_interact)
 
         # Store them
-        agent = agent.add_experience(experiences, source=1)
+        agent = agent.add_experience(experiences, source=2)
 
         # Update
         agent, metrics = self.learn(agent, key_learn)
