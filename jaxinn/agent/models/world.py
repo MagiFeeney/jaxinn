@@ -338,11 +338,11 @@ class Representation(eqx.Module):
             key: PRNGKeyArray,
     ):
         if head_type == "Normal":
-            self.dist_cls = dx.Normal
+            self.dist_cls = dx.Independent(dx.Normal, reinterpreted_batch_ndims=1) # Composed distribution
             self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
         elif head_type == "Categorical":
-            self.dist_cls = dx.OneHotCategorical
+            self.dist_cls = dx.Independent(dx.OneHotCategorical, reinterpreted_batch_ndims=len(state_size) - 1)
             assert isinstance(state_size, tuple) and len(state_size) == 2, (
                 f"Expected `state_size` to be a 2-element tuple (representing a stack of "
                 f"independent categorical distributions), but got {state_size!r}."
@@ -427,12 +427,12 @@ class Transition(eqx.Module):
             key: PRNGKeyArray,
     ):
         if head_type == "Normal":
-            self.dist_cls = dx.Normal
+            self.dist_cls = dx.Independent(dx.Normal, reinterpreted_batch_ndims=1) # Composed distribution
             self.num_variables, self.num_categories = state_size, 0
             output_size = 2 * state_size
             input_size = state_size + action_size
         elif head_type == "Categorical":
-            self.dist_cls = dx.OneHotCategorical
+            self.dist_cls = dx.Independent(dx.OneHotCategorical, reinterpreted_batch_ndims=len(state_size) - 1)
             assert isinstance(state_size, tuple) and len(state_size) == 2, (
                 f"Expected `state_size` to be a 2-element tuple (representing a stack of "
                 f"independent categorical distributions), but got {state_size!r}."

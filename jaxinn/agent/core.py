@@ -1,8 +1,8 @@
+from typing import Tuple, Dict, Generic, TypeVar
+
 import jax
 import jax.numpy as jnp
-from typing import Tuple, Dict, Generic, TypeVar
 from jaxtyping import PRNGKeyArray
-
 import equinox as eqx
 import distrax
 import optax
@@ -65,8 +65,8 @@ class AgentLossMixIn:
 
     def _compute_kl_loss(self, prior: LatentStateWithParams, posterior: LatentStateWithParams) -> jax.Array:
         if self.kl_balance > 0:
-            kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist).sum(-1)
-            kl_loss_prior = jax.lax.stop_gradient(posterior).kl_divergence(prior.dist).sum(-1)
+            kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist)
+            kl_loss_prior = jax.lax.stop_gradient(posterior).kl_divergence(prior.dist)
 
             if self.kl_average:
                 kl_loss_post = kl_loss_post.mean()
@@ -78,7 +78,7 @@ class AgentLossMixIn:
 
             kl_loss = self.kl_balance * kl_loss_prior + (1 - self.kl_balance) * kl_loss_post
         else:
-            kl_loss = posterior.kl_divergence(prior.dist).sum(-1)
+            kl_loss = posterior.kl_divergence(prior.dist)
 
             if self.kl_average:
                 kl_loss = kl_loss.mean()
@@ -288,7 +288,7 @@ class Agent(AgentLossMixIn, eqx.Module):
         reset_indices = step_indices + 1 # To keep shape static; only indices at mask are meaningful
 
         # Construct reset transitions
-        reset_transitions = jax.tree.map(lambda x: jnp.zeros_like(x), transitions_flatten)
+        reset_transitions = jax.tree.map(jnp.zeros_like, transitions_flatten)
         reset_transitions = eqx.tree_at(
             lambda x: x.next_obs,
             reset_transitions,

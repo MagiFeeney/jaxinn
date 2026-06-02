@@ -1,12 +1,12 @@
+from typing import Any, Callable, Dict, Union
+
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
-from typing import Callable, Union, Dict, Any
-from jaxtyping import PyTree, Array, PRNGKeyArray
+from jaxtyping import Array, PRNGKeyArray, PyTree
 import equinox as eqx
 from equinox._module import Static
 import distrax
-
 
 RegisteredItem = Union[str, Callable]
 Activation = RegisteredItem
@@ -69,17 +69,14 @@ class FixedDistrax(eqx.Module):
         self.kwargs = kwargs
 
     def _resolve(self, x):
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             lambda leaf: (
                 leaf.dist if isinstance(leaf, FixedDistrax)
                 else leaf.value if isinstance(leaf, Static)
                 else leaf
             ),
             x,
-            is_leaf=lambda leaf: (
-                isinstance(leaf, FixedDistrax)
-                or isinstance(leaf, Static)
-            ),
+            is_leaf=lambda leaf: isinstance(leaf, (FixedDistrax, Static)),
         )
 
     @property
@@ -92,11 +89,34 @@ class FixedDistrax(eqx.Module):
         return getattr(self.dist, name)
 
 
+def _is_factory(x: Any) -> bool:
+    return isinstance(x, (FixedFactory, Composer))
+
+
+class Composer(eqx.Module):
+    cls: Callable = eqx.field(static=True)
+    factory_args: tuple
+    factory_kwargs: dict
+
+    def __call__(self, *runtime_args, **runtime_kwargs):
+        def _resolve_factory(leaf):
+            if _is_factory(leaf):
+                return leaf(*runtime_args, **runtime_kwargs)
+            return leaf
+
+        resolved = jax.tree.map(_resolve_factory, self, is_leaf=_is_factory)
+        return FixedDistrax(self.cls, resolved.factory_args, resolved.factory_kwargs)
+
+
 class FixedFactory(eqx.Module):
     cls: Callable = eqx.field(static=True)
 
     def __call__(self, *args, **kwargs):
-        return FixedDistrax(self.cls, *args, **kwargs)
+        leaves, _ = jax.tree.flatten((args, kwargs), is_leaf=_is_factory)
+        if any(_is_factory(leaf) for leaf in leaves):
+            return Composer(self.cls, args, kwargs)        # Delay instantiation
+        else:
+            return FixedDistrax(self.cls, *args, **kwargs) # Primitive fires with parameters
 
 
 class ProxyDistrax:
