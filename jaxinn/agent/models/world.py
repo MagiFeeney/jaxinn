@@ -398,7 +398,7 @@ class Representation(eqx.Module):
         elif self.head_type == "Categorical":
             state = dist.sample(seed=key)
             state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
-            state = state.reshape(*state.shape[:2], -1) # flatten
+            state = state.reshape(*state.shape[:-2], -1) # flatten
 
         return state
 
@@ -501,7 +501,7 @@ class Transition(eqx.Module):
         elif self.head_type == "Categorical":
             state = dist.sample(seed=key)
             state = state + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
-            state = state.reshape(*state.shape[:2], -1) # flatten
+            state = state.reshape(*state.shape[:-2], -1) # flatten
 
         return state
 
