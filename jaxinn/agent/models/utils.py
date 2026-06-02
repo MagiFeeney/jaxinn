@@ -86,7 +86,9 @@ class FixedDistrax(eqx.Module):
         return self.cls(*resolved_args, **resolved_kwargs)
 
     def __getattr__(self, name):
-        return getattr(self.dist, name)
+        if hasattr(self.dist, name):
+            return getattr(self.dist, name)
+        return getattr(self.dist.distribution, name)
 
 
 def _is_factory(x: Any) -> bool:
@@ -104,8 +106,12 @@ class Composer(eqx.Module):
                 return leaf(*runtime_args, **runtime_kwargs)
             return leaf
 
-        resolved = jax.tree.map(_resolve_factory, self, is_leaf=_is_factory)
-        return FixedDistrax(self.cls, resolved.factory_args, resolved.factory_kwargs)
+        resolved_args, resolved_kwargs = jax.tree.map(
+            _resolve_factory,
+            (self.factory_args, self.factory_kwargs),
+            is_leaf=_is_factory
+        )
+        return FixedDistrax(self.cls, *resolved_args, **resolved_kwargs)
 
 
 class FixedFactory(eqx.Module):
