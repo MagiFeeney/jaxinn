@@ -1,10 +1,12 @@
+import math
+from typing import Optional, Callable, Union, Tuple
+
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 import equinox as eqx
 import distrax
 
-from typing import Optional, Callable, Union
-from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx, StaticCallable
 from .world import LatentState
 
@@ -18,7 +20,7 @@ class Critic(eqx.Module):
     def __init__(
             self,
             belief_size: int,
-            state_size: int,
+            state_size: Union[int, Tuple[int, ...]],
             hidden_size: int,
             activation_function: Union[str, Callable] = "elu",
             action_size: Optional[int] = None,
@@ -35,6 +37,9 @@ class Critic(eqx.Module):
             raise NotImplementedError
 
         activation = get_activation_fn(activation_function)
+
+        if isinstance(state_size, tuple):
+            state_size = math.prod(state_size)
 
         keys = jax.random.split(key, 4)
         self.net = eqx.nn.Sequential([

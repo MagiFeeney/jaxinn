@@ -147,7 +147,7 @@ class StaticShared:
 class ModelShared(Model, StaticShared):
     """Shared parameters across different models."""
     belief_size: int = 200
-    state_size: int = 30
+    state_size: Union[int, Tuple[int, ...]] = 30
 
 
 @dataclass
