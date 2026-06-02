@@ -1,12 +1,13 @@
 import math
+from typing import Optional, Callable, Union, Dict, Tuple, Any
+
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from typing import Optional, Callable, Union, Dict, Tuple, Any
-from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, get_precision_fn, dx, StaticCallable, make_mlp
 
 
@@ -21,13 +22,16 @@ class LatentState(eqx.Module):
     def initialize(
             cls,
             belief_size: int,
-            state_size: int,
+            state_size: Union[int, Tuple[int, ...]],
             random_init: bool = False,
             batch_shape: Tuple[int, ...] = (),
             *,
             key: PRNGKeyArray,
     ) -> "LatentState":
         key_belief, key_state = jax.random.split(key, 2)
+
+        if isinstance(state_size, tuple):
+            state_size = math.prod(state_size)
 
         mask = float(random_init)
         belief = jax.random.normal(key_belief, batch_shape + (belief_size,)) * mask
@@ -171,7 +175,7 @@ class CNNDecoder(eqx.Module):
     def __init__(
             self,
             belief_size: int,
-            state_size: int,
+            state_size: Union[int, Tuple[int, ...]],
             shape: Tuple[int, int, int],
             feature_map_shape: Tuple[int, int, int],
             kernel_size: int = 4,
@@ -188,6 +192,9 @@ class CNNDecoder(eqx.Module):
         feature_map_size = math.prod(feature_map_shape)
 
         keys = jax.random.split(key, 5)
+
+        if isinstance(state_size, tuple):
+            state_size = math.prod(state_size)
 
         self.embedding = eqx.nn.Linear(belief_size + state_size, feature_map_size, key=keys[0])
         self.body = eqx.nn.Sequential([
@@ -271,7 +278,7 @@ class LinearDecoder(eqx.Module):
             self,
             shape: Tuple[int, ...],
             belief_size: int,
-            state_size: int,
+            state_size: Union[int, Tuple[int, ...]],
             hidden_size: int,
             num_layers: int,
             activation_function: Union[str, Callable] = "elu",
@@ -283,6 +290,9 @@ class LinearDecoder(eqx.Module):
             f"in {self.__class__.__name__}."
         )
         activation = get_activation_fn(activation_function)
+
+        if isinstance(state_size, tuple):
+            state_size = math.prod(state_size)
 
         self.net = make_mlp(
             input_size = belief_size + state_size,
@@ -319,7 +329,7 @@ class Representation(eqx.Module):
             self,
             belief_size: int,
             embedding_size: int,
-            state_size: Union[int, tuple],
+            state_size: Union[int, Tuple[int, ...]],
             hidden_size: int,
             min_std: float = 0.1,
             activation_function="elu",
@@ -333,6 +343,10 @@ class Representation(eqx.Module):
             output_size = 2 * state_size
         elif head_type == "Categorical":
             self.dist_cls = dx.OneHotCategorical
+            assert isinstance(state_size, tuple) and len(state_size) == 2, (
+                f"Expected `state_size` to be a 2-element tuple (representing a stack of "
+                f"independent categorical distributions), but got {state_size!r}."
+            )
             self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
         else:
@@ -403,7 +417,7 @@ class Transition(eqx.Module):
     def __init__(
             self,
             belief_size: int,
-            state_size: Union[int, tuple],
+            state_size: Union[int, Tuple[int, ...]],
             action_size: int,
             hidden_size: int,
             min_std: float = 0.1,
@@ -419,6 +433,10 @@ class Transition(eqx.Module):
             input_size = state_size + action_size
         elif head_type == "Categorical":
             self.dist_cls = dx.OneHotCategorical
+            assert isinstance(state_size, tuple) and len(state_size) == 2, (
+                f"Expected `state_size` to be a 2-element tuple (representing a stack of "
+                f"independent categorical distributions), but got {state_size!r}."
+            )
             self.num_variables, self.num_categories = state_size # Unpack the tuple
             output_size = self.num_variables * self.num_categories # Flatten and concatenate all the categorical variables
             input_size = output_size + action_size
@@ -498,7 +516,7 @@ class Reward(eqx.Module):
     def __init__(
             self,
             belief_size: int,
-            state_size: int,
+            state_size: Union[int, Tuple[int, ...]],
             hidden_size: int,
             activation_function="elu",
             action_size: Optional[int] = None,
@@ -515,6 +533,9 @@ class Reward(eqx.Module):
             raise NotImplementedError
 
         activation = get_activation_fn(activation_function)
+
+        if isinstance(state_size, tuple):
+            state_size = math.prod(state_size)
 
         keys = jax.random.split(key, 4)
         self.net = eqx.nn.Sequential([

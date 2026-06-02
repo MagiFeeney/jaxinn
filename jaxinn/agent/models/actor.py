@@ -1,12 +1,13 @@
 import math
+from typing import Tuple, Union, Any, Optional, Callable, Dict
+
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from typing import Tuple, Union, Any, Optional, Callable, Dict
-from jaxtyping import Array, Float, PRNGKeyArray
 from .utils import get_activation_fn, dx, StaticCallable
 from .world import LatentState
 
@@ -116,7 +117,7 @@ class Actor(eqx.Module):
     def __init__(
         self,
         belief_size: int,
-        state_size: int,
+        state_size: Union[int, Tuple[int, ...]],
         hidden_size: int,
         action_size: int,
         head_type: str = "Tanh Normal",
@@ -133,6 +134,9 @@ class Actor(eqx.Module):
             output_size = 2 * action_size
 
         activation = get_activation_fn(activation_function)
+
+        if isinstance(state_size, tuple):
+            state_size = math.prod(state_size)
 
         keys = jax.random.split(key, 4)
         # Build network
