@@ -91,8 +91,11 @@ class FixedDistrax(eqx.Module):
         return getattr(self.dist.distribution, name)
 
 
+FactoryLike = Composer | FixedFactory
+
+
 def _is_factory(x: Any) -> bool:
-    return isinstance(x, (FixedFactory, Composer))
+    return isinstance(x, FactoryLike)
 
 
 class Composer(eqx.Module):
