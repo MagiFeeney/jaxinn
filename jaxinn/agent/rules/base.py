@@ -2,6 +2,7 @@ import abc
 from typing import Any, Tuple, Dict
 
 import jax
+from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
 from envs import Transition
@@ -18,7 +19,7 @@ class Agent(eqx.Module):
         pass
 
     @abc.abstractmethod
-    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[Any, jax.Array]:
+    def act(self, last_latent_state: Any, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[Any, jax.Array]:
         pass
 
     @abc.abstractmethod

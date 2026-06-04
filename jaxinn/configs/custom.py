@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field, is_dataclass, replace
 from typing import Any, Optional
-from config import Env, Config, Wrapper
+
+from .base import Env, Wrapper
+from .config import Config
 
 
 @dataclass

@@ -81,4 +81,4 @@ class SACAgent(Agent):
     optimization: SACOptimization = field(default_factory=SACOptimization)
 
 
-AgentUnion = Union[tuple(DreamerAgent, DreamerV2Agent, PPOAgent, SACAgent)]
+AgentUnion = Union[DreamerAgent, DreamerV2Agent, PPOAgent, SACAgent]

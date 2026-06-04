@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 
 from trainer import Trainer, resolve_agent_config
-from agent import Agent, get_agent_cls
+from agent import get_agent_cls
 from configs.custom import EnvSelector, get_config, post_process
 from configs import Config
 
