@@ -195,3 +195,7 @@ class Prioritized(Uniform):
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int): # chunk_size not used, just to align with base
         batch_index, _ = self.sumtree.sample(batch_size, key)
         return batch_index
+
+
+class Batched(Memory):
+    pass
