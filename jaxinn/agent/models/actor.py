@@ -8,7 +8,7 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from .utils import get_activation_fn, dx, StaticCallable, Composer, FixedFactory
+from .utils import get_activation_fn, dx, StaticCallable, FactoryLike
 from .world import LatentState
 
 
@@ -107,7 +107,7 @@ class SampleDist(eqx.Module):
 
 class Actor(eqx.Module):
     net: eqx.nn.Sequential
-    dist_cls: Union[Composer, FixedFactory] = eqx.field(static=True)
+    dist_cls: FactoryLike = eqx.field(static=True)
     action_size: int = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     init_std: float = eqx.field(static=True)
