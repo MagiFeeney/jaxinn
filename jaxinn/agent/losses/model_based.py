@@ -7,8 +7,8 @@ import equinox as eqx
 
 from envs import Transition
 from .base import Loss, ActorLoss, CriticLoss, WorldLoss
-from .models import LatentState, LatentStateWithParams
 from .utils import differentiable
+from ..models import LatentState, LatentStateWithParams
 
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
@@ -108,7 +108,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
         return critic_loss, metrics
 
 
-class MixedActorGradient(DreamerLossMixIn):
+class MixedActorGradientLoss(DreamerLossMixIn):
 
     @eqx.filter_value_and_grad(has_aux=True)
     @differentiable(['actor'])

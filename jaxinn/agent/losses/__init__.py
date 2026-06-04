@@ -6,7 +6,7 @@ from .model_free import PPOLossMixIn, SACLossMixIn
 __all__ = [
     "differentiable",
     "DreamerLossMixIn",
-    "MixedActorGradient",
+    "MixedActorGradientLoss",
     "PPOLossMixIn",
     "SACLossMixIn",
 ]

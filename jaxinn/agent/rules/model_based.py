@@ -1,6 +1,8 @@
 from typing import Any, Dict, Tuple
 from jaxtyping import PRNGKeyArray
 
+import jax
+import jax.numpy as jnp
 import equinox as eqx
 
 from . import register_agent
@@ -10,10 +12,11 @@ from configs import (
 )
 from .base import Agent, Experience
 from .learner import Learner
-from .utils import transform, replenish_and_flatten, compute_return
-from ..losses import DreamerLossMixIn
-from ..memory import Memory
+from .utils import transform, replenish_and_flatten, compute_adv_and_ret
+from ..losses import DreamerLossMixIn, MixedActorGradientLoss
+from ..memory import Memory, Uniform, Prioritized
 from ..models import World, Actor, Critic, LatentState, LatentStateWithParams
+from envs import Transition
 
 
 @register_agent(DreamerAgentConfig)
@@ -233,5 +236,5 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         actor_dists = agent.actor.get_dist(actor_params)
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
 
-        out = (**processed, action_log_probs)
+        out = (*processed, action_log_probs)
         return out, metrics
