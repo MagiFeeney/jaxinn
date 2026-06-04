@@ -197,5 +197,13 @@ class Prioritized(Uniform):
         return batch_index
 
 
-class Batched(Memory):
-    pass
+class Batched(Uniform):
+    def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
+        return super().sample_batch_index(batch_size, key, chunk_size=1)
+
+    def shuffle(self, key: PRNGKeyArray):
+        read_index = jnp.arange(self.size)
+        batch = self.storage.read(self.seed_idx, read_index)
+
+        sample_index = jax.random.permutation(key, self.size)
+        return jax.tree.map(lambda x: x[sample_index], batch)

@@ -20,12 +20,12 @@ class HostRAM:
 
     def write(self, seed_idx: jax.Array, index: np.ndarray, transition: Transition):
         token = np.zeros_like(seed_idx, dtype=np.int32) # dummy output
-        seed_idx = seed_idx.reshape(-1, 1)
+        seed_idx = seed_idx.reshape(-1, *(1,) * index.ndim)
         jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, index), new), self.data, transition)
         return token
 
     def read(self, seed_idx: jax.Array, sample_index: np.ndarray) -> Transition:
-        seed_idx = seed_idx.reshape(-1, 1, 1)
+        seed_idx = seed_idx.reshape(-1, *(1,) * sample_index.ndim)
         return jax.tree.map(lambda x: x[seed_idx, sample_index], self.data)
 
 
