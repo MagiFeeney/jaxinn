@@ -420,33 +420,6 @@ class Exploration(Base):
     restart: bool = True
 
 
-# Optimization
-@dataclass
-class Optimization(Base):
-    planning_horizon: int = 15
-    discount_factor: float = 0.99
-    uae_lambda: float = 0.95
-    batch_size: int = 50
-    chunk_size: int = 50
-    free_nats: float = 3.0
-    kl_average: bool = False
-    kl_balance: float = 0.0
-
-
-# All about agent
-@dataclass
-class Agent(Resolvable, Base):
-    world: World = field(default_factory=World)
-    actor: Actor = field(default_factory=Actor)
-    critic: Critic = field(default_factory=Critic)
-    memory: Memory = field(default_factory=Memory)
-    optimization: Optimization = field(default_factory=Optimization)
-    random_init: bool = False   # Whether to initialize the state by following a simple distribution
-
-    def _resolve(self, ctx: dict) -> None:
-        _sync_statics(self)
-
-
 # Logger
 @dataclass
 class Logger(Base):
@@ -454,19 +427,3 @@ class Logger(Base):
     backend: str = "tensorboard"
     shaded_method: Literal["std", "se", "ci", "iqr"] = "std"
     aggregate_keywords: Tuple[str, ...] = ("eval",)
-
-
-# console
-@dataclass
-class Config(Base):
-    agent: Agent = field(default_factory=Agent)
-    env: Env = field(default_factory=Env)
-    exploration: Exploration = field(default_factory=Exploration)    # Trainer particulars
-    logger: Logger = field(default_factory=Logger)
-
-    axis_name: str = "p"             # pmap axis name
-    seed: int = 42                   # master seed
-    num_seeds: int = 50              # num. of agents
-
-    save_model_path: str = ""
-    load_model_path: str = ""

@@ -5,10 +5,10 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 
-from agent import Agent, Experience
+from agent.rules import Agent, Experience
 from agent.models import LatentState
 from envs import Environment, make_env
-from config import Agent as AgentConfig, Config
+from configs import AgentConfig, Config
 from logger import JaxLogger as Logger
 
 

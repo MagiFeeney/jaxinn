@@ -8,7 +8,7 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from .utils import get_activation_fn, dx, StaticCallable
+from .utils import get_activation_fn, dx, StaticCallable, Composer, FixedFactory
 from .world import LatentState
 
 
@@ -107,6 +107,7 @@ class SampleDist(eqx.Module):
 
 class Actor(eqx.Module):
     net: eqx.nn.Sequential
+    dist_cls: Union[Composer, FixedFactory] = eqx.field(static=True)
     action_size: int = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     init_std: float = eqx.field(static=True)
@@ -128,10 +129,15 @@ class Actor(eqx.Module):
         *,
         key: PRNGKeyArray,
     ):
-        if head_type == "Categorical":
+        output_size = 2 * action_size
+
+        if head_type == "Beta":
+            self.dist_cls = dx.Independent(dx(AffineBeta), reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
+        elif head_type == "Tanh Normal":
+            self.dist_cls = dx.Independent(dx(TanhNormal), reinterpreted_batch_ndims=Static(1))
+        elif head_type == "Categorical":
+            self.dist_cls = dx.OneHotCategorical
             output_size = action_size
-        else:
-            output_size = 2 * action_size
 
         activation = get_activation_fn(activation_function)
 
@@ -181,27 +187,30 @@ class Actor(eqx.Module):
 
         return params
 
+    def get_dist(
+            self,
+            params: Dict[str, Any]
+    ) -> distrax.Distribution:
+        dist = self.dist_cls(**params)
+        if self.head_type == "Categorical":
+            return dist
+        return SampleDist(dist)
+
     def sample(
             self,
             params: Dict[str, Any],
             key: PRNGKeyArray,
             det: bool = False,      # default to training
     ) -> Float[Array, "... action_size"]:
-        if self.head_type == "Beta":
-            dist = dx(AffineBeta)(**params)
-        elif self.head_type == "Tanh Normal":
-            dist = dx(TanhNormal)(**params)
-        elif self.head_type == "Categorical":
-            dist = dx.OneHotCategorical(**params)
+        dist = self.get_dist(params)
+
+        if self.head_type == "Categorical":
             # Same for both train and eval
             action = dist.sample(seed=key)
             action = action + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
             return action
 
-        dist = dx.Independent(dist, reinterpreted_batch_ndims=Static(1)) # Explicitly make non jax array as static to prevent being vmapped
-        sample_dist = SampleDist(dist)
-
         if det:
-            return sample_dist.mode(seed=key)
+            return dist.mode(seed=key)
         else:
-            return sample_dist.sample(seed=key)
+            return dist.sample(seed=key)

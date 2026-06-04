@@ -8,7 +8,7 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from .utils import get_activation_fn, get_precision_fn, dx, StaticCallable, make_mlp
+from .utils import get_activation_fn, get_precision_fn, dx, StaticCallable, make_mlp, Composer, FixedFactory
 
 
 class LatentState(eqx.Module):
@@ -319,7 +319,7 @@ class Representation(eqx.Module):
     """Representation learning of state, inferred from history and the latest observation: p(s_t | h_t, o_t)
     """
     net: eqx.nn.Sequential
-    dist_cls: str = eqx.field(static=True)
+    dist_cls: Union[Composer, FixedFactory] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)
@@ -408,7 +408,7 @@ class Transition(eqx.Module):
     encoder: eqx.nn.Sequential
     body: eqx.nn.GRUCell
     head: eqx.nn.Sequential
-    dist_cls: str = eqx.field(static=True)
+    dist_cls: Union[Composer, FixedFactory] = eqx.field(static=True)
     head_type: str = eqx.field(static=True)
     num_variables: int = eqx.field(static=True)
     num_categories: int = eqx.field(static=True)

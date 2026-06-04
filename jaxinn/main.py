@@ -9,9 +9,9 @@ import jax
 import jax.numpy as jnp
 
 from trainer import Trainer, resolve_agent_config
-from agent import Agent
-from custom import EnvSelector, get_config, post_process
-from config import Config
+from agent import Agent, get_agent_cls
+from configs.custom import EnvSelector, get_config, post_process
+from configs import Config
 
 
 def setup_context(vectorization_mode: Optional[str]):
@@ -48,10 +48,11 @@ def main(config):
 
     # Resolve agent config with environment-specific information
     agent_config = resolve_agent_config(config, trainer.env)
+    agent_cls = get_agent_cls(agent_config)
 
     # Spawn parallel agents
     def make_agent(key, memory_id):
-        return Agent(agent_config, key=key, memory_id=memory_id)
+        return agent_cls(agent_config, key=key, memory_id=memory_id)
 
     agents = jax.vmap(jax.vmap(make_agent))(keys_agent, memory_ids)
 

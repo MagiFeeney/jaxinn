@@ -5,10 +5,10 @@ from .trainer import (
     resolve_agent_config
 )
 from .agent import (
+    register_agent,
+    get_agent_cls,
     Experience,
     Learner,
-    Agent,
-    AgentLossMixIn,
     Memory,
     Uniform as UniformMemory,
     Prioritized as PrioritizedMemory,
@@ -21,9 +21,9 @@ from .agent import (
     dx as distrax,
     make_mlp
 )
-from .logger import HostLogger as Logger, JaxLogger
-from .config import Config
-from .custom import post_process, get_config, EnvSelector
+from .logger import HostLogger, JaxLogger
+from .configs import Config
+from .configs.custom import post_process, get_config, EnvSelector
 from .envs import Transition, Environment, make_env
 
 
@@ -32,10 +32,10 @@ __all__ = [
     "Interactor",
     "Trainer",
     "resolve_agent_config",
+    "register_agent",
+    "get_agent_cls",
     "Experience",
     "Learner",
-    "Agent",
-    "AgentLossMixIn",
     "Memory",
     "UniformMemory",
     "PrioritizedMemory",
@@ -47,7 +47,7 @@ __all__ = [
     "StaticCallable",
     "distrax",
     "make_mlp",
-    "Logger",
+    "HostLogger",
     "JaxLogger",
     "Config",
     "post_process",
