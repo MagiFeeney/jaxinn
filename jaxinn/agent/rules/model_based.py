@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
+from envs import Transition
 from . import register_agent
 from configs import (
     DreamerAgentConfig,
@@ -12,11 +13,10 @@ from configs import (
 )
 from .base import Agent, Experience
 from .learner import Learner
-from .utils import transform, replenish_and_flatten, compute_adv_and_ret
+from .utils import transform, compute_adv_and_ret
 from ..losses import DreamerLossMixIn, MixedActorGradientLoss
 from ..memory import Memory, Uniform, Prioritized
 from ..models import World, Actor, Critic, LatentState, LatentStateWithParams
-from envs import Transition
 
 
 @register_agent(DreamerAgentConfig)
@@ -105,15 +105,6 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             dist_cls=self.world.representation.dist_cls
         )
         return prior, posterior
-
-    def add_experience(self, experiences: Experience, source: int = 1) -> "Agent":
-        transitions_flatten, valid_length = replenish_and_flatten(experiences, source) # handle terminal obs; critical for world modeling e.g. predict reward
-        new_memory = self.memory.add(transitions_flatten, valid_length)
-        return eqx.tree_at(
-            lambda x: x.memory,
-            self,
-            new_memory
-        )
 
     def reason(self, data: Transition, key: PRNGKeyArray) -> Tuple[LatentStateWithParams, LatentStateWithParams]:
         """
