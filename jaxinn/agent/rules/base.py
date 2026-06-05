@@ -86,7 +86,6 @@ def replenish_and_flatten(experiences: Experience, source: int) -> Tuple[Transit
 
 
 class Agent(eqx.Module):
-    memory: Optional[Any] = None
 
     @abc.abstractmethod
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
