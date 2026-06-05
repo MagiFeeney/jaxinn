@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Dict, Tuple
 from jaxtyping import PRNGKeyArray
 
 import jax
@@ -11,7 +11,7 @@ from configs import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,
 )
-from .base import Agent, Experience
+from .base import Agent
 from .learner import Learner
 from .utils import transform, compute_adv_and_ret
 from ..losses import DreamerLossMixIn, MixedActorGradientLoss
@@ -223,8 +223,8 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
     def process(self, latent_states: LatentState, actions: jax.Array) -> Tuple[Tuple[jax.Array, ...], Dict[str, jax.Array]]:
         processed, metrics = super().process(latent_states)
 
-        actor_params = jax.vmap(jax.vmap(agent.actor))(latent_states[:-1])
-        actor_dists = agent.actor.get_dist(actor_params)
+        actor_params = jax.vmap(jax.vmap(self.actor))(latent_states[:-1])
+        actor_dists = self.actor.get_dist(actor_params)
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
 
         out = (*processed, action_log_probs)

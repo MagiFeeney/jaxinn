@@ -1,4 +1,7 @@
+from typing import Any, Dict, Optional, Tuple
+
 import jax
+import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
@@ -7,8 +10,9 @@ from configs import (
     PPOAgentConfig,
     SACAgentConfig
 )
-from .base import Agent, Experience
+from .base import Agent
 from .learner import Learner
+from .utils import compute_adv_and_ret
 from ..models import Actor, Critic
 from ..losses import PPOLossMixIn, SACLossMixIn
 from ..memory import Memory, Uniform, Prioritized, Batched
