@@ -21,6 +21,7 @@ class PPOAgent(PPOLossMixIn, Agent):
     memory: Memory
 
     clip_param: float = eqx.field(static=True)
+    use_clipped_critic_loss: bool = eqx.field(static=True)
     num_mini_batch: int = eqx.field(static=True)
     discount_factor: float = eqx.field(static=True)
     uae_lambda: float = eqx.field(static=True)
@@ -42,7 +43,6 @@ class PPOAgent(PPOLossMixIn, Agent):
             action_size=config.world.transition.action_size,
             num_seeds=config.memory.num_seeds,
         )
-        self.belief_size = 0
 
         # Extra particulars for agent learning
         self.__dict__.update(config.optimization())
@@ -62,7 +62,7 @@ class PPOAgent(PPOLossMixIn, Agent):
         # Get advantages and returns
         values = jax.vmap(self.critic)(data.next_obs).mean()
         baselines = values[:-1]
-        advantages, return_predictions = compute_adv_and_ret(
+        advantages, returns = compute_adv_and_ret(
             data.reward[1:],
             values[:-1],
             baselines,
@@ -73,27 +73,28 @@ class PPOAgent(PPOLossMixIn, Agent):
         )
 
         # Get action log probs
-        actor_params = jax.vmap(jax.vmap(self.actor))(data.next_obs[:-1])
+        actor_params = jax.vmap(self.actor)(data.next_obs[:-1])
         actor_dists = self.actor.get_dist(actor_params)
         log_probs = actor_dists.log_prob(data.action[1:])
 
         # Apply shuffle and split for training data
-        train_data = (data.next_obs[:-1], data.action[1:], advantages, return_predictions, log_probs)
+        train_data = (data.next_obs[:-1], data.action[1:], advantages, returns, values[:-1], log_probs)
         mini_batches = self.shuffle_and_split(train_data, key_shuffle)
 
         def mini_batch_step_fn(carry, mini_batch):
             agent, key = carry
             key, key_actor, key_critic = jax.random.split(key, 3)
+            obs, actions, advantages, returns, values, log_probs = mini_batch
             metrics = {}
 
             # Update actor
-            (loss, aux), grads = agent.actor_loss_fn(mini_batch, key_actor)
+            (loss, aux), grads = agent.actor_loss_fn(obs, actions, log_probs, advantages, key_actor)
             new_actor = agent.actor.update(grads.actor)
             agent = eqx.tree_at(lambda x: x.actor, agent, new_actor)
             metrics.update(**aux)
 
             # Update critic
-            (loss, aux), grads = agent.critic_loss_fn(mini_batch, key_critic)
+            (loss, aux), grads = agent.critic_loss_fn(obs, returns, values, key_critic)
             new_critic = agent.critic.update(grads.critic)
             agent = eqx.tree_at(lambda x: x.critic, agent, new_critic)
             metrics.update(**aux)
