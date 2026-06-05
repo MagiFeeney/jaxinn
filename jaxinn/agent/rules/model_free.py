@@ -1,5 +1,5 @@
 import jax
-from jaxtyping import PRNGKeyArrayi, PyTree
+from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
 from . import register_agent
