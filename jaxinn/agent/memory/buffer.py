@@ -201,18 +201,7 @@ class Batched(Uniform):
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
         return super().sample_batch_index(batch_size, key, chunk_size=1)
 
-    def shuffle_and_split(self, key: PRNGKeyArray, num_mini_batch: int):
+    def get_all(self) -> Transition:
         read_index = jnp.arange(self.size)
         batch = self.storage.read(self.seed_idx, read_index)
-
-        sample_index = jax.random.permutation(key, self.size)
-        shuffled_batch = jax.tree.map(lambda x: x[sample_index], batch)
-
-        mini_batch_size = self.size // num_minibatches
-        valid_size = mini_batch_size * num_minibatches
-
-        split_data = jax.tree.map(
-            lambda x: x[:valid_size].reshape(num_minibatches, mini_batch_size, *x.shape[1:]),
-            shuffled_batch
-        )
-        return split_data
+        return batch

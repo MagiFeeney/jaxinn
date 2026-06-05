@@ -1,5 +1,5 @@
 import jax
-from jaxtyping import PRNGKeyArray
+from jaxtyping import PRNGKeyArrayi, PyTree
 import equinox as eqx
 
 from . import register_agent
@@ -22,6 +22,8 @@ class PPOAgent(PPOLossMixIn, Agent):
 
     clip_param: float = eqx.field(static=True)
     num_mini_batch: int = eqx.field(static=True)
+    discount_factor: float = eqx.field(static=True)
+    uae_lambda: float = eqx.field(static=True)
 
     def __init__(
             self,
@@ -54,8 +56,30 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None, action
 
     def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
-        key_memory, key_scan = jax.random.split(key, 2)
-        mini_batches = self.memory.shuffle_and_batch(key_memory, self.num_mini_batch)
+        key_shuffle, key_scan = jax.random.split(key, 2)
+        data = self.memory.get_all()
+
+        # Get advantages and returns
+        values = jax.vmap(self.critic)(data.next_obs).mean()
+        baselines = values[:-1]
+        advantages, return_predictions = compute_adv_and_ret(
+            data.reward[1:],
+            values[:-1],
+            baselines,
+            data.done[1:],
+            bootstrap=values[-1],
+            discount_factor=self.discount_factor,
+            uae_lambda=self.uae_lambda
+        )
+
+        # Get action log probs
+        actor_params = jax.vmap(jax.vmap(self.actor))(data.next_obs[:-1])
+        actor_dists = self.actor.get_dist(actor_params)
+        log_probs = actor_dists.log_prob(data.action[1:])
+
+        # Apply shuffle and split for training data
+        train_data = (data.next_obs[:-1], data.action[1:], advantages, return_predictions, log_probs)
+        mini_batches = self.shuffle_and_split(train_data, key_shuffle)
 
         def mini_batch_step_fn(carry, mini_batch):
             agent, key = carry
@@ -83,6 +107,21 @@ class PPOAgent(PPOLossMixIn, Agent):
         avg_metrics = jax.tree.map(jnp.mean, metrics)
         return agent, avg_metrics
 
+    def shuffle_and_split(self, batch: PyTree, key: PRNGKeyArray):
+        size = jax.tree.leaves(batch)[0].shape[0]
+
+        sample_index = jax.random.permutation(key, size)
+        shuffled_batch = jax.tree.map(lambda x: x[sample_index], batch)
+
+        mini_batch_size = size // self.num_mini_batch
+        valid_size = mini_batch_size * self.num_mini_batch
+
+        split_data = jax.tree.map(
+            lambda x: x[:valid_size].reshape(self.num_mini_batch, mini_batch_size, *x.shape[1:]),
+            shuffled_batch
+        )
+        return split_data
+
 
 @register_agent(SACAgentConfig)
 class SACAgent(SACLossMixIn, Agent):
@@ -90,4 +129,36 @@ class SACAgent(SACLossMixIn, Agent):
     critic: Learner[Critic]
     memory: Memory
 
-    pass
+    def __init__(
+            self,
+            config,
+            *,
+            key: PRNGKeyArray,
+            memory_id: jax.Array,
+    ):
+        key_actor, key_critic = jax.random.split(key, 2)
+        self.actor = Learner.create(Actor, config.actor, key=key_actor)
+        self.critic = Learner.create(Critic, config.critic, key=key_critic)
+        if config.memory.type.lower() == "uniform":
+            memory_cls = Uniform
+        else:
+            memory_cls = Prioritized
+        self.memory = memory_cls(
+            seed_idx=memory_id,
+            capacity=config.memory.capacity,
+            obs_shape=config.world.perception.encoder.shape,
+            action_size=config.world.transition.action_size,
+            num_seeds=config.memory.num_seeds,
+        )
+        self.belief_size = 0
+
+        # Extra particulars for agent learning
+        self.__dict__.update(config.optimization())
+
+    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
+        return None
+
+    def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
+        params = jax.vmap(self.actor)(obs)
+        action = self.actor.sample(params, key, eval)
+        return None, action
