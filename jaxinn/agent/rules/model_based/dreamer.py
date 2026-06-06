@@ -6,17 +6,17 @@ import jax.numpy as jnp
 import equinox as eqx
 
 from envs import Transition
-from . import register_agent
+from jaxinn.agent.rules import register_agent
 from configs import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,
 )
-from .base import Agent
-from .learner import Learner
-from .utils import transform, compute_adv_and_ret
-from ..losses import DreamerLossMixIn, MixedActorGradientLoss
-from ..memory import Memory, Uniform, Prioritized
-from ..models import World, Actor, Critic, LatentState, LatentStateWithParams
+from jaxinn.agent.rules.base import Agent
+from jaxinn.agent.rules.learner import Learner
+from jaxinn.agent.rules.utils import transform, compute_adv_and_ret
+from jaxinn.agent.losses import DreamerLossMixIn, MixedActorGradientLoss
+from jaxinn.agent.memory import Memory, Uniform, Prioritized
+from jaxinn.agent.models import World, Actor, Critic, LatentState, LatentStateWithParams
 
 
 @register_agent(DreamerAgentConfig)
