@@ -367,7 +367,7 @@ class Critic(ModelShared):
 class Memory(Resolvable, Base):
     capacity: int = 1000000
     device: Literal['cpu', 'gpu'] = 'gpu'
-    type: Literal['uniform', 'prioritized'] = "uniform"
+    type: Literal['uniform', 'prioritized', 'batched'] = 'uniform'
 
     def _resolve(self, ctx: dict) -> None:
         if self.device == "cpu":
