@@ -1,6 +1,7 @@
 from typing import Generic, TypeVar
 
 import jax
+from jaxtyping import PRNGKeyArray
 import equinox as eqx
 import optax
 
@@ -13,7 +14,13 @@ class Learner(eqx.Module, Generic[ModelType]):
     optimizer_state: optax.OptState
 
     @classmethod
-    def create(cls, model_cls, config, *, key):
+    def create(cls, model: ModelType, optimizer: optax.GradientTransformation) -> "Learner[ModelType]":
+        params = eqx.filter(model, eqx.is_inexact_array)
+        optimizer_state = optimizer.init(params)
+        return cls(model, optimizer, optimizer_state)
+
+    @classmethod
+    def from_config(cls, model_cls, config, *, key: PRNGKeyArray):
         model = model_cls(**config(), key=key)
         optimizer = optax.chain(
             optax.clip_by_global_norm(config.optimizer.max_norm),
