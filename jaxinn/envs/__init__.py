@@ -1,9 +1,8 @@
-from .environment import Transition, Environment
+from .environment import Environment, Transition
 from .factory import make_env
 
-
 __all__ = [
-    'Transition',
     'Environment',
+    'Transition',
     'make_env',
 ]
