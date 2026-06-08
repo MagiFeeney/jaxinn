@@ -1,6 +1,6 @@
+from .base import Agent, Experience
 from .model_based import DreamerAgent, DreamerV2Agent
 from .model_free import PPOAgent, SACAgent
-from .base import Experience, Agent
 from .learner import Learner
 from .utils import compute_adv_and_ret
 

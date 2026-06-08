@@ -5,11 +5,10 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 
-from agent.rules import Agent, Experience
-from agent.models import LatentState
-from envs import Environment, make_env
-from configs import AgentConfig, Config
-from logger import JaxLogger as Logger
+from jaxinn.agent import Agent, Experience, LatentState
+from jaxinn.envs import Environment, make_env
+from jaxinn.configs import AgentConfig, Config
+from jaxinn.logger import JaxLogger as Logger
 
 
 EnvState = TypeVar("EnvState")

@@ -1,4 +1,13 @@
 from .config import Config
+from .custom import EnvSelector, post_process, get_config
+from .base import (
+    Perception as PerceptionConfig,
+    World as WorldConfig,
+    CNNEncoder as CNNEncoderConfig,
+    CNNDecoder as CNNDecoderConfig,
+    LinearEncoder as LinearEncoderConfig,
+    LinearDecoder as LinearDecoderConfig,
+)
 from .agent import (
     Agent as AgentConfig,
     DreamerAgent as DreamerAgentConfig,
@@ -11,21 +20,23 @@ from .agent import (
     ActorCriticDecoupled as ActorCriticDecoupledConfig,
     ActorCriticShared as ActorCriticSharedConfig
 )
-from .base import (
-    Perception as PerceptionConfig,
-    World as WorldConfig,
-)
 
 
 __all__ = [
-    "Config"
+    "Config",
+    "get_config",
+    "post_process",
     "AgentConfig",
+    "PerceptionConfig",
+    "WorldConfig",
+    "CNNEncoderConfig",
+    "CNNDecoderConfig",
+    "LinearEncoderConfig",
+    "LinearDecoderConfig",
     "DreamerAgentConfig",
     "DreamerV2AgentConfig",
     "PPOAgentConfig",
     "SACAgentConfig",
-    "PerceptionConfig",
-    "WorldConfig",
     "PerceptionActorConfig",
     "PerceptionCriticConfig",
     "ActorCriticDecoupledConfig",

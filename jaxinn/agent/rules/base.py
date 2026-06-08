@@ -6,8 +6,8 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from envs import Transition
 from jaxinn.agent.registry import Registrable
+from jaxinn.envs import Transition
 
 
 class Experience(eqx.Module):
