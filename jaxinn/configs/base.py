@@ -1,6 +1,7 @@
 import warnings
+from enum import Enum
 from dataclasses import dataclass, field, fields, asdict, is_dataclass, MISSING
-from typing import Tuple, Any, Optional, Literal, Dict, Union
+from typing import Tuple, Any, Optional, Literal, Dict, Union, ClassVar
 from types import SimpleNamespace
 from functools import cache
 
@@ -151,10 +152,24 @@ class ModelShared(Model, StaticShared):
 
 
 @dataclass
-class PerceptionShared(Model):
+class PerceptionShared(Resolvable, Model):
     """Shared parameters across perception modules."""
+    DOMAIN: ClassVar[Domain]
+
     shape: Optional[Tuple[int, ...]] = None
     activation_function: str = "elu"
+
+    def _resolve(self, ctx: dict) -> None:
+        self.shape = ctx["obs_shape"]
+
+        env_domain = Domain.PIXEL if len(obs_shape) > 1 else Domain.STATE
+
+        if self.DOMAIN != env_domain:
+            raise ValueError(
+                f"Architecture Mismatch: Environment provides {env_domain.value} "
+                f"observations {obs_shape}, but {type(self).__name__} "
+                f"expects {self.DOMAIN.value} inputs."
+            )
 
 
 @dataclass
@@ -167,20 +182,28 @@ class OptimizerShared(Base):
 
 # World Model
 ## For pixel-based tasks
+class Domain(str, Enum):
+    STATE = "state"
+    PIXEL = "pixel"
+
+
 @dataclass
 class CNNEncoder(PerceptionShared):
+    DOMAIN: ClassVar[Domain] = Domain.PIXEL
     embedding_size: int = 1024
     dtype: str = "bfloat16"
 
 
 @dataclass
 class CNNDecoder(ModelShared, PerceptionShared):
+    DOMAIN: ClassVar[Domain] = Domain.PIXEL
     dtype: str = "bfloat16"
 
 
 ## For state-based tasks
 @dataclass
 class LinearEncoder(PerceptionShared):
+    DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: Optional[int] = None
     embedding_size: Optional[int] = None
     num_layers: Optional[int] = None
@@ -188,53 +211,23 @@ class LinearEncoder(PerceptionShared):
 
 @dataclass
 class LinearDecoder(ModelShared, PerceptionShared):
+    DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: int = 300
     num_layers: int = 2
 
 
-CONFIG_REGISTRY = {
-    "cnn": (CNNEncoder, CNNDecoder),
-    "linear": (LinearEncoder, LinearDecoder)
-}
+EncoderUnion = Union[CNNEncoder, LinearEncoder] # TODO: automate this
+DecoderUnion = Union[CNNDecoder, LinearDecoder]
 
 
-PIXEL_ARCHS = {"cnn"}
-STATE_ARCHS = {"linear"}
+@dataclass
+class Perception(Resolvable, Model):
+    encoder: EncoderUnion = field(default_factory=CNNEncoder)
+    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoder)
 
-
-def arch_to_domain(arch):
-    if arch in PIXEL_ARCHS:
-        return "pixel"
-    elif arch in STATE_ARCHS:
-        return "state"
-    else:
-        raise NotImplementedError(f"Architecture {arch} is currently not supported or classified.")
-
-
-def make_perception_class(name, encoder_cls, decoder_cls):
-    @dataclass
-    class Perception(Resolvable, Model):
-        encoder: encoder_cls = field(default_factory=encoder_cls)
-        decoder: decoder_cls = field(default_factory=decoder_cls)
-        domain: str = field(init=False, default=arch_to_domain(name))
-        type: str = name
-
-        def _resolve(self, ctx: dict) -> None:
-            self.encoder.shape = ctx["obs_shape"]
-            self.decoder.shape = ctx["obs_shape"]
-
-    Perception.__name__ = f"{name.capitalize()}Perception"
-    Perception.__qualname__ = Perception.__name__
-    return Perception
-
-
-PERCEPTION_REGISTRY = {
-    name: make_perception_class(name, enc, dec)
-    for name, (enc, dec) in CONFIG_REGISTRY.items()
-}
-
-
-PerceptionUnion = Union[tuple(PERCEPTION_REGISTRY.values())]
+    def _resolve(self, ctx: dict) -> None:
+        # Propagate downstream for representation to consume
+        ctx["embedding_size"] = getattr(self.encoder, "embedding_size", None)
 
 
 @dataclass
@@ -245,21 +238,20 @@ class Representation(Resolvable, ModelShared):
     head_type: Literal['Normal', 'Categorical'] = "Normal"
 
     def _resolve(self, ctx: dict) -> None:
-        perception_type = ctx.get("perception_type")
-        if "embedding_size" not in ctx or perception_type is None:
+        if "embedding_size" not in ctx:
             return
 
         obs_shape = ctx["obs_shape"]
         embedding_size = ctx["embedding_size"]
 
-        if embedding_size:
+        if embedding_size is not None:
             self.embedding_size = embedding_size
-        elif perception_type == "linear" and len(obs_shape) == 1:
+        elif len(obs_shape) == 1:
             self.embedding_size = obs_shape[0]
         else:
-            raise NotImplementedError(
-                f"Cannot infer embedding_size for perception={perception_type!r} "
-                f"with obs_shape={obs_shape}"
+            raise ValueError(
+                f"Cannot infer embedding_size for 2D+ obs_shape {obs_shape} "
+                "without an explicit size provided by the encoder."
             )
 
 
@@ -290,33 +282,11 @@ class WorldOptimizer(OptimizerShared):
 
 @dataclass
 class World(Resolvable, Model):
-    perception: Optional[PerceptionUnion] = field(default=None)
+    perception: Perception = field(default_factory=Perception)
     representation: Representation = field(default_factory=Representation)
     transition: Transition = field(default_factory=Transition)
     reward: Reward = field(default_factory=Reward)
     optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
-
-    def _resolve(self, ctx: dict) -> None:
-        obs_shape = ctx["obs_shape"]
-
-        # If perception is not given, fall back to defaults
-        if self.perception is None:
-            name = "cnn" if len(obs_shape) > 1 else "linear"
-            self.perception = PERCEPTION_REGISTRY[name]()
-            self.perception.resolve(ctx)
-
-        if len(obs_shape) == 1:
-            assert self.perception.domain == "state", (
-                f"1D obs requires a state module, got {self.perception.type!r}"
-            )
-        else:
-            assert self.perception.domain == "pixel", (
-                f"2D+ obs requires a pixel module, got {self.perception.type!r}"
-            )
-
-        ctx["embedding_size"] = self.perception.encoder.embedding_size
-        ctx["perception_type"] = self.perception.type
-        self.representation._resolve(ctx)
 
 
 # Actor

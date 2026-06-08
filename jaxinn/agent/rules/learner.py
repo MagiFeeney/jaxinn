@@ -1,6 +1,5 @@
 from typing import Generic, TypeVar
 
-import jax
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 import optax
@@ -21,7 +20,10 @@ class Learner(eqx.Module, Generic[ModelType]):
 
     @classmethod
     def from_config(cls, model_cls, config, *, key: PRNGKeyArray):
-        model = model_cls(**config(), key=key)
+        if hasattr(model_cls, "create"): # nested / multiple routes
+            model = model_cls.create(config, key=key)
+        else:                            # primitive
+            model = model_cls(**config(), key=key)
         optimizer = optax.chain(
             optax.clip_by_global_norm(config.optimizer.max_norm),
             optax.adam(config.optimizer.lr, eps=config.optimizer.eps)

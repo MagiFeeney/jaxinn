@@ -8,7 +8,7 @@ import equinox as eqx
 from envs import Transition
 from .base import Loss, ActorLoss, CriticLoss, WorldLoss
 from .utils import differentiable
-from ..models import LatentState, LatentStateWithParams
+from ..models import LatentStateWithParams
 
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):

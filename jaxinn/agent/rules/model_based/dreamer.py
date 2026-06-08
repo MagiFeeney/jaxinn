@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, ClassVar, Type
 from jaxtyping import PRNGKeyArray
 
 import jax
@@ -6,8 +6,7 @@ import jax.numpy as jnp
 import equinox as eqx
 
 from envs import Transition
-from jaxinn.agent.rules import register_agent
-from configs import (
+from jaxinn.configs import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,
 )
@@ -19,8 +18,9 @@ from jaxinn.agent.memory import Memory, Uniform, Prioritized
 from jaxinn.agent.models import World, Actor, Critic, LatentState, LatentStateWithParams
 
 
-@register_agent(DreamerAgentConfig)
 class DreamerAgent(DreamerLossMixIn, Agent):
+    config_cls: ClassVar[Type] = DreamerAgentConfig
+
     world: Learner[World]
     actor: Learner[Actor]
     critic: Learner[Critic]
@@ -39,35 +39,47 @@ class DreamerAgent(DreamerLossMixIn, Agent):
     kl_average: bool = eqx.field(static=True)
     kl_balance: float = eqx.field(static=True)
 
-    def __init__(
-            self,
+    @classmethod
+    def create(
+            cls,
             config,
             *,
             key: PRNGKeyArray,
             memory_id: jax.Array,
     ):
         key_world, key_actor, key_critic = jax.random.split(key, 3)
-        self.world = Learner.from_config(World, config.world, key=key_world)
-        self.actor = Learner.from_config(Actor, config.actor, key=key_actor)
-        self.critic = Learner.from_config(Critic, config.critic, key=key_critic)
+
+        world = Learner.from_config(World, config.world, key=key_world)
+        actor = Learner.from_config(Actor, config.actor, key=key_actor)
+        critic = Learner.from_config(Critic, config.critic, key=key_critic)
+
         if config.memory.type.lower() == "uniform":
             memory_cls = Uniform
         else:
             memory_cls = Prioritized
-        self.memory = memory_cls(
+        memory = memory_cls(
             seed_idx=memory_id,
             capacity=config.memory.capacity,
             obs_shape=config.world.perception.encoder.shape,
             action_size=config.world.transition.action_size,
             num_seeds=config.memory.num_seeds,
         )
-        # For initialization of LatentState
-        self.random_init = config.random_init
-        self.belief_size = config.world.transition.belief_size
-        self.state_size = config.world.transition.state_size
 
-        # Extra particulars for agent learning
-        self.__dict__.update(config.optimization())
+        # For initialization of LatentState
+        random_init = config.random_init
+        belief_size = config.world.transition.belief_size
+        state_size = config.world.transition.state_size
+
+        return cls(
+            world=world,
+            actor=actor,
+            critic=critic,
+            memory=memory,
+            random_init=random_init,
+            belief_size=belief_size,
+            state_size=state_size,
+            **config.optimization() # Extra particulars for agent learning
+        )
 
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, False if eval else self.random_init, batch_shape, key=key)
@@ -216,8 +228,9 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         return agent, metrics
 
 
-@register_agent(DreamerV2AgentConfig)
 class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
+    config_cls: ClassVar[Type] = DreamerV2AgentConfig
+
     pg_mix: float = eqx.field(static=True)
 
     def process(self, latent_states: LatentState, actions: jax.Array) -> Tuple[Tuple[jax.Array, ...], Dict[str, jax.Array]]:

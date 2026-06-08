@@ -2,10 +2,12 @@ import abc
 from typing import Any, Tuple, Dict
 
 import jax
+import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
 from envs import Transition
+from jaxinn.agent.registry import Registrable
 
 
 class Experience(eqx.Module):
@@ -85,7 +87,7 @@ def replenish_and_flatten(experiences: Experience, source: int) -> Tuple[Transit
     return jax.tree.map(merge_fn, step_transitions, reset_transitions), valid_length
 
 
-class Agent(eqx.Module):
+class Agent(Registrable, eqx.Module):
 
     @abc.abstractmethod
     def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
