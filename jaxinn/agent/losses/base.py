@@ -30,3 +30,10 @@ class CriticLoss:
     @differentiable(['critic'])
     def critic_loss_fn(self, *args, key: PRNGKeyArray):
         pass
+
+
+class ActorCriticLoss:
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['actor_critic'])
+    def actor_critic_loss_fn(self, *args, key: PRNGKeyArray):
+        pass

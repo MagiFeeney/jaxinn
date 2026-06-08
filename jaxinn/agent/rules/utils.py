@@ -2,10 +2,6 @@ from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-import equinox as eqx
-
-from envs import Transition
-from .base import Experience
 
 
 def transform(obs) -> jax.Array:
