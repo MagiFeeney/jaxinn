@@ -8,10 +8,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from trainer import Trainer, resolve_agent_config
-from agent import Agent
-from configs.custom import EnvSelector, get_config, post_process
-from configs import Config
+from jaxinn.trainer import Trainer, resolve_agent_config
+from jaxinn.agent import Agent
+from jaxinn.configs import Config, EnvSelector, get_config, post_process
 
 
 def setup_context(vectorization_mode: Optional[str]):

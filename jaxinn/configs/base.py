@@ -151,6 +151,11 @@ class ModelShared(Model, StaticShared):
     state_size: Union[int, Tuple[int, ...]] = 30
 
 
+class Domain(str, Enum):
+    STATE = "state"
+    PIXEL = "pixel"
+
+
 @dataclass
 class PerceptionShared(Resolvable, Model):
     """Shared parameters across perception modules."""
@@ -182,11 +187,6 @@ class OptimizerShared(Base):
 
 # World Model
 ## For pixel-based tasks
-class Domain(str, Enum):
-    STATE = "state"
-    PIXEL = "pixel"
-
-
 @dataclass
 class CNNEncoder(PerceptionShared):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
