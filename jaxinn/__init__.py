@@ -1,22 +1,13 @@
-from .agent import (
-    Experience,
-    Learner,
-    LatentState,
-    dx as distrax,
-)
+from .agent import dx as distrax
 from .configs import Config
 from .configs.custom import EnvSelector
-from .envs import Transition, Environment, make_env
-
+from .envs import Environment, Transition, make_env
 
 __all__ = [
-    "Experience",
-    "Learner",
-    "LatentState",
     "distrax",
     "Config",
     "EnvSelector",
-    "Transition",
     "Environment",
+    "Transition",
     "make_env"
 ]

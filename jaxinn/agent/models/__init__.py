@@ -1,8 +1,7 @@
 from .actor import Actor
 from .critic import Critic
 from .world import World, LatentState, LatentStateWithParams
-from .utils import get_activation_fn, get_precision_fn, StaticCallable, dx, make_mlp
-
+from .utils import dx
 
 __all__ = [
     'Actor',
@@ -10,9 +9,5 @@ __all__ = [
     'World',
     'LatentState',
     'LatentStateWithParams',
-    "get_activation_fn",
-    "get_precision_fn",
-    "StaticCallable",
     "dx",
-    "make_mlp",
 ]
