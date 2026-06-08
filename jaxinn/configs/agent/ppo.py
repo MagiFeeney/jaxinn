@@ -22,7 +22,7 @@ class PerceptionCritic(Resolvable, Model):
 class ActorCriticOptimizer(OptimizerShared):
     """Optimizer for actor-critic."""
     lr: float = 3e-4
-    max_norm: int = 0.5
+    max_norm: float = 0.5
 
 
 @dataclass
