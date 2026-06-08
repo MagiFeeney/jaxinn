@@ -165,7 +165,8 @@ class PerceptionShared(Resolvable, Model):
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
-        self.shape = ctx["obs_shape"]
+        obs_shape = ctx["obs_shape"]
+        self.shape = obs_shape
 
         env_domain = Domain.PIXEL if len(obs_shape) > 1 else Domain.STATE
 
@@ -277,7 +278,7 @@ class Reward(ModelShared):
 class WorldOptimizer(OptimizerShared):
     """Optimizer for world model."""
     lr: float = 6e-4
-    max_norm: int = 100
+    max_norm: float = 100
 
 
 @dataclass

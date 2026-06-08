@@ -26,7 +26,7 @@ class Registrable:
             raise KeyError(f"No model registered for the config {config_type.__name__}")
         model_cls = cls._registry[config_type]
 
-        if hasattr(model_cls, "create"):
+        if cls is not model_cls and hasattr(model_cls, "create"):
             return model_cls.create(config, **kwargs)  # nested / multiple routes
 
         if callable(config):
