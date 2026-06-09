@@ -177,6 +177,11 @@ class PerceptionShared(Resolvable, Model):
                 f"expects {self.DOMAIN.value} inputs."
             )
 
+        # Propagate downstream for representation to consume
+        embedding_size = getattr(self, "embedding_size", None)
+        if "embedding_size" not in ctx and embedding_size:
+            ctx["embedding_size"] = embedding_size
+
 
 @dataclass
 class OptimizerShared(Base):
@@ -196,7 +201,7 @@ class CNNEncoder(PerceptionShared):
 
 
 @dataclass
-class CNNDecoder(ModelShared, PerceptionShared):
+class CNNDecoder(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     dtype: str = "bfloat16"
 
@@ -211,7 +216,7 @@ class LinearEncoder(PerceptionShared):
 
 
 @dataclass
-class LinearDecoder(ModelShared, PerceptionShared):
+class LinearDecoder(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: int = 300
     num_layers: int = 2
@@ -225,10 +230,6 @@ DecoderUnion = Union[CNNDecoder, LinearDecoder]
 class Perception(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=CNNEncoder)
     decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoder)
-
-    def _resolve(self, ctx: dict) -> None:
-        # Propagate downstream for representation to consume
-        ctx["embedding_size"] = getattr(self.encoder, "embedding_size", None)
 
 
 @dataclass

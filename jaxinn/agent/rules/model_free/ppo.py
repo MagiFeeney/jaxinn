@@ -179,7 +179,7 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None
 
     def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
-        action = self.actor_critic.sample_action(obs, key, eval)
+        action = jax.vmap(self.actor_critic.sample_action, in_axes=(0, None, None))(obs, key, eval)
         return None, action
 
     def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
