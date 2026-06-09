@@ -202,6 +202,6 @@ class Batched(Uniform):
         return super().sample_batch_index(batch_size, key, chunk_size=1)
 
     def get_all(self) -> Transition:
-        read_index = jnp.arange(self.size)
+        read_index = jnp.arange(self.capacity)
         batch = self.storage.read(self.seed_idx, read_index)
         return batch
