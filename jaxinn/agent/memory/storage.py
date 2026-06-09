@@ -13,7 +13,7 @@ class HostRAM:
     def __init__(self, num_seeds: int, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
         self.data = Transition(
             action=np.zeros((num_seeds, capacity, action_size), dtype=np.float32),
-            next_obs=np.zeros((num_seeds, capacity, *obs_shape), dtype=np.uint8),
+            next_obs=np.zeros((num_seeds, capacity, *obs_shape), dtype=np.uint8 if len(obs_shape) >= 3 else np.float32),
             reward=np.zeros((num_seeds, capacity, 1), dtype=np.float32),
             done=np.zeros((num_seeds, capacity, 1), dtype=bool)
         )
@@ -91,7 +91,7 @@ class GPUStorage(Storage):
     def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
         self.data = Transition(
             action=jnp.zeros((capacity, action_size), dtype=jnp.float32),
-            next_obs=jnp.zeros((capacity, *obs_shape), dtype=jnp.uint8),
+            next_obs=jnp.zeros((capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
             reward=jnp.zeros((capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
             done=jnp.zeros((capacity, 1), dtype=bool)
         )
