@@ -1,10 +1,12 @@
 import abc
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
-import equinox as eqx
-from typing import Tuple
 from jaxtyping import PRNGKeyArray
-from envs import Transition
+import equinox as eqx
+
+from jaxinn.envs import Transition
 
 from .storage import Storage, CPUStorage, GPUStorage
 
