@@ -179,7 +179,7 @@ class PerceptionShared(Resolvable, Model):
 
         # Propagate downstream for representation to consume
         embedding_size = getattr(self, "embedding_size", None)
-        if "embedding_size" not in ctx and embedding_size:
+        if "embedding_size" not in ctx:
             ctx["embedding_size"] = embedding_size
 
 
