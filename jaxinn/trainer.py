@@ -5,7 +5,8 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 
-from jaxinn.agent import Agent, Experience, LatentState
+from jaxinn.agent import Agent, Experience
+from jaxinn.agent.models import LatentState
 from jaxinn.envs import Environment, make_env
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
