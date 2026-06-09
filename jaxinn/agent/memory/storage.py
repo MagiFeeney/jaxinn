@@ -17,11 +17,14 @@ class HostRAM:
             reward=np.zeros((num_seeds, capacity, 1), dtype=np.float32),
             done=np.zeros((num_seeds, capacity, 1), dtype=bool)
         )
+        self.capacity = capacity
 
     def write(self, seed_idx: jax.Array, index: np.ndarray, transition: Transition):
         token = np.zeros_like(seed_idx, dtype=np.int32) # dummy output
-        seed_idx = seed_idx.reshape(-1, *(1,) * (index.ndim - 1))
-        jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, index), new), self.data, transition)
+        mask = index != self.capacity
+        valid_index = index[mask]
+        seed_idx = seed_idx.reshape(-1, *(1,) * (valid_index.ndim - 1))
+        jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, valid_index), new), self.data, transition)
         return token
 
     def read(self, seed_idx: jax.Array, sample_index: np.ndarray) -> Transition:
@@ -95,7 +98,7 @@ class GPUStorage(Storage):
 
     def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition):
         new_data = jax.tree.map(
-            lambda buf, batch: buf.at[index].set(batch),
+            lambda buf, batch: buf.at[index].set(batch, mode="drop"),
             self.data, transition
         )
         return eqx.tree_at(lambda s: s.data, self, new_data), jnp.int32(0)

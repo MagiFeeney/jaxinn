@@ -53,16 +53,17 @@ class Uniform(Memory):
     def add(self, transition: Transition, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
-        index = (self.ptr + jnp.arange(batch_size)) % self.capacity
-
-        # Write new data
-        new_storage, token = self.storage.write(self.seed_idx, index, transition)
 
         # Get actual num. of data added
-        if valid_length is not None:
-            num_data = valid_length
-        else:
-            num_data = batch_size
+        num_data = batch_size if valid_length is None else valid_length
+
+        # Get valid indices
+        mask = jnp.arange(batch_size) < num_data
+        index = (self.ptr + jnp.arange(batch_size)) % self.capacity
+        valid_index = jnp.where(mask, index, self.capacity)
+
+        # Write new data
+        new_storage, token = self.storage.write(self.seed_idx, valid_index, transition)
 
         # Update pointer and size; token is used to prevent xla "Dead code elimination"
         new_ptr = (self.ptr + num_data + token) % self.capacity
