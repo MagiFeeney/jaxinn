@@ -6,16 +6,46 @@ from jaxinn.configs.base import Base, Model, Resolvable, Actor, Critic, EncoderU
 from .base import Agent
 
 
+def _resolve_input_size(ctx: dict, *modules) -> None:
+    if "embedding_size" not in ctx:
+        return
+
+    obs_shape = ctx.get("obs_shape", ())
+    embedding_size = ctx.get("embedding_size", None)
+
+    if embedding_size is not None:
+        state_size = embedding_size
+    elif len(obs_shape) == 1:
+        state_size = obs_shape[0]
+    else:
+        raise ValueError(
+            f"Cannot determine state_size from obs_shape {obs_shape} "
+            f"and embedding_size {embedding_size}."
+        )
+
+    for module in modules:
+        if hasattr(module, "state_size"):
+            module.state_size = state_size
+        if hasattr(module, "belief_size"):
+            module.belief_size = 0
+
+
 @dataclass
 class PerceptionActor(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=LinearEncoder)
     actor: Actor = field(default_factory=Actor)
+
+    def _resolve(self, ctx: dict) -> None:
+        _resolve_input_size(ctx, self.actor)
 
 
 @dataclass
 class PerceptionCritic(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=LinearEncoder)
     critic: Critic = field(default_factory=Critic)
+
+    def _resolve(self, ctx: dict) -> None:
+        _resolve_input_size(ctx, self.critic)
 
 
 @dataclass
@@ -48,6 +78,9 @@ class ActorCriticShared(Resolvable, Model):
     critic: Critic = field(default_factory=Critic)
 
     optimizer: ActorCriticOptimizer = field(default_factory=ActorCriticOptimizer)
+
+    def _resolve(self, ctx: dict) -> None:
+        _resolve_input_size(ctx, self.actor, self.critic)
 
     @property
     def obs_shape(self):
