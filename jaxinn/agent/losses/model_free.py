@@ -35,11 +35,11 @@ class PPOLossMixIn(Loss, ActorCriticLoss):
 
         if self.use_clipped_critic_loss:
             value_clipped = old_values + (values - old_values).clip(-self.clip_param, self.clip_param)
-            critic_losses = (values - returns).pow(2)
-            critic_losses_clipped = (value_clipped - returns).pow(2)
+            critic_losses = (values - returns) ** 2
+            critic_losses_clipped = (value_clipped - returns) ** 2
             critic_loss = jnp.maximum(critic_losses, critic_losses_clipped).mean()
         else:
-            critic_loss = (returns - values).pow(2).mean()
+            critic_loss = ((returns - values) ** 2).mean()
 
         metrics = {
             "ac/actor": actor_loss,
