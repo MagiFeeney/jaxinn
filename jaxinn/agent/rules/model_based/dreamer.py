@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from envs import Transition
+from jaxinn.envs import Transition
 from jaxinn.configs import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,

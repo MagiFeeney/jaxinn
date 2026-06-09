@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from envs import Transition
+from jaxinn.envs import Transition
 
 
 class HostRAM:
@@ -24,7 +24,7 @@ class HostRAM:
         mask = index != self.capacity
         valid_index = index[mask]
         seed_idx = seed_idx.reshape(-1, *(1,) * (valid_index.ndim - 1))
-        jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, valid_index), new), self.data, transition)
+        jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, valid_index), new[mask]), self.data, transition)
         return token
 
     def read(self, seed_idx: jax.Array, sample_index: np.ndarray) -> Transition:

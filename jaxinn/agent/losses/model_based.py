@@ -5,7 +5,8 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from envs import Transition
+from jaxinn.envs import Transition
+
 from .base import Loss, ActorLoss, CriticLoss, WorldLoss
 from .utils import differentiable
 from ..models import LatentStateWithParams
