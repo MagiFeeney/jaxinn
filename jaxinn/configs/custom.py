@@ -64,7 +64,7 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
     """
     config = Config()
 
-    env_family = env_id.split("/")[0] if "/" in env_id else None
+    env_family = env_id.split("/", maxsplit=1)[0] if "/" in env_id else None
 
     if env_family and env_family in FAMILY_OVERRIDES:
         config.update(FAMILY_OVERRIDES[env_family])
@@ -113,8 +113,8 @@ def post_process(env_id: str, config: Config) -> Config:
         raise NotImplementedError(
             "Prefill with external dataset is not implemented."
         )
-    env_family = env_id.split("/")[0] if "/" in env_id else None
-    if env_family == "envpool" or env_family == "mjx" or env_family == "gymnasium" or env_family == "dmc":
+    env_family = env_id.split("/", maxsplit=1)[0] if "/" in env_id else None
+    if env_family in ("envpool", "mjx", "gymnasium", "dmc"):
         if config.env.separated: # Multiple envs for different purposes
             separated_creations, separated_wrappers = get_separate_env_config(config)
             config.env.creation = separated_creations

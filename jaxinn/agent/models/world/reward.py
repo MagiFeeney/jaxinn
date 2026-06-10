@@ -9,7 +9,7 @@ import distrax
 
 from jaxinn.agent.models.utils import get_activation_fn, dx, StaticCallable
 
-from .primitives import LatentState
+from jaxinn.structs import LatentState
 
 
 class Reward(eqx.Module):

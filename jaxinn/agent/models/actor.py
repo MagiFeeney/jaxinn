@@ -8,8 +8,9 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
+from jaxinn.structs import LatentState
+
 from .utils import get_activation_fn, dx, StaticCallable, FactoryLike
-from .world import LatentState
 
 
 class TanhNormal(distrax.Transformed):

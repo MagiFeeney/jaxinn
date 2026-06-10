@@ -1,8 +1,10 @@
 import abc
 import jax
 from typing import Tuple, Any, Dict
-from jaxtyping import PRNGKeyArray, Array, Bool, Float
+from jaxtyping import PRNGKeyArray
 import equinox as eqx
+
+from jaxinn.structs import Transition
 
 
 class EnvInfo(eqx.Module):
@@ -26,13 +28,6 @@ class EnvInfo(eqx.Module):
 
 class EnvState(EnvInfo):
     pass
-
-
-class Transition(eqx.Module):
-    action: Float[Array, " action_dim"]
-    next_obs: Float[Array, " obs_dim"]
-    reward: Float[Array, ""]
-    done: Bool[Array, ""]
 
 
 class Environment(eqx.Module):

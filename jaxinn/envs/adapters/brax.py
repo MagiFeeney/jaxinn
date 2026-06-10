@@ -3,12 +3,13 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import Box
-
 import brax
 from brax.envs import Env as BraxEnv
 from brax.envs.base import State as BraxEnvState
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import Box
 
 
 class Brax(Environment):

@@ -1,5 +1,4 @@
 import abc
-from typing import Any
 
 from jaxtyping import PRNGKeyArray
 import equinox as eqx

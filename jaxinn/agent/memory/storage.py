@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from jaxinn.envs import Transition
+from jaxinn.structs import Transition
 
 
 class HostRAM:

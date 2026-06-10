@@ -4,14 +4,14 @@ from typing import Any, Callable, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import to_jax_space
-from envs.vmap import VmapTransformation
-
 import envpool
 from envpool.python.envpool import EnvPoolMixin
 import equinox as eqx
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import to_jax_space
+from envs.vmap import VmapTransformation
 
 
 class EnvPoolVmapMixIn(VmapTransformation):

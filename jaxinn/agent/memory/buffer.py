@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.envs import Transition
+from jaxinn.structs import Transition
 
 from .storage import Storage, CPUStorage, GPUStorage
 

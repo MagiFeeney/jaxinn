@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from jaxinn.envs import Transition
+from jaxinn.structs import Transition, LatentState, LatentStateWithParams
 from jaxinn.configs import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,
@@ -15,7 +15,7 @@ from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import transform, compute_adv_and_ret
 from jaxinn.agent.losses import DreamerLossMixIn, MixedActorGradientLoss
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
-from jaxinn.agent.models import World, Actor, Critic, LatentState, LatentStateWithParams
+from jaxinn.agent.models import World, Actor, Critic
 
 
 class DreamerAgent(DreamerLossMixIn, Agent):

@@ -2,7 +2,7 @@ import jax
 import equinox as eqx
 import functools
 
-from typing import Union, List, Tuple
+from typing import Union, List
 
 
 def differentiable(fields: Union[str, List[str]]):

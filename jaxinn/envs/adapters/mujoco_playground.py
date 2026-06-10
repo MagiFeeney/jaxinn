@@ -6,18 +6,17 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from jax._src.tree_util import DictKey, FlattenedIndexKey, GetAttrKey, SequenceKey
-
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import Box, Dict
-from envs.vmap import VmapTransformation
-
 from mujoco_playground import registry
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
+from mujoco_playground._src import dm_control_suite, locomotion, manipulation
 from mujoco import mjx
 from mujoco.mjx.warp import types as mjx_warp_types
 
-from mujoco_playground._src import dm_control_suite, locomotion, manipulation
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import Box, Dict
+from envs.vmap import VmapTransformation
 
 
 def get_default_vision_config(env_name: str, num_envs: int = 1) -> config_dict.ConfigDict:

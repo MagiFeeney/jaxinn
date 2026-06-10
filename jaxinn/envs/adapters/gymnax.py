@@ -1,16 +1,16 @@
 import math
 from typing import Any, Optional, Tuple
+from functools import partial
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-
-from functools import partial
-from envs.environment import Environment, EnvInfo, Transition
-
 import gymnax
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
 
 
 class TerminalObservationWrapper:

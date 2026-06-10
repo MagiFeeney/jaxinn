@@ -1,9 +1,9 @@
 from typing import Tuple
 
 import jax
+from craftax.craftax_env import make_craftax_env_from_name
 
 from envs.adapters.gymnax import Gymnax
-from craftax.craftax_env import make_craftax_env_from_name
 
 
 class Craftax(Gymnax):

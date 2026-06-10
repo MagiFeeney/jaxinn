@@ -5,11 +5,10 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.envs import Transition
+from jaxinn.structs import Transition, LatentStateWithParams
 
 from .base import Loss, ActorLoss, CriticLoss, WorldLoss
 from .utils import differentiable
-from ..models import LatentStateWithParams
 
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
