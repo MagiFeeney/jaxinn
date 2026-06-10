@@ -180,18 +180,18 @@ class Trainer(Interactor, eqx.Module):
     @classmethod
     def create(cls, config: Config):
         env = make_env(**config.env(), wrapper=config.env.wrapper())
-        logger = Logger.create(**config.logger(), axis_name=config.axis_name)
+        logger = Logger.create(**config.logger(), axis_name=config.axis_name) if config.logger.log_dir else None
         return cls(env=env, logger=logger, **config.exploration())
 
     def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
-        agent, interaction_state, metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
+        agent, interaction_state, prefill_metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
 
-        if metrics is not None:
+        if self.logger and prefill_metrics:
             self.logger.log_dict(
-                metrics,
+                prefill_metrics,
                 step=self.num_prefill_episodes * self.episode_length
             )
 
@@ -201,7 +201,7 @@ class Trainer(Interactor, eqx.Module):
             key, key_train, key_evaluate = jax.random.split(key, 3)
 
             # Training
-            (agent, interaction_state, _), metrics = jax.lax.scan(
+            (agent, interaction_state, _), train_metrics = jax.lax.scan(
                 lambda carry, _: self.train(*carry),
                 (agent, interaction_state, key_train),
                 None,
@@ -209,11 +209,12 @@ class Trainer(Interactor, eqx.Module):
             )
 
             start_step = iteration * self.eval_interval + self.num_prefill_episodes * self.episode_length
-            self.logger.log_sequence(
-                metrics,
-                start_step=start_step,
-                interval=self.train_interval
-            )
+            if self.logger and train_metrics:
+                self.logger.log_sequence(
+                    train_metrics,
+                    start_step=start_step,
+                    interval=self.train_interval
+                )
 
             # Evaluation
             episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
@@ -221,17 +222,20 @@ class Trainer(Interactor, eqx.Module):
 
             eval_metrics = {"eval/mean": evaluation}
             eval_step = self.eval_interval + start_step
-            self.logger.log_dict(
-                eval_metrics,
-                step=eval_step,
-            )
+            if self.logger and eval_metrics:
+                self.logger.log_dict(
+                    eval_metrics,
+                    step=eval_step,
+                )
 
             extra = {"eval/return": episodic_returns}
-            self.logger.print_summary(
-                metrics=metrics | eval_metrics | extra,
-                step=eval_step,
-                headline_params={"n": self.num_eval_episodes}
-            )
+            print_metrics = train_metrics | eval_metrics | extra
+            if self.logger and print_metrics:
+                self.logger.print_summary(
+                    print_metrics,
+                    step=eval_step,
+                    headline_params={"n": self.num_eval_episodes}
+                )
 
             return (agent, interaction_state, key), (metrics, evaluation)
 
