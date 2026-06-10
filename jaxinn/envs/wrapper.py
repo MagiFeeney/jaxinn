@@ -1,10 +1,12 @@
+from typing import Any, Callable, Tuple
+
 import jax
 import jax.numpy as jnp
-from typing import Any, Callable, Tuple
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from envs.environment import Environment, EnvInfo, EnvState, Transition
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo, EnvState
 from envs.spaces import OneHotDiscrete
 
 

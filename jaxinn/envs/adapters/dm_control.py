@@ -4,7 +4,6 @@ from typing import Any, Optional, Dict
 import gymnasium as gym
 from gymnasium.envs.registration import register
 from gymnasium import core, spaces
-
 from dm_control import suite
 from dm_env import specs
 

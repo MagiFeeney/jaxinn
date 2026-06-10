@@ -7,7 +7,7 @@ import equinox as eqx
 
 from jaxinn.agent.models.utils import get_activation_fn, dx, StaticCallable, FactoryLike
 
-from .primitives import LatentState
+from jaxinn.structs import LatentState
 
 
 # Transition

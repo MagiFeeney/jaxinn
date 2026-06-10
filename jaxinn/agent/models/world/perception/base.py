@@ -5,9 +5,8 @@ import jax
 import equinox as eqx
 import distrax
 
+from jaxinn.structs import LatentState
 from jaxinn.agent.registry import Registrable
-
-from ..primitives import LatentState
 
 
 class Encoder(Registrable, eqx.Module):

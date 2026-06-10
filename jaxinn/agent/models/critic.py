@@ -7,8 +7,9 @@ from jaxtyping import Array, Float, PRNGKeyArray
 import equinox as eqx
 import distrax
 
+from jaxinn.structs import LatentState
+
 from .utils import get_activation_fn, dx, StaticCallable
-from .world import LatentState
 
 
 class Critic(eqx.Module):

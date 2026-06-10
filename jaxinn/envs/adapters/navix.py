@@ -3,13 +3,13 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import Box, Discrete
-
 import navix
 from navix.environments import Environment as NavixEnvironment
 from navix.environments import Timestep as NavixTimestep
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import Box, Discrete
 
 
 class Navix(Environment):

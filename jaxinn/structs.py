@@ -3,8 +3,20 @@ from typing import Callable, Union, Dict, Tuple, Any
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import PRNGKeyArray, Array, Bool, Float
 import equinox as eqx
+
+
+class Transition(eqx.Module):
+    action: Float[Array, " action_dim"]
+    next_obs: Float[Array, " obs_dim"]
+    reward: Float[Array, ""]
+    done: Bool[Array, ""]
+
+
+class Experience(eqx.Module):
+    transition: Transition
+    terminal_observation: jax.Array
 
 
 class LatentState(eqx.Module):

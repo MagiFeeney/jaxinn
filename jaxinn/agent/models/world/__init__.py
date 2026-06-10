@@ -1,4 +1,3 @@
-from .primitives import LatentState, LatentStateWithParams
 from .perception import (
     Perception,
     CNNEncoder,
@@ -12,8 +11,6 @@ from .transition import Transition
 from .world import World
 
 __all__ = [
-    "LatentState",
-    "LatentStateWithParams",
     "Perception",
     "CNNEncoder",
     "CNNDecoder",

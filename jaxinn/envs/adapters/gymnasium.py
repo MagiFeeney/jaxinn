@@ -5,12 +5,12 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
+import gymnasium as gym
 
-from envs.environment import Environment, EnvInfo, EnvState, Transition
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo, EnvState
 from envs.vmap import VmapTransformation
 from envs.spaces import to_jax_space
-
-import gymnasium as gym
 
 
 class GymnasiumVmapMixIn(VmapTransformation):
