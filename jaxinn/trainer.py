@@ -237,7 +237,7 @@ class Trainer(Interactor, eqx.Module):
                     headline_params={"n": self.num_eval_episodes}
                 )
 
-            return (agent, interaction_state, key), (metrics, evaluation)
+            return (agent, interaction_state, key), (train_metrics, evaluation)
 
         if self.prefill_mode != "serial" or self.restart:
             key, key_init = jax.random.split(key, 2)
