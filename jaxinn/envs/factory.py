@@ -61,10 +61,6 @@ def make_env(
         if (not spec.channel_first) and len(env.observation_space.shape) > 1:
             env = ChannelFirst(env)
 
-        action_repeat = wrapper.get("action_repeat", 1)
-        if action_repeat > 1:
-            env = ActionRepeat(env, action_repeat)
-
         if not spec.native_time_limit:
             max_episode_length = wrapper.get("max_episode_length", None)
 
@@ -80,7 +76,11 @@ def make_env(
                     f"Falling back to default: {max_episode_length}.",
                     stacklevel=2,
                 )
-            env = TimeLimit(env, max_episode_length // action_repeat)
+            env = TimeLimit(env, max_episode_length)
+
+        action_repeat = wrapper.get("action_repeat", 1)
+        if action_repeat > 1:
+            env = ActionRepeat(env, action_repeat)
 
         if not spec.native_autoreset:
             env = AutoReset(env)
