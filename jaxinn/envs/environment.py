@@ -1,6 +1,6 @@
 import abc
 import jax
-from typing import Tuple, Any, Dict
+from typing import Tuple, Any, Dict, ClassVar, Optional
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
@@ -9,6 +9,8 @@ from jaxinn.structs import Transition
 
 class EnvInfo(eqx.Module):
     data: Dict[str, Any]
+
+    _lookup_key: ClassVar[str] = "info"
 
     def __init__(self, **kwargs):
         object.__setattr__(self, "data", kwargs)
@@ -19,15 +21,15 @@ class EnvInfo(eqx.Module):
             return self.data[item]
 
         # Look inside info otherwise
-        info = self.data.get("info")
-        if info is not None and isinstance(info, dict) and item in info:
-            return info[item]
+        inner = self.data.get(self._lookup_key)
+        if inner is not None and isinstance(inner, dict) and item in inner:
+            return inner[item]
 
         raise AttributeError(f"'{type(self).__name__}' has no attribute '{item}'")
 
 
 class EnvState(EnvInfo):
-    pass
+    _lookup_key: ClassVar[str] = "state"
 
 
 class Environment(eqx.Module):
@@ -56,6 +58,11 @@ class Environment(eqx.Module):
     def is_action_space_discrete(self) -> bool:
         valid_names = ("Discrete", "OneHotDiscrete")
         return type(self.action_space).__name__ in valid_names
+
+    @property
+    @abc.abstractmethod
+    def max_episode_length(self) -> Optional[int]:
+        pass
 
     def __getattr__(self, name):
         if isinstance(self.env_params, dict):

@@ -132,3 +132,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
         if self.is_action_space_discrete:
             return self.action_space.n
         return math.prod(self.action_space.shape)
+
+    @property
+    def max_episode_length(self) -> int:
+        return self.max_episode_steps
