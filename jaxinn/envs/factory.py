@@ -3,7 +3,7 @@ from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, ResizeImage, Branched
+from .wrapper import Batched, TimeLimit, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, ResizeImage, Branched
 from .environment import Environment
 
 
@@ -14,13 +14,14 @@ class EnvSpec:
     channel_first: bool = False
     native_batched: bool = True
     native_autoreset: bool = False
+    native_time_limit: bool = True
 
 
 _FACTORY_REGISTRY = {
     # JAX envs
     "gymnax":    EnvSpec(".adapters.gymnax", "Gymnax", native_autoreset=True),
-    "mjx":       EnvSpec(".adapters.mujoco_playground", "Playground"),
-    "brax":      EnvSpec(".adapters.brax", "Brax"),
+    "mjx":       EnvSpec(".adapters.mujoco_playground", "Playground", native_time_limit=False),
+    "brax":      EnvSpec(".adapters.brax", "Brax", native_time_limit=False),
     "navix":     EnvSpec(".adapters.navix", "Navix"),
     "craftax":   EnvSpec(".adapters.craftax", "Craftax"),
     "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
@@ -60,8 +61,26 @@ def make_env(
         if (not spec.channel_first) and len(env.observation_space.shape) > 1:
             env = ChannelFirst(env)
 
-        if wrapper.get("action_repeat"):
-            env = ActionRepeat(env, wrapper["action_repeat"])
+        action_repeat = wrapper.get("action_repeat", 1)
+        if action_repeat > 1:
+            env = ActionRepeat(env, action_repeat)
+
+        if not spec.native_time_limit:
+            max_episode_length = wrapper.get("max_episode_length", None)
+
+            if max_episode_length is None:
+                max_episode_length = getattr(env, "episode_length", None)
+
+            if max_episode_length is None:
+                max_episode_length = 1000
+                warnings.warn(
+                    "No episode length specified for truncation. "
+                    "`max_episode_length` was not found in the wrapper config "
+                    "or the environment attributes. "
+                    f"Falling back to default: {max_episode_length}.",
+                    stacklevel=2,
+                )
+            env = TimeLimit(env, max_episode_length // action_repeat)
 
         if not spec.native_autoreset:
             env = AutoReset(env)

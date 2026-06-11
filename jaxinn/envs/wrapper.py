@@ -59,6 +59,39 @@ class Batched(Wrapper):
         return self.vmap_step(keys, env_state, action)
 
 
+class TimeLimit(Wrapper):
+    max_episode_length: int = eqx.field(static=True)
+
+    def __init__(self, env: Environment, max_episode_length: int):
+        super().__init__(env)
+        self.max_episode_length = max_episode_length
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+
+        state_with_time = EnvState(
+            state=env_state,
+            time=jnp.zeros((), dtype=jnp.int32),
+        )
+        return transition, env_info, state_with_time
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
+        time = env_state.time + 1
+        truncated = time >= self.max_episode_length
+
+        new_done = jnp.logical_or(transition.done, truncated)
+
+        new_transition = eqx.tree_at(lambda t: t.done, transition, new_done)
+        env_info["truncated"] = truncated
+
+        state_with_time = EnvState(
+            state=next_env_state,
+            time=time,
+        )
+        return new_transition, env_info, state_with_time
+
+
 class AutoReset(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)

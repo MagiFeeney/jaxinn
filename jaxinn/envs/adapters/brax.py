@@ -77,3 +77,7 @@ class Brax(Environment):
     @property
     def action_size(self):
         return self.env.action_size
+
+    @property
+    def max_episode_length(self) -> None:
+        return None

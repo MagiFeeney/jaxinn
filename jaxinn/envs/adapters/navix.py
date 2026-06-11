@@ -71,3 +71,7 @@ class Navix(Environment):
     @property
     def action_size(self):
         return len(self.env.action_set)
+
+    @property
+    def max_episode_length(self) -> int:
+        return self.max_steps

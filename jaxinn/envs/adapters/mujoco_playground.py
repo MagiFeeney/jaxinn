@@ -356,3 +356,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
     @property
     def action_size(self) -> int:
         return self.env.action_size
+
+    @property
+    def max_episode_length(self) -> None:
+        return None
