@@ -1,4 +1,4 @@
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Tuple, Optional
 
 import jax
 import jax.numpy as jnp
@@ -30,6 +30,10 @@ class Wrapper(Environment):
     @property
     def action_space(self):
         return self.env.action_space
+
+    @property
+    def max_episode_length(self) -> Optional[int]:
+        return self.env.max_episode_length
 
     def __getattr__(self, name):
         if name == "env":
