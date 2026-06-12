@@ -81,7 +81,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             **config.optimization() # Extra particulars for agent learning
         )
 
-    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> LatentState:
+    def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, False if eval else self.random_init, batch_shape, key=key)
 
     def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
@@ -124,7 +124,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
         """
         key_init, key_scan = jax.random.split(key, 2)
-        init_latent_state = self.init_state(key_init, batch_shape=(data.action.shape[1],))
+        init_latent_state = self.init_latent_state(key_init, batch_shape=(data.action.shape[1],))
         init_mask = jnp.ones_like(data.done[0], dtype=jnp.int32)
         next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(data.next_obs) # Launch kernel once
 

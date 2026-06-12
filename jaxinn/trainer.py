@@ -62,7 +62,7 @@ class Interactor:
             num_envs = self.env.get("num_envs", mode)
         else:
             init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
-        init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,), eval=eval)
+        init_latent_state = agent.init_latent_state(key_init, batch_shape=(num_envs,), eval=eval)
         init_terminal_obs = info.terminal_observation
         interaction_state = InteractionState(
             experience = Experience(
@@ -120,7 +120,7 @@ class Interactor:
             last_latent_state = jax.tree.map(
                 lambda current, reset: jnp.where(mask, current, reset),
                 interaction_state.latent_state,
-                agent.init_state(key_init, batch_shape=(num_envs,))
+                agent.init_latent_state(key_init, batch_shape=(num_envs,))
             )
             last_action = interaction_state.experience.transition.action * mask
             obs = interaction_state.experience.transition.next_obs
@@ -139,7 +139,7 @@ class Interactor:
             if last_done is not None:
                 latent_state = jax.tree.map(
                     lambda reset, current: jnp.where(last_done, reset, current),
-                    agent.init_state(key_init, batch_shape=(num_envs,)),
+                    agent.init_latent_state(key_init, batch_shape=(num_envs,)),
                     latent_state
                 )
             new_interaction_state = InteractionState(
@@ -254,18 +254,21 @@ class Trainer(Interactor, eqx.Module):
         return final_agent, (metrics, evaluation)
 
     def learn(self, agent: Agent, key: PRNGKeyArray, prefill: bool = False) -> Tuple[Agent, Optional[Dict[str, jax.Array]]]:
+        key_state, key_scan = jax.random.split(key, 2)
+        init_learn_state = agent.init_learn_state(key_state)
+
         def learn_step_fn(carry, _):
-            agent, key = carry
+            agent, learn_state, key = carry
             key, key_learn = jax.random.split(key, 2)
-            new_agent, metrics = agent.learn(key_learn)
-            return (new_agent, key), metrics
+            new_agent, new_learn_state, metrics = agent.learn(learn_state, key_learn)
+            return (new_agent, new_learn_state, key), metrics
 
         num_iterations = self.train_iterations if not prefill else self.pretrain_iterations
 
         if num_iterations > 0:
-            (agent, _), metrics = jax.lax.scan(
+            (agent, _, _), metrics = jax.lax.scan(
                 learn_step_fn,
-                (agent, key),
+                (agent, init_learn_state, key_scan),
                 None,
                 num_iterations
             )
