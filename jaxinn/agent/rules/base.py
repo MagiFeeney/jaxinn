@@ -14,7 +14,7 @@ from .utils import replenish_and_flatten
 class Agent(Registrable, eqx.Module):
 
     @abc.abstractmethod
-    def init_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
+    def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
         pass
 
     @abc.abstractmethod
@@ -24,6 +24,9 @@ class Agent(Registrable, eqx.Module):
     @abc.abstractmethod
     def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
         pass
+
+    def init_learn_state(self, key: PRNGKeyArray) -> Any:
+        return None
 
     def add_experience(self, experiences: Experience, source: int = 1) -> "Agent":
         if self.memory is None:
