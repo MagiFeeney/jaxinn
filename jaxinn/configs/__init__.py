@@ -18,7 +18,8 @@ from .base import (
     World as WorldConfig,
 )
 from .config import Config
-from .custom import EnvSelector, get_config, post_process
+from .env import EnvSelector
+from .custom import get_config, post_process
 
 __all__ = [
     "AgentConfig",
@@ -29,7 +30,7 @@ __all__ = [
     "PerceptionActorConfig",
     "PerceptionCriticConfig",
     "ActorCriticDecoupledConfig",
-    "ActorCriticSharedConfig"
+    "ActorCriticSharedConfig",
     "CNNEncoderConfig",
     "CNNDecoderConfig",
     "LinearEncoderConfig",

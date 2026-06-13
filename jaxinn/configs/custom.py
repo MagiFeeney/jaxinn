@@ -1,17 +1,8 @@
 from dataclasses import dataclass, field, is_dataclass, replace
 from typing import Any, Optional
 
-from .base import Env, Wrapper
+from .env import Wrapper
 from .config import Config
-
-
-@dataclass
-class EnvSelector:
-    """The entry for selecting the env specific config, which requires knowing the env_name in the first place."""
-    env: Env = field(default_factory=Env)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.env, name)
 
 
 FAMILY_OVERRIDES = {

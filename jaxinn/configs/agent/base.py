@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 
-from jaxinn.configs.base import Resolvable, Base, Memory, _sync_statics
+from jaxinn.configs.base import Resolvable, Base, _sync_statics
+
+from .memory import Memory
 
 
 # Base class
