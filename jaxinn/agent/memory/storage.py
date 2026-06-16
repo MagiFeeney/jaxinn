@@ -1,6 +1,6 @@
 import abc
 import numpy as np
-from typing import Tuple, Any
+from typing import Tuple, Any, Union
 
 import jax
 import jax.numpy as jnp
@@ -10,14 +10,15 @@ from jaxinn.structs import Transition
 
 
 class HostRAM:
-    def __init__(self, num_seeds: int, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, num_seeds: int, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int):
+        capacity = (capacity,) if isinstance(capacity, int) else capacity
         self.data = Transition(
-            action=np.zeros((num_seeds, capacity, action_size), dtype=np.float32),
-            next_obs=np.zeros((num_seeds, capacity, *obs_shape), dtype=np.uint8 if len(obs_shape) >= 3 else np.float32),
-            reward=np.zeros((num_seeds, capacity, 1), dtype=np.float32),
-            done=np.zeros((num_seeds, capacity, 1), dtype=bool)
+            action=np.zeros((num_seeds, *capacity, action_size), dtype=np.float32),
+            next_obs=np.zeros((num_seeds, *capacity, *obs_shape), dtype=np.uint8 if len(obs_shape) >= 3 else np.float32),
+            reward=np.zeros((num_seeds, *capacity, 1), dtype=np.float32),
+            done=np.zeros((num_seeds, *capacity, 1), dtype=bool)
         )
-        self.capacity = capacity
+        self.capacity = capacity[0]
 
     def write(self, seed_idx: jax.Array, index: np.ndarray, transition: Transition):
         token = np.zeros_like(seed_idx, dtype=np.int32) # dummy output
@@ -88,12 +89,13 @@ class CPUStorage(Storage):
 class GPUStorage(Storage):
     data: Transition
 
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int):
+        capacity = (capacity,) if isinstance(capacity, int) else capacity
         self.data = Transition(
-            action=jnp.zeros((capacity, action_size), dtype=jnp.float32),
-            next_obs=jnp.zeros((capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
-            reward=jnp.zeros((capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
-            done=jnp.zeros((capacity, 1), dtype=bool)
+            action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
+            next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
+            reward=jnp.zeros((*capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
+            done=jnp.zeros((*capacity, 1), dtype=bool)
         )
 
     def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition):
