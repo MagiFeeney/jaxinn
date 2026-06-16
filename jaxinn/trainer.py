@@ -254,22 +254,23 @@ class Trainer(Interactor, eqx.Module):
         return final_agent, (metrics, evaluation)
 
     def learn(self, agent: Agent, key: PRNGKeyArray, prefill: bool = False) -> Tuple[Agent, Optional[Dict[str, jax.Array]]]:
-        key_state, key_scan = jax.random.split(key, 2)
-        init_learn_state = agent.init_learn_state(key_state)
+
+        make_batch = agent.make_batch_fn()
 
         def learn_step_fn(carry, _):
-            agent, learn_state, key = carry
-            key, key_learn = jax.random.split(key, 2)
-            new_agent, new_learn_state, metrics = agent.learn(learn_state, key_learn)
-            return (new_agent, new_learn_state, key), metrics
+            agent, key = carry
+            key, key_batch, key_learn = jax.random.split(key, 3)
+            data = make_batch(key_batch)
+            new_agent, metrics = agent.learn(data, key_learn)
+            return (new_agent, key), metrics
 
         num_iterations = self.train_iterations if not prefill else self.pretrain_iterations
 
         if num_iterations > 0:
-            (agent, _, _), metrics = jax.lax.scan(
+            (agent, _), metrics = jax.lax.scan(
                 learn_step_fn,
-                (agent, init_learn_state, key_scan),
-                None,
+                (agent, key),
+                None,           # TODO: add pre-computing option
                 num_iterations
             )
             avg_metrics = jax.tree.map(jnp.mean, metrics)

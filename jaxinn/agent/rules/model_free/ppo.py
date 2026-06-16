@@ -183,8 +183,8 @@ class PPOAgent(PPOLossMixIn, Agent):
         action = jax.vmap(self.actor_critic.sample_action, in_axes=(0, None, None))(obs, key, eval)
         return None, action
 
-    def init_learn_state(self, key: PRNGKeyArray) -> Tuple[jax.Array]:
-        data = self.memory
+    def make_batch_fn(self) -> callable:
+        data = self.memory.get_all()
 
         # Get advantages and returns
         values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(data.next_obs).mean()
@@ -205,8 +205,12 @@ class PPOAgent(PPOLossMixIn, Agent):
 
         # Apply shuffle and split for training data
         train_data = (data.next_obs[:-1], data.action[1:], advantages, returns, values[:-1], log_probs)
-        mini_batches = self.shuffle_and_split(train_data, key_shuffle)
-        return mini_batches
+        flatten_train_data = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), train_data)
+
+        def step_fn(key: PRNGKeyArray):
+            mini_batches = self.shuffle_and_split(flatten_train_data, key)
+            return mini_batches
+        return step_fn
 
     def learn(self, mini_batches: Tuple[jax.Array], key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
         def mini_batch_step_fn(carry, mini_batch):
@@ -231,11 +235,10 @@ class PPOAgent(PPOLossMixIn, Agent):
         return agent, avg_metrics
 
     def shuffle_and_split(self, batch: PyTree, key: PRNGKeyArray):
-        shape = jax.tree.leaves(batch)[0].shape[:2]
-        size = math.prod(shape)
+        size = jax.tree.leaves(batch)[0].shape[0]
 
         sample_index = jax.random.permutation(key, size)
-        shuffled_batch = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:])[sample_index], batch)
+        shuffled_batch = jax.tree.map(lambda x: x[sample_index], batch)
 
         mini_batch_size = size // self.num_mini_batch
         valid_size = mini_batch_size * self.num_mini_batch

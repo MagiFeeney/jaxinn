@@ -196,15 +196,20 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         }
         return out, metrics
 
-    def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
+    def make_batch_fn(self) -> callable:
+        def step_fn(key: PRNGKeyArray):
+            data = self.memory.sample((self.batch_size, self.chunk_size), key) # T x B
+            data = eqx.tree_at(
+                lambda d: d.next_obs,
+                data,
+                replace_fn=transform
+            )
+            return data
+        return step_fn
+
+    def learn(self, data: Transition, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
         """Update world model, actor and critic."""
-        key, key_memory, key_world, key_actor, key_critic = jax.random.split(key, 5)
-        data = self.memory.sample((self.batch_size, self.chunk_size), key_memory) # T x B
-        data = eqx.tree_at(
-            lambda d: d.next_obs,
-            data,
-            replace_fn=transform
-        )
+        key, key_world, key_actor, key_critic = jax.random.split(key, 4)
         metrics = {}
 
         # Update world model

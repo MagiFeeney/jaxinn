@@ -8,7 +8,7 @@ import equinox as eqx
 from jaxinn.structs import Experience
 from jaxinn.agent.registry import Registrable
 
-from .utils import replenish_and_flatten
+from .utils import flatten, replenish
 
 
 class Agent(Registrable, eqx.Module):
@@ -25,13 +25,15 @@ class Agent(Registrable, eqx.Module):
     def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
         pass
 
-    def init_learn_state(self, key: PRNGKeyArray) -> Any:
-        return None
+    @abc.abstractmethod
+    def make_batch_fn(self) -> callable:
+        pass
 
     def add_experience(self, experiences: Experience, source: int = 1) -> "Agent":
         if self.memory is None:
             return self
-        transitions_flatten, valid_length = replenish_and_flatten(experiences, source) # handle terminal obs; critical for world modeling e.g. predict reward
+        experiences_flatten = flatten(experiences, source, target_dim=len(self.memory.capacity))
+        transitions_flatten, valid_length = replenish(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
         new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
             lambda x: x.memory,

@@ -13,31 +13,44 @@ def transform(obs) -> jax.Array:
     return obs
 
 
-def replenish_and_flatten(experiences: Experience, source: int) -> Tuple[Transition, jax.Array]:
-    def flatten_fn(x):
-        # (T, B, ...) -> (B*T, ...)
-        flattened = jnp.moveaxis(x, source=source, destination=source - 1).reshape(-1, *x.shape[source + 1:])
-        # For storage
-        if flattened.dtype == jnp.float32 and flattened.ndim > 3:
-            is_normalized = flattened.max() <= 1.0
-            return jax.lax.cond(
-                is_normalized,
-                lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
-                lambda arr: arr.astype(jnp.uint8),
-                flattened
-            )
-        return flattened
+def flatten(x, source: int, target_dim: int = 1):
+    """
+    Swaps the `source` axis with the preceding axis to ensure time-major ordering, then flattens all leading dimensions according to `target_dim`. Includes additional checks on RGB inputs for memory efficiency.
+    """
+    num_leading_dims = source + 1
 
-    # flatten and cast dtype in one go
-    transitions_flatten = jax.tree.map(flatten_fn, experiences.transition)
+    if num_leading_dims < target_dim:
+        raise ValueError(
+            f"Cannot flatten to {target_dim} dims: source index {source} "
+            f"(representing {num_leading_dims} dims) is too small."
+        )
 
-    mask = transitions_flatten.done
-    N = mask.shape[0]
+    end_dim = num_leading_dims - target_dim + 1
 
+    # Swap the source axis with the preceding axis
+    # e.g., (T, E, ...) -> (E, T, ...) or (N, T, E, ...) -> (N, E, T, ...)
+    swapped_x = jnp.moveaxis(x, source=source, destination=source - 1)
+
+    flattened = swapped_x.reshape(-1, *swapped_x.shape[end_dim:])
+
+    # For storage
+    if flattened.dtype == jnp.float32 and flattened.ndim > 3:
+        is_normalized = flattened.max() <= 1.0
+        return jax.lax.cond(
+            is_normalized,
+            lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
+            lambda arr: arr.astype(jnp.uint8),
+            flattened
+        )
+    return flattened
+
+
+def replenish(experiences: Experience) -> Tuple[Transition, jax.Array]:
     if experiences.terminal_observation is None:
-        return transitions_flatten, None
+        return experiences.transition, None
 
-    terminal_obs_flatten = flatten_fn(experiences.terminal_observation)
+    mask = experiences.transition.done
+    N = mask.shape[0]
 
     # Indices for step transitions; we replenish ones at done = True with terminal_obs
     shifts = jnp.concatenate([
@@ -50,23 +63,23 @@ def replenish_and_flatten(experiences: Experience, source: int) -> Tuple[Transit
     reset_indices = step_indices + 1 # To keep shape static; only indices at mask are meaningful
 
     # Construct reset transitions
-    reset_transitions = jax.tree.map(jnp.zeros_like, transitions_flatten)
+    reset_transitions = jax.tree.map(jnp.zeros_like, experiences.transition)
     reset_transitions = eqx.tree_at(
         lambda x: x.next_obs,
         reset_transitions,
-        transitions_flatten.next_obs
+        experiences.transition.next_obs
     )
 
     # Replenish terminal_obs
-    mask_expanded = mask.reshape((N,) + (1,) * (terminal_obs_flatten.ndim - 1))
+    mask_expanded = mask.reshape((N,) + (1,) * (experiences.terminal_observation.ndim - 1))
     new_next_obs = jnp.where(
         mask_expanded,
-        terminal_obs_flatten,
-        transitions_flatten.next_obs
+        experiences.terminal_observation,
+        experiences.transition.next_obs
     )
     step_transitions = eqx.tree_at(
         lambda x: x.next_obs,
-        transitions_flatten,
+        experiences.transition,
         new_next_obs
     )
 
