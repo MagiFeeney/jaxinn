@@ -1,7 +1,8 @@
 from typing import Union
 from dataclasses import dataclass, field
 
-from jaxinn.configs.base import Base, Model, Resolvable, Actor, Critic, EncoderUnion, LinearEncoder, OptimizerShared
+from jaxinn.configs.base import Base, Resolvable
+from jaxinn.configs.model import Model, Actor, Critic, EncoderUnion, LinearEncoder, OptimizerShared
 
 from .base import Agent
 
