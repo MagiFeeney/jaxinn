@@ -201,6 +201,10 @@ class Prioritized(Uniform):
 
 
 class Batched(Uniform):
+    def __init__(self, seed_idx: jax.Array, capacity: Tuple[int, ...], obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
+        super().__init__(seed_idx, capacity, obs_shape, action_size, num_seeds)
+        self.capacity = capacity[0] # Override with time capacity
+
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
         return super().sample_batch_index(batch_size, key, chunk_size=1)
 
