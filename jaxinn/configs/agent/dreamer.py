@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
-from jaxinn.configs.base import Base, Actor, Critic, World
+from jaxinn.configs.base import Base
+from jaxinn.configs.model import Actor, Critic, World
 
 from .base import Agent
 

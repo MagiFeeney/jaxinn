@@ -9,7 +9,7 @@ from .agent import (
     ActorCriticDecoupled as ActorCriticDecoupledConfig,
     ActorCriticShared as ActorCriticSharedConfig,
 )
-from .base import (
+from .model import (
     CNNEncoder as CNNEncoderConfig,
     CNNDecoder as CNNDecoderConfig,
     LinearEncoder as LinearEncoderConfig,

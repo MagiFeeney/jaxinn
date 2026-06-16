@@ -114,7 +114,7 @@ def compute_adv_and_ret(
         z = value - baseline
         discounted_uae = discount_factor * uae_lambda * (1 - done) * uae
         advantage = delta + discounted_uae
-        uae = (delta - z) + discounted_uae
+        uae = advantage - z
         return (uae, value), advantage
 
     uae = jnp.zeros_like(bootstrap)
