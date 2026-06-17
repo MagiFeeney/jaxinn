@@ -18,11 +18,11 @@ class HostRAM:
             reward=np.zeros((num_seeds, *capacity, 1), dtype=np.float32),
             done=np.zeros((num_seeds, *capacity, 1), dtype=bool)
         )
-        self.capacity = capacity[0]
+        self.length = capacity[0]
 
     def write(self, seed_idx: jax.Array, index: np.ndarray, transition: Transition):
         token = np.zeros_like(seed_idx, dtype=np.int32) # dummy output
-        mask = index != self.capacity
+        mask = index != self.length
         valid_index = index[mask]
         seed_idx = seed_idx.reshape(-1, *(1,) * (valid_index.ndim - 1))
         jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, valid_index), new[mask]), self.data, transition)
