@@ -32,7 +32,8 @@ class Agent(Registrable, eqx.Module):
     def add_experience(self, experiences: Experience, source: int = 1) -> "Agent":
         if self.memory is None:
             return self
-        experiences_flatten = flatten(experiences, source, target_dim=len(self.memory.capacity))
+        target_dim = 1 if isinstance(self.memory.capacity, int) else len(self.memory.capacity)
+        experiences_flatten = flatten(experiences, source, target_dim)
         transitions_flatten, valid_length = replenish(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
         new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
