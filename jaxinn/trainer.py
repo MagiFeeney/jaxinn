@@ -113,18 +113,19 @@ class Interactor:
 
         def interact_step_fn(carry, _):
             interaction_state, key = carry
+            last_transition = interaction_state.experience.transition
             key, key_init, key_action, key_step = jax.random.split(key, 4)
 
             # Isolate the reset observation in current-step autoreset environments.
-            mask = 1 - interaction_state.experience.transition.done
+            done = last_transition.terminated | last_transition.truncated
+            mask = 1 - done
             last_latent_state = jax.tree.map(
                 lambda current, reset: jnp.where(mask, current, reset),
                 interaction_state.latent_state,
                 agent.init_latent_state(key_init, batch_shape=(num_envs,))
             )
-            last_action = interaction_state.experience.transition.action * mask
-            obs = interaction_state.experience.transition.next_obs
-            env_state = interaction_state.env_state
+            last_action = last_transition.action * mask
+            obs = last_transition.next_obs
 
             operand = (last_latent_state, last_action, obs, key_action)
             if prefill:
@@ -132,6 +133,7 @@ class Interactor:
             else:
                 latent_state, action = agent_act_branch(operand)
 
+            env_state = interaction_state.env_state
             transition, info, next_env_state = self.env.step(key_step, env_state, action, mode=mode)
 
             # Decouple terminal and reset observation in next-step autoreset environments.
@@ -321,7 +323,8 @@ class Trainer(Interactor, eqx.Module):
         key_init, key_interact = jax.random.split(key, 2)
         interaction_state = self.init_interaction_state(agent, key_init, eval=True, num_envs=num_envs)
         _, experiences = self.interact(agent, interaction_state, key_interact, eval=True, num_envs=num_envs)
-        masks = 1 - jnp.maximum.accumulate(experiences.transition.done, axis=0)
+        done = experiences.transition.terminated | experiences.transition.truncated
+        masks = 1 - jnp.maximum.accumulate(done, axis=0)
         shifted_masks = jnp.concatenate([jnp.ones_like(masks[0:1]), masks[:-1]])
         cumulative_rewards = jnp.sum(experiences.transition.reward * shifted_masks) # Return up to the first termination inclusively
         return cumulative_rewards
