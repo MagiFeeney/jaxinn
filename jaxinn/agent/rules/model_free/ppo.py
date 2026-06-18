@@ -193,7 +193,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             data.reward[1:],
             values[:-1],
             baselines,
-            data.done[1:],
+            data.terminated[1:],
             bootstrap=values[-1],
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda

@@ -125,7 +125,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         """
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_latent_state(key_init, batch_shape=(data.action.shape[1],))
-        init_mask = jnp.ones_like(data.done[0], dtype=jnp.int32)
+        init_mask = jnp.ones_like(data.terminated[0], dtype=jnp.int32)
         next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(data.next_obs) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
@@ -144,7 +144,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         _, (priors, posteriors) = jax.lax.scan(
             reason_step_fn,
             (init_latent_state, init_mask, key_scan),
-            (data.action, next_obs, data.done)
+            (data.action, next_obs, data.terminated | data.truncated)
         )
         return priors, posteriors
 
