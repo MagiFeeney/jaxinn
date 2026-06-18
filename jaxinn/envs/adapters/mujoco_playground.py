@@ -282,7 +282,8 @@ class Playground(Environment, PlaygroundVmapMixIn):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=env_state.obs["pixels/view_0"] if self.vision else env_state.obs,
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
             info=env_state.info,
@@ -297,7 +298,8 @@ class Playground(Environment, PlaygroundVmapMixIn):
             action=action,
             next_obs=next_env_state.obs["pixels/view_0"] if self.vision else next_env_state.obs,
             reward=next_env_state.reward,
-            done=next_env_state.done.astype(bool),
+            terminated=terminated,
+            truncated=jnp.zeros_like(terminated) # delegated to TimeLimit wrapper
         )
         env_info = EnvInfo(
             info=next_env_state.info,

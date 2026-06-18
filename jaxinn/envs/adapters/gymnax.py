@@ -68,18 +68,25 @@ class Gymnax(Environment):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(terminal_observation=jnp.zeros_like(obs)) # dummy
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
+        truncated = next_env_state.time >= self.max_episode_length
+        # Infer termination from the done and truncation flags since gymnax couples the two.
+        # Note: Ambiguity remains when truncation is True. However, the probability of
+        # false positives (i.e., actual termination coinciding exactly with truncation) is low.
+        terminated = jnp.logical_and(done, jnp.logical_not(truncated))
         transition = Transition(
             action=action,
             next_obs=next_obs,
             reward=reward,
-            done=done,
+            terminated=terminated,
+            truncated=truncated,
         )
         env_info = EnvInfo(info=info)
         return transition, env_info, next_env_state
