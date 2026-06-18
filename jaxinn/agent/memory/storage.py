@@ -16,7 +16,8 @@ class HostRAM:
             action=np.zeros((num_seeds, *capacity, action_size), dtype=np.float32),
             next_obs=np.zeros((num_seeds, *capacity, *obs_shape), dtype=np.uint8 if len(obs_shape) >= 3 else np.float32),
             reward=np.zeros((num_seeds, *capacity, 1), dtype=np.float32),
-            done=np.zeros((num_seeds, *capacity, 1), dtype=bool)
+            terminated=np.zeros((num_seeds, *capacity, 1), dtype=bool)
+            truncated=np.zeros((num_seeds, *capacity, 1), dtype=bool)
         )
         self.length = capacity[0]
 
@@ -95,7 +96,8 @@ class GPUStorage(Storage):
             action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
             next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
             reward=jnp.zeros((*capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
-            done=jnp.zeros((*capacity, 1), dtype=bool)
+            terminated=jnp.zeros((*capacity, 1), dtype=bool)
+            truncated=jnp.zeros((*capacity, 1), dtype=bool)
         )
 
     def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition):
