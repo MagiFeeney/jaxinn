@@ -7,15 +7,15 @@ import equinox as eqx
 from jaxinn.structs import Transition, Experience
 
 
-def transform(obs) -> jax.Array:
+def transform(obs: jax.Array) -> jax.Array:
     if obs.dtype == jnp.uint8 and obs.ndim > 3:
         return obs.astype(jnp.float32) / 255.0 - 0.5
     return obs
 
 
-def flatten(x, source: int, target_dim: int = 1):
+def flatten_time_major(x: jax.Array, source: int, target_dim: int = 1) -> jax.Array:
     """
-    Swaps the `source` axis with the preceding axis to ensure time-major ordering, then flattens all leading dimensions according to `target_dim`. Includes additional checks on RGB inputs for memory efficiency.
+    Swaps the `source` axis with the preceding axis to ensure correct layout of trajectories, then flattens all leading dimensions according to `target_dim`, with additional checks on RGB inputs for memory efficiency. Finally, rearranges the retained dimensions into a time-major ordering.
     """
     num_leading_dims = source + 1
 
@@ -42,7 +42,11 @@ def flatten(x, source: int, target_dim: int = 1):
             lambda arr: arr.astype(jnp.uint8),
             flattened
         )
-    return flattened
+
+    # time-major
+    time_axis = num_leading_dims - end_dim
+    time_major_x = jnp.moveaxis(flattened, source=time_axis, destination=0)
+    return time_major_x
 
 
 def replenish(experiences: Experience) -> Tuple[Transition, jax.Array]:
