@@ -31,7 +31,8 @@ class Navix(Environment):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=env_state.observation.astype(jnp.float32),
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
             info=env_state.info,
@@ -45,7 +46,8 @@ class Navix(Environment):
             action=action,
             next_obs=next_env_state.observation.astype(jnp.float32),
             reward=next_env_state.reward,
-            done=next_env_state.is_done(),
+            terminated=next_env_state.is_termination(),
+            truncated=next_env_state.is_truncation(),
         )
         env_info = EnvInfo(info=next_env_state.info)
         return transition, env_info, next_env_state

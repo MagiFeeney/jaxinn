@@ -11,7 +11,8 @@ class Transition(eqx.Module):
     action: Float[Array, " action_dim"]
     next_obs: Float[Array, " obs_dim"]
     reward: Float[Array, ""]
-    done: Bool[Array, ""]
+    terminated: Bool[Array, ""]
+    truncated: Bool[Array, ""]
 
 
 class Experience(eqx.Module):
