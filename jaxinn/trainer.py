@@ -191,13 +191,14 @@ class Trainer(Interactor, eqx.Module):
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
-        agent, interaction_state, prefill_metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
+        if self.num_prefill_episodes > 0:
+            agent, interaction_state, prefill_metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
 
-        if self.logger and prefill_metrics:
-            self.logger.log_dict(
-                prefill_metrics,
-                step=self.num_prefill_episodes * self.episode_length
-            )
+            if self.logger and prefill_metrics:
+                self.logger.log_dict(
+                    prefill_metrics,
+                    step=self.num_prefill_episodes * self.episode_length
+                )
 
         # Train and evaluate
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
@@ -277,7 +278,7 @@ class Trainer(Interactor, eqx.Module):
             )
             avg_metrics = jax.tree.map(jnp.mean, metrics)
             return agent, avg_metrics
-        return agent, None
+        return agent, {}
 
     def prefill(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, InteractionState, Dict[str, jax.Array]]:
         key_init, key_interact, key_learn = jax.random.split(key, 3)
