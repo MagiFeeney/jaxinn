@@ -14,10 +14,37 @@ class Transition(eqx.Module):
     terminated: Bool[Array, ""]
     truncated: Bool[Array, ""]
 
+    @classmethod
+    def initialize(
+            cls,
+            capacity: Union[int, Tuple[int, ...]],
+            obs_shape: Tuple[int, ...],
+            action_size: int,
+    ):
+        capacity = (capacity,) if isinstance(capacity, int) else capacity
+        return cls(
+            action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
+            next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
+            reward=jnp.zeros((*capacity, 1), dtype=jnp.float32),
+            terminated=jnp.zeros((*capacity, 1), dtype=bool),
+            truncated=jnp.zeros((*capacity, 1), dtype=bool),
+        )
+
 
 class Experience(eqx.Module):
     transition: Transition
     terminal_observation: jax.Array
+
+    @classmethod
+    def initialize(
+            cls,
+            capacity: Union[int, Tuple[int, ...]],
+            obs_shape: Tuple[int, ...],
+            action_size: int,
+    ):
+        transition = Transition.initialize(capacity, obs_shape, action_size)
+        terminal_observation = jnp.zeros_like(transition.next_obs)
+        return cls(transition=transition, terminal_observation=terminal_observation)
 
 
 class LatentState(eqx.Module):

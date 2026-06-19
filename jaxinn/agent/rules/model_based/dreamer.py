@@ -175,7 +175,6 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             jax.vmap(jax.lax.stop_gradient(self.critic))
         )(latent_states).mean()
         values_before_last = values[:-1]
-        last_value = values[-1]
 
         dones = jnp.zeros_like(values_before_last) # TODO: replace with termination predictor
         baselines = values_before_last
@@ -185,7 +184,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             values_before_last,
             baselines,
             dones,
-            last_value,
+            next_values=values[1:],
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda
         )
