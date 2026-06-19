@@ -49,7 +49,7 @@ def flatten_time_major(x: jax.Array, source: int, target_dim: int = 1) -> jax.Ar
     return time_major_x
 
 
-def replenish(experiences: Experience) -> Tuple[Transition, jax.Array]:
+def replenish_terminal_obs(experiences: Experience) -> Tuple[Transition, jax.Array]:
     if experiences.terminal_observation is None:
         return experiences.transition, None
 

@@ -8,7 +8,7 @@ import equinox as eqx
 from jaxinn.structs import Experience
 from jaxinn.agent.registry import Registrable
 
-from .utils import flatten_time_major, replenish
+from .utils import flatten_time_major, replenish_terminal_obs
 
 
 class Agent(Registrable, eqx.Module):
@@ -32,12 +32,14 @@ class Agent(Registrable, eqx.Module):
     def add_experience(self, experiences: Experience, source: int = 1) -> "Agent":
         if self.memory is None:
             return self
+
         target_dim = 1 if isinstance(self.memory.capacity, int) else len(self.memory.capacity)
         experiences_flatten = jax.tree.map(
             lambda x: flatten_time_major(x, source, target_dim),
             experiences
         )
-        transitions_flatten, valid_length = replenish(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
+        transitions_flatten, valid_length = replenish_terminal_obs(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
+
         new_memory = self.memory.add(transitions_flatten, valid_length)
         return eqx.tree_at(
             lambda x: x.memory,
