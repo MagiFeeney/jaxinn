@@ -7,7 +7,13 @@ import equinox as eqx
 import distrax
 
 from jaxinn.structs import Experience
-from jaxinn.configs import PPOAgentConfig, ActorCriticSharedConfig, ActorCriticDecoupledConfig, PerceptionActorConfig, PerceptionCriticConfig
+from jaxinn.configs import (
+    PPOAgentConfig,
+    ActorCriticSharedConfig,
+    ActorCriticDecoupledConfig,
+    PerceptionActorConfig,
+    PerceptionCriticConfig
+)
 from jaxinn.agent.registry import Registrable
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
@@ -160,7 +166,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             key: PRNGKeyArray,
             memory_id: jax.Array,
     ):
-        actor_critic = Learner.from_config(ActorCritic, config.actor_critic, key=key)
+        actor_critic = Learner.create(ActorCritic, config.actor_critic, key=key)
         memory = Experience.initialize(
             capacity=config.memory.capacity,
             obs_shape=config.actor_critic.obs_shape,

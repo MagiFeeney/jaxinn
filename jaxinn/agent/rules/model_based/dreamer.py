@@ -49,9 +49,9 @@ class DreamerAgent(DreamerLossMixIn, Agent):
     ):
         key_world, key_actor, key_critic = jax.random.split(key, 3)
 
-        world = Learner.from_config(World, config.world, key=key_world)
-        actor = Learner.from_config(Actor, config.actor, key=key_actor)
-        critic = Learner.from_config(Critic, config.critic, key=key_critic)
+        world = Learner.create(World, config.world, key=key_world)
+        actor = Learner.create(Actor, config.actor, key=key_actor)
+        critic = Learner.create(Critic, config.critic, key=key_critic)
 
         if config.memory.type.lower() == "uniform":
             memory_cls = Uniform

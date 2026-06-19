@@ -13,13 +13,7 @@ class Learner(eqx.Module, Generic[ModelType]):
     optimizer_state: optax.OptState
 
     @classmethod
-    def create(cls, model: ModelType, optimizer: optax.GradientTransformation) -> "Learner[ModelType]":
-        params = eqx.filter(model, eqx.is_inexact_array)
-        optimizer_state = optimizer.init(params)
-        return cls(model, optimizer, optimizer_state)
-
-    @classmethod
-    def from_config(cls, model_cls, config, *, key: PRNGKeyArray):
+    def create(cls, model_cls, config, *, key: PRNGKeyArray) -> "Learner[ModelType]":
         if hasattr(model_cls, "create"): # nested / multiple routes
             model = model_cls.create(config, key=key)
         else:                            # primitive
