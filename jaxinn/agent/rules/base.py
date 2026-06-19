@@ -6,6 +6,7 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
 from jaxinn.structs import Experience
+from jaxinn.agent.memory import Memory
 from jaxinn.agent.registry import Registrable
 
 from .utils import flatten_time_major, replenish_terminal_obs
@@ -33,14 +34,25 @@ class Agent(Registrable, eqx.Module):
         if self.memory is None:
             return self
 
-        target_dim = 1 if isinstance(self.memory.capacity, int) else len(self.memory.capacity)
+        if isinstance(self.memory, Memory):
+            capacity = self.memory.capacity
+        elif isinstance(self.memory, Experience):
+            capacity = self.memory.transition.reward.shape[:-1]
+        else:
+            raise NotImplementedError
+
+        target_dim = 1 if isinstance(capacity, int) else len(capacity)
         experiences_flatten = jax.tree.map(
             lambda x: flatten_time_major(x, source, target_dim),
             experiences
         )
-        transitions_flatten, valid_length = replenish_terminal_obs(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
 
-        new_memory = self.memory.add(transitions_flatten, valid_length)
+        if target_dim == 1:
+            transitions_flatten, valid_length = replenish_terminal_obs(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
+            new_memory = self.memory.add(transitions_flatten, valid_length)
+        else:
+            new_memory = experiences_flatten
+
         return eqx.tree_at(
             lambda x: x.memory,
             self,

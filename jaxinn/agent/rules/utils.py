@@ -106,13 +106,12 @@ def compute_adv_and_ret(
         rewards: jax.Array,
         values: jax.Array,
         baselines: jax.Array,
-        dones: jax.Array,
-        bootstrap: jax.Array,
+        terminated: jax.Array,
+        next_values: jax.Array,
         discount_factor: float = 0.99,
         uae_lambda: float = 0.95,
 ) -> Tuple[jax.Array, jax.Array]:
-
-    def uae_step_fn(carry, inputs):
+    def uae_step_fn(uae, inputs):
         """
         Unified advantage estimator (UAE): a generalized version of GAE.
 
@@ -120,27 +119,25 @@ def compute_adv_and_ret(
 
         Reference: https://arxiv.org/pdf/2302.00533
         """
-        uae, next_value = carry
-        reward, value, baseline, done = inputs
+        reward, value, baseline, next_value, term = inputs
 
         delta = (
             reward
-            + discount_factor * next_value * (1 - done)
+            + discount_factor * next_value * (1 - term)
             - baseline
         )
         z = value - baseline
-        discounted_uae = discount_factor * uae_lambda * (1 - done) * uae
+        discounted_uae = discount_factor * uae_lambda * (1 - term) * uae
         advantage = delta + discounted_uae
         uae = advantage - z
-        return (uae, value), advantage
+        return uae, advantage
 
-    uae = jnp.zeros_like(bootstrap)
-    input_carry = (uae, bootstrap)
+    uae = jnp.zeros_like(values[0])
 
     _, advantages = jax.lax.scan(
         uae_step_fn,
-        input_carry,
-        (rewards, values, baselines, dones),
+        uae,
+        (rewards, values, baselines, next_values, terminated),
         reverse=True,
     )
     return_predictions = advantages + baselines

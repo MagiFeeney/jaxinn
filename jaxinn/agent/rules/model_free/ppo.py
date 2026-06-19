@@ -1,4 +1,3 @@
-import math
 from typing import Any, Dict, Optional, Tuple, ClassVar, Type
 
 import jax
@@ -7,6 +6,7 @@ from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 import distrax
 
+from jaxinn.structs import Experience
 from jaxinn.configs import PPOAgentConfig, ActorCriticSharedConfig, ActorCriticDecoupledConfig, PerceptionActorConfig, PerceptionCriticConfig
 from jaxinn.agent.registry import Registrable
 from jaxinn.agent.rules.base import Agent
@@ -15,7 +15,6 @@ from jaxinn.agent.rules.utils import compute_adv_and_ret
 from jaxinn.agent.models import Actor, Critic
 from jaxinn.agent.models.world.perception import Encoder
 from jaxinn.agent.losses import PPOLossMixIn
-from jaxinn.agent.memory import Memory, Batched
 
 
 class PerceptionActor(eqx.Module):
@@ -145,7 +144,7 @@ class PPOAgent(PPOLossMixIn, Agent):
     config_cls: ClassVar[Type] = PPOAgentConfig
 
     actor_critic: Learner[ActorCritic]
-    memory: Memory
+    memory: Experience
 
     clip_param: float = eqx.field(static=True)
     use_clipped_critic_loss: bool = eqx.field(static=True)
@@ -162,12 +161,10 @@ class PPOAgent(PPOLossMixIn, Agent):
             memory_id: jax.Array,
     ):
         actor_critic = Learner.from_config(ActorCritic, config.actor_critic, key=key)
-        memory = Batched(
-            seed_idx=memory_id,
+        memory = Experience.initialize(
             capacity=config.memory.capacity,
             obs_shape=config.actor_critic.obs_shape,
             action_size=config.actor_critic.action_size,
-            num_seeds=config.memory.num_seeds,
         )
 
         return cls(
@@ -184,27 +181,28 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None, action
 
     def make_batch_fn(self) -> callable:
-        data = self.memory.get_all()
+        transition, terminal_obs = self.memory.transition, self.memory.terminal_observation
 
         # Get advantages and returns
-        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(data.next_obs).mean()
-        baselines = values[:-1]
+        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs[:-1]).mean()
+        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs[1:]).mean() # Recalculate values on actual terminal observation to handle truncation
+        baselines = values
         advantages, returns = compute_adv_and_ret(
-            data.reward[1:],
-            values[:-1],
+            transition.reward[1:],
+            values,
             baselines,
-            data.terminated[1:],
-            bootstrap=values[-1],
+            transition.terminated[1:],
+            next_values,
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda
         )
 
         # Get action log probs
-        actor_dists = jax.vmap(jax.vmap(self.actor_critic.get_actor_dist))(data.next_obs[:-1])
-        log_probs = actor_dists.log_prob(data.action[1:])
+        actor_dists = jax.vmap(jax.vmap(self.actor_critic.get_actor_dist))(transition.next_obs[:-1])
+        log_probs = actor_dists.log_prob(transition.action[1:])
 
         # Apply shuffle and split for training data
-        train_data = (data.next_obs[:-1], data.action[1:], advantages, returns, values[:-1], log_probs)
+        train_data = (transition.next_obs[:-1], transition.action[1:], advantages, returns, values[:-1], log_probs)
         flatten_train_data = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), train_data)
 
         def step_fn(key: PRNGKeyArray):
