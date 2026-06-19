@@ -159,7 +159,7 @@ class Interactor:
             interact_step_fn,
             (interaction_state, key),
             None,
-            episode_length
+            episode_length + 1
         )
         return interaction_state, experiences
 
