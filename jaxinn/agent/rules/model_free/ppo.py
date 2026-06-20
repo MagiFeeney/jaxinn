@@ -121,8 +121,7 @@ class ActorCriticShared(ActorCritic):
 
     @classmethod
     def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray): # TODO: import
-        key_encoder, key_actor, key_critic = jax.random.split(key, 3
-                                                              )
+        key_encoder, key_actor, key_critic = jax.random.split(key, 3)
         encoder = Encoder.create(config.encoder, key=key_encoder)
         actor = Actor(**config.actor(), key=key_actor)
         critic = Critic(**config.critic(), key=key_critic)
