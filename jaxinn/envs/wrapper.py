@@ -1,10 +1,12 @@
+from typing import Any, Callable, Tuple, Optional
+
 import jax
 import jax.numpy as jnp
-from typing import Any, Callable, Tuple
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from envs.environment import Environment, EnvInfo, EnvState, Transition
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo, EnvState
 from envs.spaces import OneHotDiscrete
 
 
@@ -28,6 +30,10 @@ class Wrapper(Environment):
     @property
     def action_space(self):
         return self.env.action_space
+
+    @property
+    def max_episode_length(self) -> Optional[int]:
+        return self.env.max_episode_length
 
     def __getattr__(self, name):
         if name == "env":
@@ -57,6 +63,34 @@ class Batched(Wrapper):
         return self.vmap_step(keys, env_state, action)
 
 
+class TimeLimit(Wrapper):
+    max_episode_length: int = eqx.field(static=True)
+
+    def __init__(self, env: Environment, max_episode_length: int):
+        super().__init__(env)
+        self.max_episode_length = max_episode_length
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+
+        state_with_time = EnvState(
+            state=env_state,
+            time=jnp.zeros((), dtype=jnp.int32),
+        )
+        return transition, env_info, state_with_time
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
+        time = env_state.time + 1
+        truncated = time >= self.max_episode_length
+        new_transition = eqx.tree_at(lambda t: t.truncated, transition, truncated)
+        state_with_time = EnvState(
+            state=next_env_state,
+            time=time,
+        )
+        return new_transition, env_info, state_with_time
+
+
 class AutoReset(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
@@ -72,7 +106,7 @@ class AutoReset(Wrapper):
         def select_fn(path, reset_val, step_val):
             if hasattr(self, "is_static_leaf") and callable(self.is_static_leaf) and self.is_static_leaf(path, step_val):
                 return step_val
-            done = step_transition.done
+            done = step_transition.terminated | step_transition.truncated
             if done.ndim == 0:
                 return jnp.where(done, reset_val, step_val)
             if done.shape[0] != reset_val.shape[0]:
@@ -110,7 +144,7 @@ class ActionRepeat(Wrapper):
         def repeat_fn(carry, _):
             transition, env_info, env_state, key = carry
             key, key_step = jax.random.split(key, 2)
-            prev_done = transition.done
+            prev_done = transition.terminated | transition.truncated
 
             step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
 
@@ -211,18 +245,26 @@ class UnsqueezeScalar(Wrapper):
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(
-            lambda t: (t.reward, t.done),
+            lambda t: (t.reward, t.terminated, t.truncated),
             transition,
-            (jnp.atleast_1d(transition.reward), jnp.atleast_1d(transition.done))
+            (
+                jnp.atleast_1d(transition.reward),
+                jnp.atleast_1d(transition.terminated),
+                jnp.atleast_1d(transition.truncated),
+            )
         )
         return transition, info, state
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(
-            lambda t: (t.reward, t.done),
+            lambda t: (t.reward, t.terminated, t.truncated),
             transition,
-            (jnp.atleast_1d(transition.reward), jnp.atleast_1d(transition.done))
+            (
+                jnp.atleast_1d(transition.reward),
+                jnp.atleast_1d(transition.terminated),
+                jnp.atleast_1d(transition.truncated),
+            )
         )
         return transition, info, next_state
 

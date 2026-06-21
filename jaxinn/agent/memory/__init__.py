@@ -1,4 +1,3 @@
-from .buffer import Memory, Uniform, Prioritized
+from .buffer import Memory, Uniform, Prioritized, Batched
 
-
-__all__ = ['Memory', 'Uniform', 'Prioritized']
+__all__ = ['Memory', 'Uniform', 'Prioritized', 'Batched']

@@ -6,18 +6,17 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from jax._src.tree_util import DictKey, FlattenedIndexKey, GetAttrKey, SequenceKey
-
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import Box, Dict
-from envs.vmap import VmapTransformation
-
 from mujoco_playground import registry
 from mujoco_playground import MjxEnv
 from mujoco_playground import State as MjxState
+from mujoco_playground._src import dm_control_suite, locomotion, manipulation
 from mujoco import mjx
 from mujoco.mjx.warp import types as mjx_warp_types
 
-from mujoco_playground._src import dm_control_suite, locomotion, manipulation
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import Box, Dict
+from envs.vmap import VmapTransformation
 
 
 def get_default_vision_config(env_name: str, num_envs: int = 1) -> config_dict.ConfigDict:
@@ -283,7 +282,8 @@ class Playground(Environment, PlaygroundVmapMixIn):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=env_state.obs["pixels/view_0"] if self.vision else env_state.obs,
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
             info=env_state.info,
@@ -298,7 +298,8 @@ class Playground(Environment, PlaygroundVmapMixIn):
             action=action,
             next_obs=next_env_state.obs["pixels/view_0"] if self.vision else next_env_state.obs,
             reward=next_env_state.reward,
-            done=next_env_state.done.astype(bool),
+            terminated=terminated,
+            truncated=jnp.zeros_like(terminated) # delegated to TimeLimit wrapper
         )
         env_info = EnvInfo(
             info=next_env_state.info,
@@ -357,3 +358,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
     @property
     def action_size(self) -> int:
         return self.env.action_size
+
+    @property
+    def max_episode_length(self) -> None:
+        return None

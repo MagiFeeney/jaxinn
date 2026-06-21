@@ -1,10 +1,12 @@
 import abc
+from typing import Tuple, Union
+
 import jax
 import jax.numpy as jnp
-import equinox as eqx
-from typing import Tuple
 from jaxtyping import PRNGKeyArray
-from envs import Transition
+import equinox as eqx
+
+from jaxinn.structs import Transition
 
 from .storage import Storage, CPUStorage, GPUStorage
 
@@ -15,9 +17,9 @@ class Memory(eqx.Module):
     seed_idx: jax.Array   # Unique id to anchor data for multiple seeds
     ptr: jax.Array
     size: jax.Array
-    capacity: int = eqx.field(static=True)
+    capacity: Union[int, Tuple[int, ...]] = eqx.field(static=True)
 
-    def __init__(self, seed_idx: jax.Array, capacity: int, obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
+    def __init__(self, seed_idx: jax.Array, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
         self.seed_idx = jnp.array(seed_idx, dtype=jnp.int32)
         self.capacity = capacity
         # Initialize data on either the CPU or GPU, depending on the memory requirements of the task
@@ -32,8 +34,12 @@ class Memory(eqx.Module):
         return getattr(self.storage, name)
 
     @property
+    def length(self):
+        return self.capacity if isinstance(self.capacity, int) else self.capacity[0]
+
+    @property
     def full(self):
-        return self.size == self.capacity
+        return self.size == self.length
 
     @abc.abstractmethod
     def add(self, transition: Transition):
@@ -53,20 +59,21 @@ class Uniform(Memory):
     def add(self, transition: Transition, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
-        index = (self.ptr + jnp.arange(batch_size)) % self.capacity
-
-        # Write new data
-        new_storage, token = self.storage.write(self.seed_idx, index, transition)
 
         # Get actual num. of data added
-        if valid_length is not None:
-            num_data = valid_length
-        else:
-            num_data = batch_size
+        num_data = batch_size if valid_length is None else valid_length
+
+        # Get valid indices
+        mask = jnp.arange(batch_size) < num_data
+        index = (self.ptr + jnp.arange(batch_size)) % self.length
+        valid_index = jnp.where(mask, index, self.length)
+
+        # Write new data
+        new_storage, token = self.storage.write(self.seed_idx, valid_index, transition)
 
         # Update pointer and size; token is used to prevent xla "Dead code elimination"
-        new_ptr = (self.ptr + num_data + token) % self.capacity
-        new_size = jnp.minimum(self.size + num_data, self.capacity)
+        new_ptr = (self.ptr + num_data + token) % self.length
+        new_size = jnp.minimum(self.size + num_data, self.length)
 
         return eqx.tree_at(
             lambda m: (m.storage, m.ptr, m.size),
@@ -80,19 +87,19 @@ class Uniform(Memory):
 
         batch_index = self.sample_batch_index(batch_size, key, chunk_size=chunk_size)
         offset = jnp.arange(chunk_size)
-        sample_index = (offset[:, None] + batch_index[None, :]) % self.capacity # T x B
+        sample_index = (offset[:, None] + batch_index[None, :]) % self.length # T x B
 
         return self.storage.read(self.seed_idx, sample_index)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
         start = jnp.where(
             self.full,
-            self.ptr - self.capacity, # Prevent overshooting due to wrapping; if negative, turn non-contiguous intervals into a contiguous one, facilitating sampling efficiency
+            self.ptr - self.length, # Prevent overshooting due to wrapping; if negative, turn non-contiguous intervals into a contiguous one, facilitating sampling efficiency
             0
         )
         end = self.ptr - chunk_size + 1
 
-        batch_index = jax.random.randint(key, (batch_size,), start, end) % self.capacity # Equivalence between negative interval [-m, -1] to [N - m, N - 1] under modulo
+        batch_index = jax.random.randint(key, (batch_size,), start, end) % self.length # Equivalence between negative interval [-m, -1] to [N - m, N - 1] under modulo
         return batch_index
 
 
@@ -173,6 +180,8 @@ class Prioritized(Uniform):
 
     # Require chunk_size to be given because we want to handle the overshooting during settling priorities
     def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, chunk_size: int, num_seeds: int | None = None, alpha=0.6, beta=0.4):
+        if not isinstance(capacity, int):
+            raise TypeError(f"Capacity for Prioritized memory only supports integer types, but got {type(capacity).__name__}.")
         super().__init__(capacity, obs_shape, action_size, num_seeds)
         self.alpha = alpha
         self.beta = beta
@@ -195,3 +204,16 @@ class Prioritized(Uniform):
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int): # chunk_size not used, just to align with base
         batch_index, _ = self.sumtree.sample(batch_size, key)
         return batch_index
+
+
+class Batched(Uniform):
+    def __init__(self, seed_idx: jax.Array, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
+        super().__init__(seed_idx, capacity, obs_shape, action_size, num_seeds)
+
+    def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
+        return super().sample_batch_index(batch_size, key, chunk_size=1)
+
+    def get_all(self) -> Transition:
+        read_index = jnp.arange(self.length)
+        batch = self.storage.read(self.seed_idx, read_index)
+        return batch

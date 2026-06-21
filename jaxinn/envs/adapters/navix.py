@@ -3,13 +3,13 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import Box, Discrete
-
 import navix
 from navix.environments import Environment as NavixEnvironment
 from navix.environments import Timestep as NavixTimestep
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import Box, Discrete
 
 
 class Navix(Environment):
@@ -31,7 +31,8 @@ class Navix(Environment):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=env_state.observation.astype(jnp.float32),
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
             info=env_state.info,
@@ -45,7 +46,8 @@ class Navix(Environment):
             action=action,
             next_obs=next_env_state.observation.astype(jnp.float32),
             reward=next_env_state.reward,
-            done=next_env_state.is_done(),
+            terminated=next_env_state.is_termination(),
+            truncated=next_env_state.is_truncation(),
         )
         env_info = EnvInfo(info=next_env_state.info)
         return transition, env_info, next_env_state
@@ -71,3 +73,7 @@ class Navix(Environment):
     @property
     def action_size(self):
         return len(self.env.action_set)
+
+    @property
+    def max_episode_length(self) -> int:
+        return self.max_steps
