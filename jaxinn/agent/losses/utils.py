@@ -2,27 +2,24 @@ import jax
 import equinox as eqx
 import functools
 
-from typing import Union, List
+from typing import Union, Sequence
 
 
-def differentiable(fields: Union[str, List[str]]):
+def differentiable(fields: Union[str, Sequence[str]]):
     """
     Decorator that selects differentiable sub-modules by input names.
     """
     if isinstance(fields, str):
-        fields = [fields]
+        fields = (fields,)
+    fields = tuple(fields)
+
+    def selector(a):
+        return tuple(getattr(a, field) for field in fields)
 
     def wrapper(func):
         @functools.wraps(func)
         def body(agent, *args, **kwargs):
-            stopped_agent = jax.tree.map(
-                lambda x: jax.lax.stop_gradient(x) if eqx.is_inexact_array(x) else x,
-                agent
-            )
-
-            def selector(a):
-                return tuple(getattr(a, field) for field in fields)
-
+            stopped_agent = jax.lax.stop_gradient(agent)
             mixed_agent = eqx.tree_at(
                 selector,
                 stopped_agent,
