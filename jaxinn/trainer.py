@@ -5,11 +5,11 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 
-from agent import Agent, Experience
-from agent.models import LatentState
-from envs import Environment, make_env
-from config import Agent as AgentConfig, Config
-from logger import JaxLogger as Logger
+from jaxinn.structs import Experience, LatentState
+from jaxinn.agent import Agent
+from jaxinn.envs import Environment, make_env
+from jaxinn.configs import AgentConfig, Config
+from jaxinn.logger import JaxLogger as Logger
 
 
 EnvState = TypeVar("EnvState")
@@ -39,6 +39,8 @@ class Interactor:
         return num_envs
 
     def resolve_episode_length(self, num_envs: int, mode: InteractionMode) -> int:
+        if mode == "eval":
+            return self.env.get("max_episode_length") // self.action_repeat
         episode_length = self.episode_length // num_envs // self.action_repeat
         if mode == "prefill" and self.prefill_mode == "serial":
             episode_length *= self.num_prefill_episodes
@@ -60,7 +62,7 @@ class Interactor:
             num_envs = self.env.get("num_envs", mode)
         else:
             init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
-        init_latent_state = agent.init_state(key_init, batch_shape=(num_envs,), eval=eval)
+        init_latent_state = agent.init_latent_state(key_init, batch_shape=(num_envs,), eval=eval)
         init_terminal_obs = info.terminal_observation
         interaction_state = InteractionState(
             experience = Experience(
@@ -111,18 +113,19 @@ class Interactor:
 
         def interact_step_fn(carry, _):
             interaction_state, key = carry
+            last_transition = interaction_state.experience.transition
             key, key_init, key_action, key_step = jax.random.split(key, 4)
 
             # Isolate the reset observation in current-step autoreset environments.
-            mask = 1 - interaction_state.experience.transition.done
+            done = last_transition.terminated | last_transition.truncated
+            mask = 1 - done
             last_latent_state = jax.tree.map(
                 lambda current, reset: jnp.where(mask, current, reset),
                 interaction_state.latent_state,
-                agent.init_state(key_init, batch_shape=(num_envs,))
+                agent.init_latent_state(key_init, batch_shape=(num_envs,))
             )
-            last_action = interaction_state.experience.transition.action * mask
-            obs = interaction_state.experience.transition.next_obs
-            env_state = interaction_state.env_state
+            last_action = last_transition.action * mask
+            obs = last_transition.next_obs
 
             operand = (last_latent_state, last_action, obs, key_action)
             if prefill:
@@ -130,6 +133,7 @@ class Interactor:
             else:
                 latent_state, action = agent_act_branch(operand)
 
+            env_state = interaction_state.env_state
             transition, info, next_env_state = self.env.step(key_step, env_state, action, mode=mode)
 
             # Decouple terminal and reset observation in next-step autoreset environments.
@@ -137,7 +141,7 @@ class Interactor:
             if last_done is not None:
                 latent_state = jax.tree.map(
                     lambda reset, current: jnp.where(last_done, reset, current),
-                    agent.init_state(key_init, batch_shape=(num_envs,)),
+                    agent.init_latent_state(key_init, batch_shape=(num_envs,)),
                     latent_state
                 )
             new_interaction_state = InteractionState(
@@ -155,7 +159,7 @@ class Interactor:
             interact_step_fn,
             (interaction_state, key),
             None,
-            episode_length
+            episode_length + 1
         )
         return interaction_state, experiences
 
@@ -180,20 +184,21 @@ class Trainer(Interactor, eqx.Module):
     @classmethod
     def create(cls, config: Config):
         env = make_env(**config.env(), wrapper=config.env.wrapper())
-        logger = Logger.create(**config.logger(), axis_name=config.axis_name)
+        logger = Logger.create(**config.logger(), axis_name=config.axis_name) if config.logger.log_dir else None
         return cls(env=env, logger=logger, **config.exploration())
 
     def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
-        agent, interaction_state, metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
+        if self.num_prefill_episodes > 0:
+            agent, interaction_state, prefill_metrics = self.prefill(agent, key_prefill) # TODO: handle external dataset
 
-        if metrics is not None:
-            self.logger.log_dict(
-                metrics,
-                step=self.num_prefill_episodes * self.episode_length
-            )
+            if self.logger and prefill_metrics:
+                self.logger.log_dict(
+                    prefill_metrics,
+                    step=self.num_prefill_episodes * self.episode_length
+                )
 
         # Train and evaluate
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
@@ -201,7 +206,7 @@ class Trainer(Interactor, eqx.Module):
             key, key_train, key_evaluate = jax.random.split(key, 3)
 
             # Training
-            (agent, interaction_state, _), metrics = jax.lax.scan(
+            (agent, interaction_state, _), train_metrics = jax.lax.scan(
                 lambda carry, _: self.train(*carry),
                 (agent, interaction_state, key_train),
                 None,
@@ -209,11 +214,12 @@ class Trainer(Interactor, eqx.Module):
             )
 
             start_step = iteration * self.eval_interval + self.num_prefill_episodes * self.episode_length
-            self.logger.log_sequence(
-                metrics,
-                start_step=start_step,
-                interval=self.train_interval
-            )
+            if self.logger and train_metrics:
+                self.logger.log_sequence(
+                    train_metrics,
+                    start_step=start_step,
+                    interval=self.train_interval
+                )
 
             # Evaluation
             episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
@@ -221,19 +227,22 @@ class Trainer(Interactor, eqx.Module):
 
             eval_metrics = {"eval/mean": evaluation}
             eval_step = self.eval_interval + start_step
-            self.logger.log_dict(
-                eval_metrics,
-                step=eval_step,
-            )
+            if self.logger and eval_metrics:
+                self.logger.log_dict(
+                    eval_metrics,
+                    step=eval_step,
+                )
 
             extra = {"eval/return": episodic_returns}
-            self.logger.print_summary(
-                metrics=metrics | eval_metrics | extra,
-                step=eval_step,
-                headline_params={"n": self.num_eval_episodes}
-            )
+            print_metrics = train_metrics | eval_metrics | extra
+            if self.logger and print_metrics:
+                self.logger.print_summary(
+                    print_metrics,
+                    step=eval_step,
+                    headline_params={"n": self.num_eval_episodes}
+                )
 
-            return (agent, interaction_state, key), (metrics, evaluation)
+            return (agent, interaction_state, key), (train_metrics, evaluation)
 
         if self.prefill_mode != "serial" or self.restart:
             key, key_init = jax.random.split(key, 2)
@@ -248,10 +257,14 @@ class Trainer(Interactor, eqx.Module):
         return final_agent, (metrics, evaluation)
 
     def learn(self, agent: Agent, key: PRNGKeyArray, prefill: bool = False) -> Tuple[Agent, Optional[Dict[str, jax.Array]]]:
+
+        make_batch = agent.make_batch_fn()
+
         def learn_step_fn(carry, _):
             agent, key = carry
-            key, key_learn = jax.random.split(key, 2)
-            new_agent, metrics = agent.learn(key_learn)
+            key, key_batch, key_learn = jax.random.split(key, 3)
+            data = make_batch(key_batch)
+            new_agent, metrics = agent.learn(data, key_learn)
             return (new_agent, key), metrics
 
         num_iterations = self.train_iterations if not prefill else self.pretrain_iterations
@@ -260,12 +273,12 @@ class Trainer(Interactor, eqx.Module):
             (agent, _), metrics = jax.lax.scan(
                 learn_step_fn,
                 (agent, key),
-                None,
+                None,           # TODO: add pre-computing option
                 num_iterations
             )
             avg_metrics = jax.tree.map(jnp.mean, metrics)
             return agent, avg_metrics
-        return agent, None
+        return agent, {}
 
     def prefill(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, InteractionState, Dict[str, jax.Array]]:
         key_init, key_interact, key_learn = jax.random.split(key, 3)
@@ -311,7 +324,8 @@ class Trainer(Interactor, eqx.Module):
         key_init, key_interact = jax.random.split(key, 2)
         interaction_state = self.init_interaction_state(agent, key_init, eval=True, num_envs=num_envs)
         _, experiences = self.interact(agent, interaction_state, key_interact, eval=True, num_envs=num_envs)
-        masks = 1 - jnp.maximum.accumulate(experiences.transition.done, axis=0)
+        done = experiences.transition.terminated | experiences.transition.truncated
+        masks = 1 - jnp.maximum.accumulate(done, axis=0)
         shifted_masks = jnp.concatenate([jnp.ones_like(masks[0:1]), masks[:-1]])
         cumulative_rewards = jnp.sum(experiences.transition.reward * shifted_masks) # Return up to the first termination inclusively
         return cumulative_rewards
@@ -334,7 +348,10 @@ def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
         "obs_shape":                env.get("observation_space").shape,
         "action_size":              env.get("action_size"),
         "is_action_space_discrete": env.get("is_action_space_discrete"),
-        "num_seeds":                config.num_seeds,
         "num_environment_steps":    config.exploration.num_environment_steps,
+        "episode_length":           config.exploration.episode_length,
+        "num_seeds":                config.num_seeds,
+        "num_envs":                 config.env.wrapper.num_envs,
+        "action_repeat":            config.env.wrapper.action_repeat,
     }
     return config.agent.resolve(ctx)

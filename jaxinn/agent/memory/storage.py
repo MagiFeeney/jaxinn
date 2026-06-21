@@ -1,31 +1,36 @@
 import abc
 import numpy as np
-from typing import Tuple, Any
+from typing import Tuple, Any, Union
 
 import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from envs import Transition
+from jaxinn.structs import Transition
 
 
 class HostRAM:
-    def __init__(self, num_seeds: int, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, num_seeds: int, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int):
+        capacity = (capacity,) if isinstance(capacity, int) else capacity
         self.data = Transition(
-            action=np.zeros((num_seeds, capacity, action_size), dtype=np.float32),
-            next_obs=np.zeros((num_seeds, capacity, *obs_shape), dtype=np.uint8),
-            reward=np.zeros((num_seeds, capacity, 1), dtype=np.float32),
-            done=np.zeros((num_seeds, capacity, 1), dtype=bool)
+            action=np.zeros((num_seeds, *capacity, action_size), dtype=np.float32),
+            next_obs=np.zeros((num_seeds, *capacity, *obs_shape), dtype=np.uint8 if len(obs_shape) >= 3 else np.float32),
+            reward=np.zeros((num_seeds, *capacity, 1), dtype=np.float32),
+            terminated=np.zeros((num_seeds, *capacity, 1), dtype=bool),
+            truncated=np.zeros((num_seeds, *capacity, 1), dtype=bool),
         )
+        self.length = capacity[0]
 
     def write(self, seed_idx: jax.Array, index: np.ndarray, transition: Transition):
         token = np.zeros_like(seed_idx, dtype=np.int32) # dummy output
-        seed_idx = seed_idx.reshape(-1, 1)
-        jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, index), new), self.data, transition)
+        mask = index != self.length
+        valid_index = index[mask]
+        seed_idx = seed_idx.reshape(-1, *(1,) * (valid_index.ndim - 1))
+        jax.tree.map(lambda arr, new: arr.__setitem__((seed_idx, valid_index), new[mask]), self.data, transition)
         return token
 
     def read(self, seed_idx: jax.Array, sample_index: np.ndarray) -> Transition:
-        seed_idx = seed_idx.reshape(-1, 1, 1)
+        seed_idx = seed_idx.reshape(-1, *(1,) * (sample_index.ndim - 1))
         return jax.tree.map(lambda x: x[seed_idx, sample_index], self.data)
 
 
@@ -85,17 +90,19 @@ class CPUStorage(Storage):
 class GPUStorage(Storage):
     data: Transition
 
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int):
+        capacity = (capacity,) if isinstance(capacity, int) else capacity
         self.data = Transition(
-            action=jnp.zeros((capacity, action_size), dtype=jnp.float32),
-            next_obs=jnp.zeros((capacity, *obs_shape), dtype=jnp.uint8),
-            reward=jnp.zeros((capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
-            done=jnp.zeros((capacity, 1), dtype=bool)
+            action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
+            next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
+            reward=jnp.zeros((*capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
+            terminated=jnp.zeros((*capacity, 1), dtype=bool),
+            truncated=jnp.zeros((*capacity, 1), dtype=bool),
         )
 
     def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition):
         new_data = jax.tree.map(
-            lambda buf, batch: buf.at[index].set(batch),
+            lambda buf, batch: buf.at[index].set(batch, mode="drop"),
             self.data, transition
         )
         return eqx.tree_at(lambda s: s.data, self, new_data), jnp.int32(0)

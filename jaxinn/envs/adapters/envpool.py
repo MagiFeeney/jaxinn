@@ -4,14 +4,14 @@ from typing import Any, Callable, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import to_jax_space
-from envs.vmap import VmapTransformation
-
 import envpool
 from envpool.python.envpool import EnvPoolMixin
 import equinox as eqx
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import to_jax_space
+from envs.vmap import VmapTransformation
 
 
 class EnvPoolVmapMixIn(VmapTransformation):
@@ -96,7 +96,8 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
             info=info,
@@ -106,12 +107,12 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
 
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
         next_env_state, (next_obs, reward, terminated, truncated, info) = self.v_step(self, key, env_state, action)
-        done = terminated | truncated
         transition = Transition(
             action=action,
             next_obs=next_obs,
             reward=reward,
-            done=done,
+            terminated=terminated,
+            truncated=truncated,
         )
         env_info = EnvInfo(
             info=info,
@@ -132,3 +133,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
         if self.is_action_space_discrete:
             return self.action_space.n
         return math.prod(self.action_space.shape)
+
+    @property
+    def max_episode_length(self) -> int:
+        return self.max_episode_steps

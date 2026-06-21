@@ -3,12 +3,13 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
-from envs.environment import Environment, EnvInfo, Transition
-from envs.spaces import Box
-
 import brax
 from brax.envs import Env as BraxEnv
 from brax.envs.base import State as BraxEnvState
+
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo
+from envs.spaces import Box
 
 
 class Brax(Environment):
@@ -30,7 +31,8 @@ class Brax(Environment):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=env_state.obs,
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(
             info=env_state.info,
@@ -41,11 +43,13 @@ class Brax(Environment):
 
     def step(self, key: PRNGKeyArray, env_state: BraxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, BraxEnvState]:
         next_env_state = self.env.step(env_state, action)
+        terminated = next_env_state.done.astype(bool)
         transition = Transition(
             action=action,
             next_obs=next_env_state.obs,
             reward=next_env_state.reward,
-            done=next_env_state.done.astype(bool),
+            terminated=terminated,
+            truncated=jnp.zeros_like(terminated) # delegated to TimeLimit wrapper
         )
         env_info = EnvInfo(
             info=next_env_state.info,
@@ -76,3 +80,7 @@ class Brax(Environment):
     @property
     def action_size(self):
         return self.env.action_size
+
+    @property
+    def max_episode_length(self) -> None:
+        return None

@@ -8,10 +8,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from trainer import Trainer, resolve_agent_config
-from agent import Agent
-from custom import EnvSelector, get_config, post_process
-from config import Config
+from jaxinn.trainer import Trainer, resolve_agent_config
+from jaxinn.agent import Agent
+from jaxinn.configs import Config, EnvSelector, get_config, post_process
 
 
 def setup_context(vectorization_mode: Optional[str]):
@@ -51,7 +50,7 @@ def main(config):
 
     # Spawn parallel agents
     def make_agent(key, memory_id):
-        return Agent(agent_config, key=key, memory_id=memory_id)
+        return Agent.create(agent_config, key=key, memory_id=memory_id)
 
     agents = jax.vmap(jax.vmap(make_agent))(keys_agent, memory_ids)
 

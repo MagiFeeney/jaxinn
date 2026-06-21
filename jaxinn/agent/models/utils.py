@@ -91,10 +91,6 @@ class FixedDistrax(eqx.Module):
         return getattr(self.dist.distribution, name)
 
 
-def _is_factory(x: Any) -> bool:
-    return isinstance(x, (FixedFactory, Composer))
-
-
 class Composer(eqx.Module):
     cls: Callable = eqx.field(static=True)
     factory_args: tuple
@@ -123,6 +119,13 @@ class FixedFactory(eqx.Module):
             return Composer(self.cls, args, kwargs)        # Delay instantiation
         else:
             return FixedDistrax(self.cls, *args, **kwargs) # Primitive fires with parameters
+
+
+FactoryLike = Composer | FixedFactory
+
+
+def _is_factory(x: Any) -> bool:
+    return isinstance(x, FactoryLike)
 
 
 class ProxyDistrax:

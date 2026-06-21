@@ -5,12 +5,12 @@ from typing import Any, Optional, Tuple, Dict
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
+import gymnasium as gym
 
-from envs.environment import Environment, EnvInfo, EnvState, Transition
+from jaxinn.structs import Transition
+from envs.environment import Environment, EnvInfo, EnvState
 from envs.vmap import VmapTransformation
 from envs.spaces import to_jax_space
-
-import gymnasium as gym
 
 
 class GymnasiumVmapMixIn(VmapTransformation):
@@ -131,16 +131,16 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
             next_obs=obs,
             reward=jnp.zeros(()),
-            done=jnp.zeros((), dtype=bool),
+            terminated=jnp.zeros((), dtype=bool),
+            truncated=jnp.zeros((), dtype=bool),
         )
         env_info = EnvInfo(terminal_observation=None)
-        env_state = EnvState(last_done=transition.done)
+        env_state = EnvState(last_done=jnp.zeros((), dtype=bool))
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
         # VmapMixIn → Jax callback → python env
         next_obs, reward, terminated, truncated = self.v_step(self, key, action)
-        done = terminated | truncated
         # Gymnasium reset observation is independent of the action
         action = jnp.where(
             env_state.last_done,
@@ -151,10 +151,11 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
             action=action,
             next_obs=next_obs,
             reward=reward,
-            done=done,
+            terminated=terminated,
+            truncated=truncated,
         )
         env_info = EnvInfo(terminal_observation=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
-        next_env_state = EnvState(last_done=done)
+        next_env_state = EnvState(last_done=terminated | truncated)
         return transition, env_info, next_env_state
 
     @property
@@ -172,3 +173,7 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         if self.is_action_space_discrete:
             return self.action_space.n
         return math.prod(self.action_space.shape)
+
+    @property
+    def max_episode_length(self) -> int:
+        return self.max_episode_steps
