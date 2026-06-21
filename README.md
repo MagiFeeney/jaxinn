@@ -1,4 +1,4 @@
-# Jaxinn: An Ultra Fast Implementation of Dreamer in JAX
+# Jaxinn: A Modular, Vectorized, and Extensible JAX Reinforcement Learning Framework
 
 ## Code Structure
 
