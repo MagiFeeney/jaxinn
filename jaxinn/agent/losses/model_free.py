@@ -23,7 +23,7 @@ class PPOLossMixIn(Loss, ActorCriticLoss):
         actor_dists = jax.vmap(self.actor_critic.get_actor_dist)(obs)
         log_probs = actor_dists.log_prob(actions)
 
-        ratio = jnp.exp(log_probs - old_log_probs)
+        ratio = jnp.exp(log_probs - old_log_probs)[..., None]
         surrogate = ratio * advantages
         clip_ratio = jnp.clip(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
         surrogate_clipped = clip_ratio * advantages
