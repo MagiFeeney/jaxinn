@@ -155,14 +155,21 @@ dx = ProxyDistrax()
 
 def make_mlp(
         input_size: int,
-        hidden_size: int,
+        hidden_size: Union[int, list[int]],
         output_size: int,
-        num_layers: int,
+        num_layers: Optional[int] = None,
         activation: Union[str, Callable, StaticCallable],
         *,
         key: PRNGKeyArray
-):
-    sizes = [input_size] + [hidden_size] * num_layers + [output_size]
+) -> eqx.nn.Sequential:
+    if isinstance(hidden_size, int):
+        assert num_layers is not None and num_layers >= 0, (
+            "When hidden_size is an integer, num_layers must be specified "
+            "and non-negative."
+        )
+        hidden_size = [hidden_size] * num_layers
+
+    sizes = [input_size] + hidden_size + [output_size]
 
     layers = []
     keys = jax.random.split(key, len(sizes) - 1)

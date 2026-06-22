@@ -23,9 +23,8 @@ class LinearEncoder(Encoder):
     def __init__(
             self,
             shape: Tuple[int, ...],
-            hidden_size: Optional[int] = None,
+            hidden_size: Optional[list[int]] = None,
             embedding_size: Optional[int] = None,
-            num_layers: Optional[int] = None,
             activation_function: Union[str, Callable] = "elu",
             *,
             key: PRNGKeyArray
@@ -37,13 +36,11 @@ class LinearEncoder(Encoder):
         activation = get_activation_fn(activation_function)
 
         if hidden_size is not None and \
-           embedding_size is not None and \
-           num_layers is not None:
+           embedding_size is not None:
             self.net = make_mlp(
                 input_size = shape[0],
                 hidden_size = hidden_size,
                 output_size = embedding_size,
-                num_layers = num_layers,
                 activation = StaticCallable(activation),
                 key = key
             )
@@ -67,8 +64,7 @@ class LinearDecoder(Decoder):
             shape: Tuple[int, ...],
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
-            hidden_size: int,
-            num_layers: int,
+            hidden_size: list[int],
             activation_function: Union[str, Callable] = "elu",
             *,
             key: PRNGKeyArray
@@ -86,7 +82,6 @@ class LinearDecoder(Decoder):
             input_size = belief_size + state_size,
             hidden_size = hidden_size,
             output_size = shape[0],
-            num_layers = num_layers,
             activation = StaticCallable(activation),
             key = key
         )
