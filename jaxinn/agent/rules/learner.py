@@ -27,14 +27,13 @@ class Learner(eqx.Module, Generic[ModelType]):
             model = model_cls.create(config, key=key)
         else:                            # primitive
             model = model_cls(**config(), key=key)
+
         optimizer = optax.chain(
             optax.clip_by_global_norm(config.optimizer.max_norm),
             optax.adam(config.optimizer.lr, eps=config.optimizer.eps)
         )
-        dynamic, static = eqx.partition(model, eqx.is_inexact_array)
-        dynamic_flatten, dynamic_treedef = jax.tree.flatten(dynamic)
-        optimizer_state = optimizer.init(dynamic_flatten)
-        return cls(dynamic_flatten, dynamic_treedef, static, optimizer, optimizer_state)
+
+        return cls(model, optimizer)
 
     def update(self, grads) -> "Learner":
         if isinstance(grads, Learner):
