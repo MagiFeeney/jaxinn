@@ -14,9 +14,10 @@ from mujoco import mjx
 from mujoco.mjx.warp import types as mjx_warp_types
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo
-from envs.spaces import Box, Dict
-from envs.vmap import VmapTransformation
+
+from ..environment import Environment, EnvInfo
+from ..spaces import Box, Dict
+from ..vmap import VmapTransformation
 
 
 def get_default_vision_config(env_name: str, num_envs: int = 1) -> config_dict.ConfigDict:

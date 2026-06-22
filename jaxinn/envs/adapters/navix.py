@@ -8,8 +8,9 @@ from navix.environments import Environment as NavixEnvironment
 from navix.environments import Timestep as NavixTimestep
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo
-from envs.spaces import Box, Discrete
+
+from ..environment import Environment, EnvInfo
+from ..spaces import Box, Discrete
 
 
 class Navix(Environment):

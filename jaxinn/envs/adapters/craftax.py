@@ -3,7 +3,7 @@ from typing import Tuple
 import jax
 from craftax.craftax_env import make_craftax_env_from_name
 
-from envs.adapters.gymnax import Gymnax
+from .adapters.gymnax import Gymnax
 
 
 class Craftax(Gymnax):
