@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, Union, Optional
 
 import jax
 import jax.nn as jnn
@@ -157,8 +157,8 @@ def make_mlp(
         input_size: int,
         hidden_size: Union[int, list[int]],
         output_size: int,
-        num_layers: Optional[int] = None,
         activation: Union[str, Callable, StaticCallable],
+        num_layers: Optional[int] = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
