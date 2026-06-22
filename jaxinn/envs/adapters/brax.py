@@ -8,8 +8,9 @@ from brax.envs import Env as BraxEnv
 from brax.envs.base import State as BraxEnvState
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo
-from envs.spaces import Box
+
+from ..environment import Environment, EnvInfo
+from ..spaces import Box
 
 
 class Brax(Environment):

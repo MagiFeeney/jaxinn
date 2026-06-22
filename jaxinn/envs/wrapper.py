@@ -6,8 +6,8 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo, EnvState
-from envs.spaces import OneHotDiscrete
+from .environment import Environment, EnvInfo, EnvState
+from .spaces import OneHotDiscrete
 
 
 class Wrapper(Environment):

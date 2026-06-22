@@ -10,7 +10,8 @@ from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo
+
+from ..environment import Environment, EnvInfo
 
 
 class TerminalObservationWrapper:

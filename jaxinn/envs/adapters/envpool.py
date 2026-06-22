@@ -9,9 +9,10 @@ from envpool.python.envpool import EnvPoolMixin
 import equinox as eqx
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo
-from envs.spaces import to_jax_space
-from envs.vmap import VmapTransformation
+
+from ..environment import Environment, EnvInfo
+from ..spaces import to_jax_space
+from ..vmap import VmapTransformation
 
 
 class EnvPoolVmapMixIn(VmapTransformation):

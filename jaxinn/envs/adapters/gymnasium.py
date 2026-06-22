@@ -8,9 +8,10 @@ from jaxtyping import PRNGKeyArray
 import gymnasium as gym
 
 from jaxinn.structs import Transition
-from envs.environment import Environment, EnvInfo, EnvState
-from envs.vmap import VmapTransformation
-from envs.spaces import to_jax_space
+
+from ..environment import Environment, EnvInfo, EnvState
+from ..vmap import VmapTransformation
+from ..spaces import to_jax_space
 
 
 class GymnasiumVmapMixIn(VmapTransformation):
