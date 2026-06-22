@@ -80,16 +80,14 @@ class CNNDecoder(PerceptionShared, ModelShared):
 @dataclass
 class LinearEncoder(PerceptionShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
-    hidden_size: Optional[int] = None
+    hidden_size: Optional[list[int]] = None
     embedding_size: Optional[int] = None
-    num_layers: Optional[int] = None
 
 
 @dataclass
 class LinearDecoder(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
-    hidden_size: int = 300
-    num_layers: int = 2
+    hidden_size: list[int] = field(default_factory=lambda: [300, 300])
 
 
 EncoderUnion = Union[CNNEncoder, LinearEncoder] # TODO: automate this
@@ -105,7 +103,7 @@ class Perception(Resolvable, Model):
 @dataclass
 class Representation(Resolvable, ModelShared):
     embedding_size: Optional[int] = None
-    hidden_size: int = 200
+    hidden_size: list[int] = field(default_factory=lambda: [200])
     activation_function: str = "elu"
     head_type: Literal['Normal', 'Categorical'] = "Normal"
 
@@ -139,7 +137,7 @@ class Transition(Resolvable, ModelShared):
 
 @dataclass
 class Reward(ModelShared):
-    hidden_size: int = 300
+    hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
     head_type: str = "Isotropic Normal"
     min_std: float = 0.0
@@ -171,7 +169,7 @@ class ActorOptimizer(OptimizerShared):
 
 @dataclass
 class Actor(Resolvable, ModelShared):
-    hidden_size: int = 300
+    hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
     action_size: Optional[int] = None # Pass from the env params
     min_std: float = 0.0
@@ -195,7 +193,7 @@ class CriticOptimizer(OptimizerShared):
 
 @dataclass
 class Critic(ModelShared):
-    hidden_size: int = 300
+    hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
     action_size: Optional[int] = None
     min_std: float = 0.0

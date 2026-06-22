@@ -9,7 +9,7 @@ import distrax
 
 from jaxinn.structs import LatentState
 
-from .utils import get_activation_fn, dx, StaticCallable
+from .utils import make_mlp, dx, StaticCallable
 
 
 class Critic(eqx.Module):
@@ -22,7 +22,7 @@ class Critic(eqx.Module):
             self,
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
-            hidden_size: int,
+            hidden_size: list[int],
             activation_function: Union[str, Callable] = "elu",
             action_size: Optional[int] = None,
             min_std: float = 0.0,
@@ -37,26 +37,20 @@ class Critic(eqx.Module):
         else:
             raise NotImplementedError
 
-        activation = get_activation_fn(activation_function)
-
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)
 
-        keys = jax.random.split(key, 4)
-        self.net = eqx.nn.Sequential([
-            eqx.nn.Linear(
-                belief_size + state_size + (
-                    0 if action_size is None else int(action_size)
-                ),
-                hidden_size, key=keys[0]
-            ),
-            StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, hidden_size, key=keys[1]),
-            StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, hidden_size, key=keys[2]),
-            StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, output_size, key=keys[3]),
-        ])
+        input_size = belief_size + state_size + (
+            0 if action_size is None else int(action_size)
+        )
+
+        self.net = make_mlp(
+            input_size = input_size,
+            hidden_size = hidden_size,
+            output_size = output_size,
+            activation = activation_function,
+            key = key
+        )
 
         self.head_type = head_type
         self.action_size = action_size

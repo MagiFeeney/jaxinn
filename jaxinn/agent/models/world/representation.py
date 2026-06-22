@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.agent.models.utils import get_activation_fn, dx, StaticCallable, FactoryLike
+from jaxinn.agent.models.utils import make_mlp, dx, StaticCallable, FactoryLike
 
 
 # Representation
@@ -24,7 +24,7 @@ class Representation(eqx.Module):
             belief_size: int,
             embedding_size: int,
             state_size: Union[int, Tuple[int, ...]],
-            hidden_size: int,
+            hidden_size: list[int],
             min_std: float = 0.1,
             activation_function="elu",
             head_type: str = "Normal",
@@ -46,15 +46,13 @@ class Representation(eqx.Module):
         else:
             raise NotImplementedError(f"Unsupported head_type: {head_type}")
 
-        activation = get_activation_fn(activation_function)
-
-        keys = jax.random.split(key, 2)
-
-        self.net = eqx.nn.Sequential([
-            eqx.nn.Linear(belief_size + embedding_size, hidden_size, key=keys[0]),
-            StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, output_size, key=keys[1]),
-        ])
+        self.net = make_mlp(
+            input_size = belief_size + embedding_size,
+            hidden_size = hidden_size,
+            output_size = output_size,
+            activation = activation_function,
+            key = key
+        )
 
         self.min_std = min_std
         self.head_type = head_type
