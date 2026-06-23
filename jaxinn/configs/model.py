@@ -1,5 +1,5 @@
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from typing import Tuple, Optional, Literal, Union, ClassVar
 
 from .base import Base, Resolvable, StaticShared, ConfigNamespace
@@ -31,7 +31,7 @@ class PerceptionShared(Resolvable, Model):
     """Shared parameters across perception modules."""
     DOMAIN: ClassVar[Domain]
 
-    shape: Tuple[int, ...] = field(init=False)
+    shape: Optional[Tuple[int, ...]] = field(default=None, init=False)
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
@@ -102,7 +102,7 @@ class Perception(Resolvable, Model):
 
 @dataclass
 class Representation(Resolvable, ModelShared):
-    embedding_size: int = field(init=False)
+    embedding_size: Optional[int] = field(default=None, init=False)
     hidden_size: list[int] = field(default_factory=lambda: [200])
     activation_function: str = "elu"
     head_type: Literal['Normal', 'Categorical'] = "Normal"
@@ -128,7 +128,7 @@ class Representation(Resolvable, ModelShared):
 @dataclass
 class Transition(Resolvable, ModelShared):
     hidden_size: int = 200
-    action_size: int = field(init=False)
+    action_size: Optional[int] = field(default=None, init=False)
     activation_function: str = "elu"
     head_type: Literal['Normal', 'Categorical'] = "Normal"
 
@@ -143,7 +143,7 @@ class Transition(Resolvable, ModelShared):
 class Reward(ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_size: Optional[int] = field(default=None, init=False)
-    use_action: bool = False
+    use_action: InitVar[bool] = False # will be discarded after resolve
     activation_function: str = "elu"
     head_type: str = "Isotropic Normal"
     min_std: float = 0.0
@@ -181,7 +181,7 @@ class ActorOptimizer(OptimizerShared):
 class Actor(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
-    action_size: int = field(init=False) # Pass from the env params
+    action_size: Optional[int] = field(default=None, init=False) # Pass from the env params
     min_std: float = 0.0
     head_type: Literal['Tanh Normal', 'Beta', 'Categorical', 'OneHotCategorical'] = "Tanh Normal"
 
@@ -190,6 +190,12 @@ class Actor(Resolvable, ModelShared):
     def _resolve(self, ctx: dict) -> None:
         if ctx["is_action_space_discrete"] ^ (self.head_type in ("Categorical", "OneHotCategorical")):
             raise ValueError(f"Inconsistent actor head: action space is discrete={ctx['is_action_space_discrete']}, but received head type {self.head_type!r}.")
+
+        if (self.head_type == "OneHotCategorical") != ctx["use_one_hot_action"]:
+            raise ValueError(
+                f"Mismatch: Head is {self.head_type!r}, but env use_one_hot_action is {ctx['use_one_hot_action']}."
+            )
+
         self.action_size = ctx["action_size"]
 
 
@@ -205,7 +211,7 @@ class CriticOptimizer(OptimizerShared):
 class Critic(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_size: Optional[int] = field(default=None, init=False)
-    use_action: bool = False
+    use_action: InitVar[bool] = False # will be discarded after resolve
     activation_function: str = "elu"
     min_std: float = 0.0
     head_type: Literal['Isotropic Normal', 'Normal'] = "Isotropic Normal"
