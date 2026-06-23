@@ -56,8 +56,8 @@ class Environment(eqx.Module):
 
     @property
     def is_action_space_discrete(self) -> bool:
-        valid_names = ("Discrete", "OneHotDiscrete")
-        return type(self.action_space).__name__ in valid_names
+        discrete_spaces = ("Discrete", "OneHotDiscrete")
+        return type(self.action_space).__name__ in discrete_spaces
 
     @property
     @abc.abstractmethod

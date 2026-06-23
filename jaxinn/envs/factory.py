@@ -85,7 +85,8 @@ def make_env(
         if not spec.native_autoreset:
             env = AutoReset(env)
 
-        if env.is_action_space_discrete:
+        use_one_hot_action = wrapper.get("use_one_hot_action", False)
+        if env.is_action_space_discrete and use_one_hot_action:
             env = OneHotAction(env)
 
         if wrapper.get("target_shape") is not None:

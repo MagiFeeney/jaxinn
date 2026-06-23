@@ -137,6 +137,9 @@ class Actor(eqx.Module):
         elif head_type == "Tanh Normal":
             self.dist_cls = dx.Independent(dx(TanhNormal), reinterpreted_batch_ndims=Static(1))
         elif head_type == "Categorical":
+            self.dist_cls = dx.Categorical
+            output_size = action_size
+        elif head_type == "OneHotCategorical":
             self.dist_cls = dx.OneHotCategorical
             output_size = action_size
 
@@ -200,10 +203,14 @@ class Actor(eqx.Module):
     ) -> Float[Array, "... action_size"]:
         dist = self.get_dist(params)
 
-        if self.head_type == "Categorical":
+        if self.head_type in ("Categorical", "OneHotCategorical"):
             # Same for both train and eval
             action = dist.sample(seed=key)
-            action = action + dist.probs - jax.lax.stop_gradient(dist.probs) # straight-through gradient
+
+            if self.head_type == "OneHotCategorical":
+                # straight-through gradient
+                action = action + dist.probs - jax.lax.stop_gradient(dist.probs)
+
             return action
 
         if det:
