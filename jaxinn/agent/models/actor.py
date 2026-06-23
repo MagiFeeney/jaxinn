@@ -180,7 +180,7 @@ class Actor(eqx.Module):
             mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
             std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
             params = {"mean": mean, "std": std}
-        elif self.head_type == "Categorical":
+        elif self.head_type in ("Categorical", "OneHotCategorical"):
             logit = out
             params = {"logits": logit}
 
@@ -191,7 +191,7 @@ class Actor(eqx.Module):
             params: Dict[str, Any]
     ) -> distrax.Distribution:
         dist = self.dist_cls(**params)
-        if self.head_type == "Categorical":
+        if self.head_type in ("Categorical", "OneHotCategorical"):
             return dist
         return SampleDist(dist)
 
