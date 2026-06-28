@@ -10,9 +10,9 @@ import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import LinearEncoderConfig, LinearDecoderConfig
-from jaxinn.agent.models.utils import get_activation_fn, dx, StaticCallable, make_mlp
 
 from .base import Encoder, Decoder
+from ..utils import get_activation_fn, dx, StaticCallable, make_mlp
 
 
 class LinearEncoder(Encoder):

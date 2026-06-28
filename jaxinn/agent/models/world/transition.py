@@ -10,9 +10,10 @@ import distrax
 from jaxinn.structs import LatentState
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import TransitionConfig
-from jaxinn.agent.models.utils import get_activation_fn, StaticCallable
-from jaxinn.agent.models.common import ActionEncoder
-from jaxinn.agent.models.heads import Head
+
+from ..utils import get_activation_fn, StaticCallable
+from ..perception import ActionEncoder
+from ..heads import Head
 
 
 # Transition

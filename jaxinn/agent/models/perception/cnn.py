@@ -10,9 +10,9 @@ import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import CNNEncoderConfig, CNNDecoderConfig
-from jaxinn.agent.models.utils import get_activation_fn, get_precision_fn, dx, StaticCallable
 
 from .base import Encoder, Decoder
+from ..utils import get_activation_fn, get_precision_fn, dx, StaticCallable
 
 
 # Perception

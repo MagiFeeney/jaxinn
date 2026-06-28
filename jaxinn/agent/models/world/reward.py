@@ -10,9 +10,10 @@ import distrax
 from jaxinn.structs import LatentState
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import RewardConfig
-from jaxinn.agent.models.utils import make_mlp
-from jaxinn.agent.models.common import ActionEncoder
-from jaxinn.agent.models.heads import Head
+
+from ..utils import make_mlp
+from ..perception import ActionEncoder
+from ..heads import Head
 
 
 class Reward(eqx.Module):

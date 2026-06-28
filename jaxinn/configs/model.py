@@ -102,12 +102,6 @@ DecoderUnion = Union[CNNDecoderConfig, LinearDecoderConfig]
 
 
 @dataclass
-class PerceptionConfig(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
-    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
-
-
-@dataclass
 class RepresentationConfig(Resolvable, ModelShared):
     embedding_size: Optional[int] = field(default=None, init=False)
     hidden_size: list[int] = field(default_factory=lambda: [200])
@@ -168,7 +162,8 @@ class WorldOptimizer(OptimizerShared):
 
 @dataclass
 class WorldConfig(Resolvable, Model):
-    perception: PerceptionConfig = field(default_factory=PerceptionConfig)
+    encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
+    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
     representation: RepresentationConfig = field(default_factory=RepresentationConfig)
     transition: TransitionConfig = field(default_factory=TransitionConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)

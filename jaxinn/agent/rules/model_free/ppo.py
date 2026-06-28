@@ -19,7 +19,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret
 from jaxinn.agent.models import Actor, Critic
-from jaxinn.agent.models.world.perception import Encoder
+from jaxinn.agent.models.networks.world.perception import Encoder
 from jaxinn.agent.losses import PPOLossMixIn
 
 

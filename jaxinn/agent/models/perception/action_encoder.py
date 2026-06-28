@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
 
-from .utils import get_flatten_size, is_shape_leaf
+from ..utils import get_flatten_size, is_shape_leaf
 
 
 class ActionEncoder(eqx.Module):

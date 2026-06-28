@@ -8,8 +8,9 @@ import distrax
 
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import RepresentationConfig
-from jaxinn.agent.models.utils import make_mlp
-from jaxinn.agent.models.heads import Head
+
+from ..utils import make_mlp
+from ..heads import Head
 
 
 # Representation
