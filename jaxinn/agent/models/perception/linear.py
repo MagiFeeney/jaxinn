@@ -22,15 +22,15 @@ class LinearEncoder(Encoder):
 
     def __init__(
             self,
-            shape: Tuple[int, ...],
+            obs_shape: Tuple[int, ...],
             hidden_size: Optional[list[int]] = None,
             embedding_size: Optional[int] = None,
             activation_function: Union[str, Callable] = "elu",
             *,
             key: PRNGKeyArray
     ):
-        assert len(shape) == 1, (
-            f"Expected a 1D shape, but got shape {shape} with {len(shape)} dimensions "
+        assert len(obs_shape) == 1, (
+            f"Expected a 1D observation shape, but got {obs_shape} with {len(obs_shape)} dimensions "
             f"in {self.__class__.__name__}."
         )
         activation = get_activation_fn(activation_function)
@@ -38,7 +38,7 @@ class LinearEncoder(Encoder):
         if hidden_size is not None and \
            embedding_size is not None:
             self.net = make_mlp(
-                input_size = shape[0],
+                input_size = obs_shape[0],
                 hidden_size = hidden_size,
                 output_size = embedding_size,
                 activation = StaticCallable(activation),
@@ -61,7 +61,7 @@ class LinearDecoder(Decoder):
 
     def __init__(
             self,
-            shape: Tuple[int, ...],
+            obs_shape: Tuple[int, ...],
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
             hidden_size: list[int],
@@ -69,8 +69,8 @@ class LinearDecoder(Decoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(shape) == 1, (
-            f"Expected a 1D shape, but got shape {shape} with {len(shape)} dimensions "
+        assert len(obs_shape) == 1, (
+            f"Expected a 1D observation shape, but got {obs_shape} with {len(obs_shape)} dimensions "
             f"in {self.__class__.__name__}."
         )
         activation = get_activation_fn(activation_function)
@@ -81,7 +81,7 @@ class LinearDecoder(Decoder):
         self.net = make_mlp(
             input_size = belief_size + state_size,
             hidden_size = hidden_size,
-            output_size = shape[0],
+            output_size = obs_shape[0],
             activation = StaticCallable(activation),
             key = key
         )

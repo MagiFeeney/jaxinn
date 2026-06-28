@@ -83,7 +83,7 @@ class NormalHead(Head):
             mean, log_std = jnp.split(x, 2, axis=-1)
         else:
             mean = x
-            log_std = self.log_std
+            log_std = jnp.broadcast_to(self.log_std, mean.shape)
 
         if self.softplus_std:
             std = jax.nn.softplus(log_std) + self.min_std
@@ -182,7 +182,7 @@ class OneHotCategoricalHead(CategoricalHead):
 
     def __call__(self, x: jax.Array) -> dx.Distribution:
         logits = x.reshape(*x.shape[:-1], *self.event_size)
-        dist = dx.Independent(dx.OneHotCategorical(logits=logits), reinterpreted_batch_ndims=len(self.event_size) - 1) # TODO: whether reduce the dims before event
+        dist = dx.Independent(dx.OneHotCategorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1)) # TODO: whether reduce the dims before event
         return dist
 
     def sample(self, dist: distrax.Distribution, key: PRNGKeyArray, det: bool = False) -> jax.Array: # TODO: use mode for eval?

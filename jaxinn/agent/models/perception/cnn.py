@@ -21,7 +21,7 @@ class CNNEncoder(Encoder):
 
     body: eqx.nn.Sequential
     head: Union[eqx.nn.Linear, eqx.nn.Identity]
-    shape: Tuple[int, int, int] = eqx.field(static=True)
+    obs_shape: Tuple[int, int, int] = eqx.field(static=True)
     kernel_size: int = eqx.field(static=True)
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
@@ -32,7 +32,7 @@ class CNNEncoder(Encoder):
 
     def __init__(
             self,
-            shape: Tuple[int, int, int],
+            obs_shape: Tuple[int, int, int],
             embedding_size: int,
             kernel_size: int = 4,
             depth: int = 32,
@@ -48,7 +48,7 @@ class CNNEncoder(Encoder):
         keys = jax.random.split(key, 5)
 
         self.body = eqx.nn.Sequential([
-            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[0], dtype=self.dtype),
+            eqx.nn.Conv2d(obs_shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[0], dtype=self.dtype),
             StaticCallable(activation),
             eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[1], dtype=self.dtype),
             StaticCallable(activation),
@@ -59,11 +59,11 @@ class CNNEncoder(Encoder):
             StaticCallable(jnp.ravel),
         ])
 
-        self.feature_map_shape = self.get_feature_map_shape(shape)
+        self.feature_map_shape = self.get_feature_map_shape(obs_shape)
         feature_map_size = math.prod(self.feature_map_shape)
         self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=keys[4])
 
-        self.shape = shape
+        self.obs_shape = obs_shape
         self.kernel_size = kernel_size
         self.depth = depth
         self.stride = stride
@@ -90,7 +90,7 @@ class CNNDecoder(Decoder):
 
     embedding: eqx.nn.Linear
     body: eqx.nn.Sequential
-    shape: Tuple[int, int, int] = eqx.field(static=True)
+    obs_shape: Tuple[int, int, int] = eqx.field(static=True)
     kernel_size: int = eqx.field(static=True)
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
@@ -102,7 +102,7 @@ class CNNDecoder(Decoder):
             self,
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
-            shape: Tuple[int, int, int],
+            obs_shape: Tuple[int, int, int],
             feature_map_shape: Tuple[int, int, int],
             kernel_size: int = 4,
             depth: int = 32,
@@ -131,10 +131,10 @@ class CNNDecoder(Decoder):
             StaticCallable(activation),
             eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[3], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(1 * depth, shape[0], kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[4], dtype=self.dtype),
+            eqx.nn.ConvTranspose2d(1 * depth, obs_shape[0], kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[4], dtype=self.dtype),
         ])
 
-        self.shape = shape
+        self.obs_shape = obs_shape
         self.kernel_size = kernel_size
         self.depth = depth
         self.stride = stride
@@ -150,8 +150,8 @@ class CNNDecoder(Decoder):
         out = eqx.filter_checkpoint(self.body)(embedding)
         out = out.astype(jnp.float32)
 
-        if out.shape[-3:] != self.shape:
-            out = jax.image.resize(out, shape=out.shape[:-3] + self.shape, method="bilinear")
+        if out.shape[-3:] != self.obs_shape:
+            out = jax.image.resize(out, shape=out.shape[:-3] + self.obs_shape, method="bilinear")
 
         dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.obs_shape)))
