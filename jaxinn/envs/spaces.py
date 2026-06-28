@@ -290,3 +290,8 @@ class Dict(Space[PyDict[str, Any]]):
         keys = aux_data
         spaces = dict(zip(keys, children))
         return cls(spaces)
+
+
+@jax.tree_util.register_pytree_node_class
+class Tuple(Space[PyTuple[Any]]):
+    pass

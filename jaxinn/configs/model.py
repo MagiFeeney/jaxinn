@@ -5,7 +5,7 @@ from typing import Tuple, Optional, Union, ClassVar
 from jaxtyping import PyTree, DTypeLike
 
 from .base import Base, Resolvable, StaticShared, ConfigNamespace
-from .head import HeadUnion, IsotropicNormalHeadConfig, TanhNormalHeadConfig, NormalHeadConfig
+from .head import HeadUnion, IsotropicNormalHeadConfig, TanhNormalHeadConfig, NormalHeadConfig, CategoricalHeadConfig, OneHotCategoricalHeadConfig
 
 
 @dataclass
@@ -35,15 +35,11 @@ class PerceptionShared(Resolvable, Model):
     DOMAIN: ClassVar[Domain]
 
     obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
-    obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
         obs_shape = ctx.get("obs_shape", None)
-        obs_dtype = ctx.get("obs_dtype", None)
-
         self.obs_shape = obs_shape
-        self.obs_dtype = obs_dtype
 
         env_domain = Domain.PIXEL if len(obs_shape) > 1 else Domain.STATE
 
@@ -188,12 +184,12 @@ class ActorConfig(Resolvable, ModelShared):
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
-        if ctx["is_action_space_discrete"] ^ (self.head_type in ("Categorical", "OneHotCategorical")):
-            raise ValueError(f"Inconsistent actor head: action space is discrete={ctx['is_action_space_discrete']}, but received head type {self.head_type!r}.")
+        if ctx["is_action_space_discrete"] ^ isinstance(self.head, (CategoricalHeadConfig, OneHotCategoricalHeadConfig)):
+            raise ValueError(f"Inconsistent actor head: action space is discrete={ctx['is_action_space_discrete']}, but received head type {type(self.head).__name__}.")
 
-        if (self.head_type == "OneHotCategorical") != ctx["use_one_hot_action"]:
+        if isinstance(self.head, OneHotCategoricalHeadConfig) != ctx["use_one_hot_action"]:
             raise ValueError(
-                f"Mismatch: Head is {self.head_type!r}, but env use_one_hot_action is {ctx['use_one_hot_action']}."
+                f"Mismatch: Head is {type(self.head).__name__}, but env use_one_hot_action is {ctx['use_one_hot_action']}."
             )
 
         self.action_size = ctx["action_size"]

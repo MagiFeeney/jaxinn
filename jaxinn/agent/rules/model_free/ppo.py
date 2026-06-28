@@ -19,7 +19,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret
 from jaxinn.agent.models import Actor, Critic
-from jaxinn.agent.models.networks.world.perception import Encoder
+from jaxinn.agent.models.perception import Encoder
 from jaxinn.agent.losses import PPOLossMixIn
 
 
@@ -32,8 +32,8 @@ class PerceptionActor(eqx.Module):
         key_encoder, key_actor = jax.random.split(key)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor(
-            **config.actor(),
+        actor = Actor.create(
+            config.actor,
             key=key_actor
         )
 
@@ -43,16 +43,13 @@ class PerceptionActor(eqx.Module):
         feature = self.encoder(obs)
         return self.actor(feature)
 
-    def get_dist(self, params: Dict[str, Any]) -> distrax.Distribution:
-        return self.actor.get_dist(params)
-
     def sample(
             self,
-            params: Dict[str, Any],
+            dist: distrax.Distribution,
             key: PRNGKeyArray,
             det: bool = False,
     ) -> jax.Array:
-        return self.actor.sample(params, key, det=det)
+        return self.actor.sample(dist, key, det=det)
 
 
 class PerceptionCritic(eqx.Module):
@@ -64,8 +61,8 @@ class PerceptionCritic(eqx.Module):
         key_encoder, key_critic = jax.random.split(key)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        critic = Critic(
-            **config.critic(),
+        critic = Critic.create(
+            config.critic,
             key=key_critic
         )
 
@@ -98,16 +95,14 @@ class ActorCriticDecoupled(ActorCritic):
         return cls(actor=actor, critic=critic)
 
     def get_actor_dist(self, obs: jax.Array) -> distrax.Distribution:
-        actor_params = self.actor(obs)
-        actor_dist = self.actor.get_dist(actor_params)
-        return actor_dist
+        return self.actor(obs)
 
     def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
         return self.critic(obs)
 
     def sample_action(self, obs: jax.Array, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        actor_params = self.actor(obs)
-        action = self.actor.sample(actor_params, key, det)
+        actor_dist = self.actor(obs)
+        action = self.actor.sample(actor_dist, key, det)
         return action
 
 
@@ -123,16 +118,14 @@ class ActorCriticShared(ActorCritic):
     def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray): # TODO: import
         key_encoder, key_actor, key_critic = jax.random.split(key, 3)
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor(**config.actor(), key=key_actor)
-        critic = Critic(**config.critic(), key=key_critic)
+        actor = Actor.create(config.actor, key=key_actor)
+        critic = Critic.create(config.critic, key=key_critic)
 
         return cls(encoder=encoder, actor=actor, critic=critic)
 
     def get_actor_dist(self, obs: jax.Array) -> distrax.Distribution:
         feature = self.encoder(obs)
-        actor_params = self.actor(feature)
-        actor_dist = self.actor.get_dist(actor_params)
-        return actor_dist
+        return self.actor(feature)
 
     def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
         feature = self.encoder(obs)
@@ -140,8 +133,8 @@ class ActorCriticShared(ActorCritic):
 
     def sample_action(self, obs: jax.Array, key: PRNGKeyArray, det: bool = False) -> jax.Array:
         feature = self.encoder(obs)
-        actor_params = self.actor(feature)
-        action = self.actor.sample(actor_params, key, det)
+        actor_dist = self.actor(feature)
+        action = self.actor.sample(actor_dist, key, det)
         return action
 
 

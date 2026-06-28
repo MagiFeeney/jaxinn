@@ -22,7 +22,7 @@ class Representation(eqx.Module):
 
     @classmethod
     def create(cls, config: RepresentationConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head=config.head, key=key)
+        return cls(**config(), head_config=config.head, key=key)
 
     def __init__(
             self,
