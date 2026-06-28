@@ -10,8 +10,8 @@ from jaxinn.structs import LatentState
 from jaxinn.configs.model import ActorConfig
 from jaxinn.configs.head import HeadConfig
 
-from ..utils import make_mlp
-from ..heads import Head
+from .utils import make_mlp
+from .heads import Head
 
 
 class Actor(eqx.Module):

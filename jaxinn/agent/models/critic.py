@@ -11,9 +11,9 @@ from jaxinn.structs import LatentState
 from jaxinn.configs.model import CriticConfig
 from jaxinn.configs.head import HeadConfig
 
-from ..common import ActionEncoder
-from ..utils import make_mlp
-from ..heads import Head
+from .perception import ActionEncoder
+from .utils import make_mlp
+from .heads import Head
 
 
 class Critic(eqx.Module):
