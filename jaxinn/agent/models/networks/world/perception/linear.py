@@ -1,16 +1,16 @@
 import math
 from typing import Optional, Callable, Union, Tuple, ClassVar, Type
 
+import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Float, PRNGKeyArray
+from jaxtyping import PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from jaxinn.configs import LinearEncoderConfig, LinearDecoderConfig
-from jaxinn.agent.models.utils import get_activation_fn, dx, StaticCallable, make_mlp
-
 from jaxinn.structs import LatentState
+from jaxinn.configs.model import LinearEncoderConfig, LinearDecoderConfig
+from jaxinn.agent.models.utils import get_activation_fn, dx, StaticCallable, make_mlp
 
 from .base import Encoder, Decoder
 
@@ -49,8 +49,8 @@ class LinearEncoder(Encoder):
 
     def __call__(
             self,
-            obs: Float[Array, "... obs_size"]
-    ) -> Float[Array, "... output_size"]:
+            obs: jax.Array
+    ) -> jax.Array:
         return self.net(obs)
 
 
@@ -88,7 +88,7 @@ class LinearDecoder(Decoder):
 
     def __call__(
             self,
-            latent_state: Union[Float[Array, "... input_size"], LatentState],
+            latent_state: Union[jax.Array, LatentState],
     ) -> distrax.Distribution:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature

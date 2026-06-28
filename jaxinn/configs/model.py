@@ -1,8 +1,11 @@
 from enum import Enum
 from dataclasses import dataclass, field, InitVar
-from typing import Tuple, Optional, Literal, Union, ClassVar
+from typing import Tuple, Optional, Union, ClassVar
+
+from jaxtyping import PyTree, DTypeLike
 
 from .base import Base, Resolvable, StaticShared, ConfigNamespace
+from .head import HeadUnion, IsotropicNormalHeadConfig, TanhNormalHeadConfig, NormalHeadConfig
 
 
 @dataclass
@@ -31,12 +34,16 @@ class PerceptionShared(Resolvable, Model):
     """Shared parameters across perception modules."""
     DOMAIN: ClassVar[Domain]
 
-    shape: Optional[Tuple[int, ...]] = field(default=None, init=False)
+    obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
-        obs_shape = ctx["obs_shape"]
-        self.shape = obs_shape
+        obs_shape = ctx.get("obs_shape", None)
+        obs_dtype = ctx.get("obs_dtype", None)
+
+        self.obs_shape = obs_shape
+        self.obs_dtype = obs_dtype
 
         env_domain = Domain.PIXEL if len(obs_shape) > 1 else Domain.STATE
 
@@ -64,48 +71,49 @@ class OptimizerShared(Base):
 # World Model
 ## For pixel-based tasks
 @dataclass
-class CNNEncoder(PerceptionShared):
+class CNNEncoderConfig(PerceptionShared):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     embedding_size: int = 1024
     dtype: str = "bfloat16"
 
 
 @dataclass
-class CNNDecoder(PerceptionShared, ModelShared):
+class CNNDecoderConfig(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     dtype: str = "bfloat16"
 
 
 ## For state-based tasks
 @dataclass
-class LinearEncoder(PerceptionShared):
+class LinearEncoderConfig(PerceptionShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: Optional[list[int]] = None
     embedding_size: Optional[int] = None
 
 
 @dataclass
-class LinearDecoder(PerceptionShared, ModelShared):
+class LinearDecoderConfig(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: list[int] = field(default_factory=lambda: [300, 300])
 
 
-EncoderUnion = Union[CNNEncoder, LinearEncoder] # TODO: automate this
-DecoderUnion = Union[CNNDecoder, LinearDecoder]
+EncoderUnion = Union[CNNEncoderConfig, LinearEncoderConfig] # TODO: automate this
+DecoderUnion = Union[CNNDecoderConfig, LinearDecoderConfig]
 
 
 @dataclass
-class Perception(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=CNNEncoder)
-    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoder)
+class PerceptionConfig(Resolvable, Model):
+    encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
+    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
 
 
 @dataclass
-class Representation(Resolvable, ModelShared):
+class RepresentationConfig(Resolvable, ModelShared):
     embedding_size: Optional[int] = field(default=None, init=False)
     hidden_size: list[int] = field(default_factory=lambda: [200])
     activation_function: str = "elu"
-    head_type: Literal['Normal', 'Categorical'] = "Normal"
+
+    head: HeadUnion = field(default_factory=NormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if "embedding_size" not in ctx:
@@ -126,31 +134,29 @@ class Representation(Resolvable, ModelShared):
 
 
 @dataclass
-class Transition(Resolvable, ModelShared):
+class TransitionConfig(Resolvable, ModelShared):
     hidden_size: int = 200
-    action_size: Optional[int] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     activation_function: str = "elu"
-    head_type: Literal['Normal', 'Categorical'] = "Normal"
+
+    head: HeadUnion = field(default_factory=NormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        if ctx["is_action_space_discrete"] and not ctx["use_one_hot_action"]:
-            self.action_size = 1
-        else:
-            self.action_size = ctx["action_size"]
+        self.action_shape = ctx["action_shape"]
 
 
 @dataclass
-class Reward(ModelShared):
+class RewardConfig(ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
-    action_size: Optional[int] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     use_action: InitVar[bool] = False # will be discarded after resolve
     activation_function: str = "elu"
-    head_type: str = "Isotropic Normal"
-    min_std: float = 0.0
+
+    head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
-            self.action_size = ctx["action_size"]
+            self.action_shape = ctx["action_shape"]
 
 
 @dataclass
@@ -161,11 +167,11 @@ class WorldOptimizer(OptimizerShared):
 
 
 @dataclass
-class World(Resolvable, Model):
-    perception: Perception = field(default_factory=Perception)
-    representation: Representation = field(default_factory=Representation)
-    transition: Transition = field(default_factory=Transition)
-    reward: Reward = field(default_factory=Reward)
+class WorldConfig(Resolvable, Model):
+    perception: PerceptionConfig = field(default_factory=PerceptionConfig)
+    representation: RepresentationConfig = field(default_factory=RepresentationConfig)
+    transition: TransitionConfig = field(default_factory=TransitionConfig)
+    reward: RewardConfig = field(default_factory=RewardConfig)
     optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
 
 
@@ -178,13 +184,12 @@ class ActorOptimizer(OptimizerShared):
 
 
 @dataclass
-class Actor(Resolvable, ModelShared):
+class ActorConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
-    action_size: Optional[int] = field(default=None, init=False) # Pass from the env params
-    min_std: float = 0.0
-    head_type: Literal['Tanh Normal', 'Beta', 'Categorical', 'OneHotCategorical'] = "Tanh Normal"
+    action_size: Optional[PyTree[int]] = field(default=None, init=False) # Pass from the env params
 
+    head: HeadUnion = field(default_factory=TanhNormalHeadConfig)
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
@@ -208,16 +213,15 @@ class CriticOptimizer(OptimizerShared):
 
 
 @dataclass
-class Critic(Resolvable, ModelShared):
+class CriticConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
-    action_size: Optional[int] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     use_action: InitVar[bool] = False # will be discarded after resolve
     activation_function: str = "elu"
-    min_std: float = 0.0
-    head_type: Literal['Isotropic Normal', 'Normal'] = "Isotropic Normal"
 
+    head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
     optimizer: CriticOptimizer = field(default_factory=CriticOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
-            self.action_size = ctx["action_size"]
+            self.action_shape = ctx["action_shape"]

@@ -14,6 +14,8 @@ from ..environment import Environment, EnvInfo
 from ..spaces import to_jax_space
 from ..vmap import VmapTransformation
 
+from .gymnasium import gymnasium_space_to_jaxinn_space
+
 
 class EnvPoolVmapMixIn(VmapTransformation):
     @jax.custom_batching.custom_vmap
@@ -123,17 +125,11 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
 
     @property
     def observation_space(self):
-        return to_jax_space(self.env.observation_space)
+        return gymnasium_space_to_jaxinn_space(self.env.observation_space)
 
     @property
     def action_space(self):
-        return to_jax_space(self.env.action_space)
-
-    @property
-    def action_size(self):
-        if self.is_action_space_discrete:
-            return self.action_space.n
-        return math.prod(self.action_space.shape)
+        return gymnasium_space_to_jaxinn_space(self.env.action_space)
 
     @property
     def max_episode_length(self) -> int:

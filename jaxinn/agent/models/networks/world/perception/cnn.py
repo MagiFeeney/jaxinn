@@ -3,15 +3,14 @@ from typing import Callable, Union, Tuple, ClassVar, Type
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Float, PRNGKeyArray
+from jaxtyping import PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from jaxinn.configs import CNNEncoderConfig, CNNDecoderConfig
-from jaxinn.agent.models.utils import get_activation_fn, get_precision_fn, dx, StaticCallable
-
 from jaxinn.structs import LatentState
+from jaxinn.configs.model import CNNEncoderConfig, CNNDecoderConfig
+from jaxinn.agent.models.utils import get_activation_fn, get_precision_fn, dx, StaticCallable
 
 from .base import Encoder, Decoder
 
@@ -72,8 +71,8 @@ class CNNEncoder(Encoder):
 
     def __call__(
             self,
-            obs: Float[Array, "... obs_size"]
-    ) -> Float[Array, "... output_size"]:
+            obs: jax.Array
+    ) -> jax.Array:
         obs = obs.astype(self.dtype)
         feature = eqx.filter_checkpoint(self.body)(obs)
         feature = feature.astype(jnp.float32) # upcast for stability
@@ -142,7 +141,7 @@ class CNNDecoder(Decoder):
 
     def __call__(
             self,
-            latent_state: Union[Float[Array, "... input_size"], LatentState],
+            latent_state: Union[jax.Array, LatentState],
     ) -> distrax.Distribution:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature

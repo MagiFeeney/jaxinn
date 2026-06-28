@@ -244,12 +244,28 @@ class UnsqueezeScalar(Wrapper):
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
-        transition = jax.tree.map(jnp.atleast_1d, transition)
+        transition = eqx.tree_at(
+            lambda t: (t.reward, t.terminated, t.truncated),
+            transition,
+            (
+                jnp.atleast_1d(transition.reward),
+                jnp.atleast_1d(transition.terminated),
+                jnp.atleast_1d(transition.truncated),
+            )
+        )
         return transition, info, state
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
-        transition = jax.tree.map(jnp.atleast_1d, transition)
+        transition = eqx.tree_at(
+            lambda t: (t.reward, t.terminated, t.truncated),
+            transition,
+            (
+                jnp.atleast_1d(transition.reward),
+                jnp.atleast_1d(transition.terminated),
+                jnp.atleast_1d(transition.truncated),
+            )
+        )
         return transition, info, next_state
 
 

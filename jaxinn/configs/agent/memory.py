@@ -1,7 +1,9 @@
 import math
 import warnings
-from dataclasses import dataclass
-from typing import Tuple, Union, Literal
+from dataclasses import dataclass, field
+from typing import Tuple, Union, Literal, Optional
+
+from jaxtyping import PyTree, DTypeLike
 
 from .base import Base, Resolvable
 
@@ -13,12 +15,28 @@ class Memory(Resolvable, Base):
     device: Literal['cpu', 'gpu'] = 'gpu'
     type: Literal['uniform', 'prioritized', 'batched'] = 'uniform'
 
-    def _resolve(self, ctx: dict) -> None:
-        if self.device == "cpu":
-            self.num_seeds = ctx.get("num_seeds", 1) # pre-allocate for all seeds upfront
-        else:
-            self.num_seeds = None                    # vmap handles this
+    num_seeds: Optional[int] = field(default=None, init=False)
+    obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    action_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
 
+    def _resolve(self, ctx: dict) -> None:
+        # If device is cpu, pre-allocate for all seeds upfront
+        # Otherwise vmap handles this
+        if self.device == "cpu":
+            self.num_seeds = ctx.get("num_seeds", 1)
+
+        # Set obs and action shape and dtype
+        try:
+            self.obs_shape = ctx["obs_shape"]
+            self.obs_dtype = ctx["obs_dtype"]
+            self.action_shape = ctx["action_shape"]
+            self.action_dtype = ctx["action_dtype"]
+        except KeyError as e:
+            raise ValueError(f"Creating Memory requires knowing observation and action metadata. Missing key: {e}")
+
+        # Handle capacity
         num_envs = ctx.get("num_envs", 1)
         action_repeat = ctx.get("action_repeat", 1)
         episode_length = ctx.get("episode_length", 0)

@@ -1,3 +1,4 @@
+import math
 import abc
 from typing import Any, Dict as PyDict, Tuple as PyTuple, TypeVar, Generic, Sequence, Union
 
@@ -39,6 +40,16 @@ class Space(abc.ABC, Generic[T]):
                 f"Please use a concrete dtype like jnp.float32."
             )
 
+    @property
+    @abc.abstractmethod
+    def is_discrete(self) -> bool:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def size(self) -> int:
+        pass
+
     @abc.abstractmethod
     def sample(self, key: jax.Array) -> T:
         """Sample a value from the space using a PRNG key."""
@@ -69,6 +80,14 @@ class Discrete(Space[jax.Array]):
     def __init__(self, n: int, dtype=jnp.int32):
         super().__init__(shape=(), dtype=dtype)
         self.n = n
+
+    @property
+    def is_discrete(self) -> bool:
+        return True
+
+    @property
+    def size(self) -> int:
+        return self.n
 
     def sample(self, key: jax.Array) -> jax.Array:
         return jax.random.randint(key, shape=self.shape, minval=0, maxval=self.n, dtype=self.dtype)
@@ -114,6 +133,14 @@ class Box(Space[jax.Array]):
         super().__init__(shape, dtype)
         self.low = jnp.broadcast_to(jnp.asarray(low, dtype=dtype), shape)
         self.high = jnp.broadcast_to(jnp.asarray(high, dtype=dtype), shape)
+
+    @property
+    def is_discrete(self) -> bool:
+        return False
+
+    @property
+    def size(self) -> int:
+        return math.prod(self.shape)
 
     @property
     def is_bounded(self) -> jax.Array:
@@ -181,6 +208,14 @@ class MultiDiscrete(Space[jax.Array]):
         self.nvec = jnp.asarray(nvec, dtype=dtype)
         super().__init__(shape=self.nvec.shape, dtype=dtype)
 
+    @property
+    def is_discrete(self) -> bool:
+        return True
+
+    @property
+    def size(self) -> int:
+        return int(jnp.sum(self.nvec))
+
     def sample(self, key: jax.Array) -> jax.Array:
         return jax.random.randint(key, shape=self.shape, minval=0, maxval=self.nvec, dtype=self.dtype)
 
@@ -208,11 +243,30 @@ class Dict(Space[PyDict[str, Any]]):
         self.spaces = spaces
 
         if len(self.spaces) == 1:
-            shape = next(iter(self.spaces.values())).shape
+            space = next(iter(self.spaces.values()))
+            shape = space.shape
+            dtype = space.dtype
         else:
-            shape = {k: space.shape for k, space in self.spaces.items()}
+            shape, dtype = {}, {}
+            for k, space in self.spaces.items():
+                shape[k] = space.shape
+                dtype[k] = space.dtype
 
-        super().__init__(shape=shape, dtype=None)
+        super().__init__(shape=shape, dtype=dtype)
+
+    @property
+    def is_discrete(self) -> bool:
+        if len(self.spaces) == 1:
+            space = next(iter(self.spaces.values()))
+            return space.is_discrete
+        return {k: space.is_discrete for k, space in self.spaces.items()}
+
+    @property
+    def size(self) -> int:
+        if len(self.spaces) == 1:
+            space = next(iter(self.spaces.values()))
+            return space.size
+        return {k: space.size for k, space in self.spaces.items()}
 
     def sample(self, key: jax.Array) -> PyDict[str, Any]:
         keys = jax.random.split(key, len(self.spaces))
@@ -236,26 +290,3 @@ class Dict(Space[PyDict[str, Any]]):
         keys = aux_data
         spaces = dict(zip(keys, children))
         return cls(spaces)
-
-
-def to_jax_dtype(dtype: Any) -> jnp.dtype:
-    parsed_dtype = jnp.dtype(dtype)
-    if parsed_dtype.name == 'float64':
-        return jnp.float64      # Return concrete dtype to avoid being caught by float dtype
-    elif parsed_dtype.name == 'int64':
-        return jnp.int64
-    return parsed_dtype
-
-
-CONVERTERS = {
-    "Box": lambda s: Box(s.low, s.high, s.shape, to_jax_dtype(s.dtype)),
-    "Discrete": lambda s: Discrete(s.n),
-}
-
-
-def to_jax_space(space: Any):
-    """Dynamically maps gym/gymnasium space to a JAX space by class name."""
-    cls_name = space.__class__.__name__
-    if cls_name not in CONVERTERS:
-        raise NotImplementedError(f"Space '{cls_name}' is not supported for conversion.")
-    return CONVERTERS[cls_name](space)

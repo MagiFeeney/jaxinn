@@ -11,7 +11,38 @@ from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo, EnvState
 from ..vmap import VmapTransformation
-from ..spaces import to_jax_space
+from ..spaces import Discrete, Box, Dict, Tuple # TODO: add Tuple to spaces
+
+
+def _to_jax_dtype(dtype: Any) -> jnp.dtype:
+    parsed_dtype = jnp.dtype(dtype)
+    if parsed_dtype.name == 'float64':
+        return jnp.float64      # Return concrete dtype to avoid being caught by float dtype
+    elif parsed_dtype.name == 'int64':
+        return jnp.int64
+    return parsed_dtype
+
+
+def gymnasium_space_to_jaxinn_space(space): # TODO: implement gymnasium_space_to_jaxinn_space
+    if isinstance(space, gym.spaces.Discrete):
+        return Discrete(n=space.n, dtype=_to_jax_space(space.dtype))
+    elif isinstance(space, gym.spaces.Box):
+        return Box(
+            low=space.low,
+            high=space.high,
+            shape=space.shape,
+            dtype=_to_jax_space(space.dtype),
+        )
+    elif isinstance(space, gym.spaces.Dict):
+        converted_spaces = {k: gymnasium_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
+        return Dict(converted_spaces)
+    elif isinstance(space, gym.spaces.Tuple):
+        converted_spaces = tuple(gymnasium_space_to_jaxinn_space(s) for s in space.spaces)
+        return Tuple(converted_spaces)
+    else:
+        raise TypeError(
+            f"Unsupported Gymnasium space type for conversion to Jaxinn space: '{type(space).__name__}'."
+        )
 
 
 class GymnasiumVmapMixIn(VmapTransformation):
@@ -162,18 +193,12 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
     @property
     def observation_space(self):
         observation_space = self.env.single_observation_space if self.capacity is not None and hasattr(self.env, "single_observation_space") else self.env.observation_space
-        return to_jax_space(observation_space)
+        return gymnasium_space_to_jaxinn_space(observation_space)
 
     @property
     def action_space(self):
         action_space = self.env.single_action_space if (self.capacity is not None) and hasattr(self.env, "single_action_space") else self.env.action_space
-        return to_jax_space(action_space)
-
-    @property
-    def action_size(self):
-        if self.is_action_space_discrete:
-            return self.action_space.n
-        return math.prod(self.action_space.shape)
+        return gymnasium_space_to_jaxinn_space(action_space)
 
     @property
     def max_episode_length(self) -> int:
