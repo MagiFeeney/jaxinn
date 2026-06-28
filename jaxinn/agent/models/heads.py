@@ -173,7 +173,9 @@ class CategoricalHead(Head):
 
     def sample(self, dist: distrax.Distribution, key: PRNGKeyArray, det: bool = False) -> jax.Array:
         sample = dist.sample(seed=key)
-        sample = sample.reshape(*sample.shape[:-len(self.event_size) + 1], -1)
+        event_ndims = len(self.event_size)
+        if event_ndims > 1:
+            sample = sample.reshape(*sample.shape[:-event_ndims + 1], -1)
         return sample
 
 
