@@ -11,7 +11,6 @@ import equinox as eqx
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
-from ..spaces import to_jax_space
 from ..vmap import VmapTransformation
 
 from .gymnasium import gymnasium_space_to_jaxinn_space

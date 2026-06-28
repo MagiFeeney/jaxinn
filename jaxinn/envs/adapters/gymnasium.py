@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from typing import Any, Optional, Tuple, Dict
+from typing import Any, Optional, Tuple as PyTuple, Dict as PyDict
 
 import jax
 import jax.numpy as jnp
@@ -11,7 +11,7 @@ from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo, EnvState
 from ..vmap import VmapTransformation
-from ..spaces import Discrete, Box, Dict, Tuple # TODO: add Tuple to spaces
+from ..spaces import Discrete, Box, Dict, Tuple
 
 
 def _to_jax_dtype(dtype: Any) -> jnp.dtype:
@@ -23,7 +23,7 @@ def _to_jax_dtype(dtype: Any) -> jnp.dtype:
     return parsed_dtype
 
 
-def gymnasium_space_to_jaxinn_space(space): # TODO: implement gymnasium_space_to_jaxinn_space
+def gymnasium_space_to_jaxinn_space(space):
     if isinstance(space, gym.spaces.Discrete):
         return Discrete(n=space.n, dtype=_to_jax_space(space.dtype))
     elif isinstance(space, gym.spaces.Box):
@@ -148,7 +148,7 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
     def __init__(
             self,
             env: gym.Env,
-            env_params: Optional[Dict[str, Any]] = None,
+            env_params: Optional[PyDict[str, Any]] = None,
     ):
         super().__init__(env, env_params)
 
@@ -157,7 +157,7 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         env = gym.make_vec(env_name, num_envs=num_envs, **kwargs)
         return cls(env, env_params={"capacity": num_envs, **kwargs})
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, jax.Array]:
         obs = self.v_reset(self, key)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
@@ -170,7 +170,7 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         env_state = EnvState(last_done=jnp.zeros((), dtype=bool))
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> PyTuple[Transition, EnvInfo, jax.Array]:
         # VmapMixIn → Jax callback → python env
         next_obs, reward, terminated, truncated = self.v_step(self, key, action)
         # Gymnasium reset observation is independent of the action
