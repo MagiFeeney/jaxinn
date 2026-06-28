@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import equinox as eqx
 
 from jaxinn.structs import Transition, LatentState, LatentStateWithParams
-from jaxinn.configs import (
+from jaxinn.configs.agent.dreamer import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,
 )
@@ -60,8 +60,10 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         memory = memory_cls(
             seed_idx=memory_id,
             capacity=config.memory.capacity,
-            obs_shape=config.world.perception.encoder.shape,
-            action_size=config.world.transition.action_size,
+            obs_shape=config.memory.obs_shape,
+            obs_dtype=config.memory.obs_dtype,
+            action_shape=config.memory.action_shape,
+            action_dtype=config.memory.action_dtype,
             num_seeds=config.memory.num_seeds,
         )
 

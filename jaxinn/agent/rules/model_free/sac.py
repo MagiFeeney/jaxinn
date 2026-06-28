@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
-from jaxinn.configs import SACAgentConfig
+from jaxinn.configs.agent.sac import SACAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret

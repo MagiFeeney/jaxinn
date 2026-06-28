@@ -2,7 +2,7 @@ import jax
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.configs import PerceptionConfig
+from jaxinn.configs.model import PerceptionConfig
 
 from .base import Encoder, Decoder
 

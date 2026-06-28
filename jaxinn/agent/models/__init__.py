@@ -1,7 +1,5 @@
 from .utils import dx
-from .actor import Actor
-from .critic import Critic
-from .world import World
+from .networks import Actor, Critic, World
 
 __all__ = [
     "dx",

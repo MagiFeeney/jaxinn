@@ -1,9 +1,13 @@
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base
-from jaxinn.configs.model import Actor, Critic, World
+from jaxinn.configs.model import (
+    ActorConfig,
+    CriticConfig,
+    WorldConfig
+)
 
-from .base import Agent
+from .base import AgentConfig
 
 
 # Dreamer
@@ -20,10 +24,10 @@ class DreamerOptimization(Base):
 
 
 @dataclass
-class DreamerAgent(Agent):
-    actor: Actor = field(default_factory=Actor)
-    critic: Critic = field(default_factory=Critic)
-    world: World = field(default_factory=World)
+class DreamerAgentConfig(AgentConfig):
+    actor: ActorConfig = field(default_factory=ActorConfig)
+    critic: CriticConfig = field(default_factory=CriticConfig)
+    world: WorldConfig = field(default_factory=WorldConfig)
 
     optimization: DreamerOptimization = field(default_factory=DreamerOptimization)
     random_init: bool = False   # Whether to initialize the state by following a simple distribution
@@ -35,5 +39,5 @@ class DreamerV2Optimization(DreamerOptimization):
 
 
 @dataclass
-class DreamerV2Agent(DreamerAgent):
+class DreamerV2AgentConfig(DreamerAgentConfig):
     optimization: DreamerV2Optimization = field(default_factory=DreamerV2Optimization)

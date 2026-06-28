@@ -3,7 +3,7 @@ from typing import Callable, Union, Dict, Tuple, Any
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, Array, Bool, Float
+from jaxtyping import PRNGKeyArray, Array, Bool, Float, PyTree, DTypeLike
 import equinox as eqx
 
 
@@ -18,13 +18,27 @@ class Transition(eqx.Module):
     def initialize(
             cls,
             capacity: Union[int, Tuple[int, ...]],
-            obs_shape: Tuple[int, ...],
-            action_size: int,
+            obs_shape: PyTree[Tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[Tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
     ):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
+        action = jax.tree.map(
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=dtype),
+            action_shape,
+            action_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
+        next_obs = jax.tree.map(
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=jnp.uint8 if len(shape) >= 3 else dtype),
+            obs_shape,
+            obs_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
         return cls(
-            action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
-            next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
+            action=action,
+            next_obs=next_obs,
             reward=jnp.zeros((*capacity, 1), dtype=jnp.float32),
             terminated=jnp.zeros((*capacity, 1), dtype=bool),
             truncated=jnp.zeros((*capacity, 1), dtype=bool),
@@ -39,10 +53,12 @@ class Experience(eqx.Module):
     def initialize(
             cls,
             capacity: Union[int, Tuple[int, ...]],
-            obs_shape: Tuple[int, ...],
-            action_size: int,
+            obs_shape: PyTree[Tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[Tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
     ):
-        transition = Transition.initialize(capacity, obs_shape, action_size)
+        transition = Transition.initialize(capacity, obs_shape, obs_dtype, action_shape, action_dtype)
         terminal_observation = jnp.zeros_like(transition.next_obs)
         return cls(transition=transition, terminal_observation=terminal_observation)
 

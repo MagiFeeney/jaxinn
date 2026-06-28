@@ -6,12 +6,36 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import gymnax
+import gymnax.environments.spaces as gymnax_spaces
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
 
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
+from ..spaces import Discrete, Box, Dict, Tuple # TODO: add Tuple to spaces
+
+
+def gymnax_space_to_jaxinn_space(space):
+    if isinstance(space, gymnax_spaces.Discrete):
+        return Discrete(n=space.n, dtype=space.dtype)
+    elif isinstance(space, gymnax_spaces.Box):
+        return Box(
+            low=space.low,
+            high=space.high,
+            shape=space.shape,
+            dtype=space.dtype,
+        )
+    elif isinstance(space, gymnax_spaces.Dict):
+        converted_spaces = {k: gymnax_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
+        return Dict(converted_spaces)
+    elif isinstance(space, gymnax_spaces.Tuple):
+        converted_spaces = tuple(gymnax_space_to_jaxinn_space(s) for s in space.spaces)
+        return Tuple(converted_spaces)
+    else:
+        raise TypeError(
+            f"Unsupported Gymnax space type for conversion to Jaxinn space: '{type(space).__name__}'."
+        )
 
 
 class TerminalObservationWrapper:
@@ -95,18 +119,14 @@ class Gymnax(Environment):
     @property
     def observation_space(self):
         space = self.env.observation_space(self.env_params)
+        space = gymnax_space_to_jaxinn_space(space)
         return space
 
     @property
     def action_space(self):
         space = self.env.action_space(self.env_params)
+        space = gymnax_space_to_jaxinn_space(space)
         return space
-
-    @property
-    def action_size(self):
-        if self.is_action_space_discrete:
-            return self.action_space.n
-        return math.prod(self.action_space.shape)
 
     @property
     def max_episode_length(self) -> int:

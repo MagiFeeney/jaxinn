@@ -97,6 +97,7 @@ class Interactor:
             last_latent_state, last_action, obs, key = operand
             key_act, key_noise = jax.random.split(key, 2)
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
+
             if not eval and self.action_noise > 0:
                 if self.env.get("is_action_space_discrete"):
                     key_idx, key_cond = jax.random.split(key_noise, 2)
@@ -346,7 +347,10 @@ class Trainer(Interactor, eqx.Module):
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     ctx = {
         "obs_shape":                env.get("observation_space").shape,
-        "action_size":              env.get("action_size"),
+        "obs_dtype":                env.get("observation_space").dtype,
+        "action_shape":             env.get("action_space").shape,       # For memory & dependent models
+        "action_dtype":             env.get("action_space").dtype,
+        "action_size":              env.get("action_size"),              # For actor creation
         "is_action_space_discrete": env.get("is_action_space_discrete"),
         "num_environment_steps":    config.exploration.num_environment_steps,
         "episode_length":           config.exploration.episode_length,

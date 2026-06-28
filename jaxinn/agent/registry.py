@@ -17,7 +17,9 @@ class Registrable:
 
         config_cls = getattr(cls, "config_cls", None)
         if config_cls is not None:
-            cls._registry[config_cls] = cls
+            config_cls = config_cls if isinstance(config_cls, tuple) else (config_cls,)
+            for cfg in config_cls:
+                cls._registry[cfg] = cls
 
     @classmethod
     def create(cls, config: Any, **kwargs):

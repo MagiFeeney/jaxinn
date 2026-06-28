@@ -4,17 +4,30 @@ from typing import Tuple, Any, Union
 
 import jax
 import jax.numpy as jnp
+from jaxtyping import PyTree, DTypeLike
 import equinox as eqx
 
 from jaxinn.structs import Transition
 
 
 class HostRAM:
-    def __init__(self, num_seeds: int, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, num_seeds: int, capacity: Union[int, Tuple[int, ...]], obs_shape: PyTree[Tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[Tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
+        action = jax.tree.map(
+            lambda shape, dtype: np.zeros((num_seeds, *capacity, *shape), dtype=np.dtype(dtype)),
+            action_shape,
+            action_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
+        next_obs = jax.tree.map(
+            lambda shape, dtype: np.zeros((num_seeds, *capacity, *shape), dtype=np.uint8 if len(shape) >= 3 else np.dtype(dtype)),
+            obs_shape,
+            obs_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
         self.data = Transition(
-            action=np.zeros((num_seeds, *capacity, action_size), dtype=np.float32),
-            next_obs=np.zeros((num_seeds, *capacity, *obs_shape), dtype=np.uint8 if len(obs_shape) >= 3 else np.float32),
+            action=action,
+            next_obs=next_obs,
             reward=np.zeros((num_seeds, *capacity, 1), dtype=np.float32),
             terminated=np.zeros((num_seeds, *capacity, 1), dtype=bool),
             truncated=np.zeros((num_seeds, *capacity, 1), dtype=bool),
@@ -52,8 +65,8 @@ class CPUStorage(Storage):
     num_seeds: int = eqx.field(static=True)
     base_struct: Any = eqx.field(static=True)
 
-    def __init__(self, num_seeds: int, capacity: int, obs_shape: Tuple[int, ...], action_size: int):
-        self.host = HostRAM(num_seeds, capacity, obs_shape, action_size)
+    def __init__(self, num_seeds: int, capacity: int, obs_shape: PyTree[Tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[Tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
+        self.host = HostRAM(num_seeds, capacity, obs_shape, obs_dtype, action_shape, action_dtype)
         self.num_seeds = num_seeds
 
         # Precompute to save compute
@@ -90,11 +103,23 @@ class CPUStorage(Storage):
 class GPUStorage(Storage):
     data: Transition
 
-    def __init__(self, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int):
+    def __init__(self, capacity: Union[int, Tuple[int, ...]], obs_shape: PyTree[Tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[Tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
+        action = jax.tree.map(
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=dtype),
+            action_shape,
+            action_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
+        next_obs = jax.tree.map(
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=jnp.uint8 if len(shape) >= 3 else dtype),
+            obs_shape,
+            obs_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
         self.data = Transition(
-            action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
-            next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
+            action=action,
+            next_obs=next_obs,
             reward=jnp.zeros((*capacity, 1), dtype=jnp.float32), # TODO: automatically decide whether to unsqueeze based on the env
             terminated=jnp.zeros((*capacity, 1), dtype=bool),
             truncated=jnp.zeros((*capacity, 1), dtype=bool),
