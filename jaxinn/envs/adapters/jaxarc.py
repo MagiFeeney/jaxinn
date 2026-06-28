@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple, Dict
+from typing import Any, Optional, Tuple as PyTuple
 
 import jax
 import jax.numpy as jnp
@@ -14,7 +14,7 @@ import stoa.spaces as stoa_spaces
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
-from ..spaces import Discrete, Box, Dict, Tuple # TODO: add Tuple to spaces
+from ..spaces import Discrete, Box, Dict, Tuple
 
 
 def stoa_space_to_jaxinn_space(space):
@@ -65,7 +65,7 @@ class JaxARC(Environment):
                 f"If the name is invalid, available tasks for '{subset}' are: {tasks}"
             ) from e
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, JaxARCTimeStep]:
+    def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, JaxARCTimeStep]:
         key_reset, key_action = jax.random.split(key, 2)
         env_state, timestep = self.env.reset(key_reset, self.env_params)
         dummy_action = self.action_space.sample(key_action)
@@ -82,7 +82,7 @@ class JaxARC(Environment):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: JaxARCTimeStep, action: jax.Array) -> Tuple[Transition, EnvInfo, JaxARCTimeStep]:
+    def step(self, key: PRNGKeyArray, env_state: JaxARCTimeStep, action: jax.Array) -> PyTuple[Transition, EnvInfo, JaxARCTimeStep]:
         next_env_state, timestep = self.env.step(env_state, action, self.env_params)
         transition = Transition(
             action=action,

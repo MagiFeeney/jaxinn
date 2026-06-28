@@ -4,6 +4,7 @@ from typing import Any, Dict as PyDict, Tuple as PyTuple, TypeVar, Generic, Sequ
 
 import jax
 import jax.numpy as jnp
+from jaxtyping import PRNGKeyArray
 
 
 T = TypeVar("T")
@@ -51,7 +52,7 @@ class Space(abc.ABC, Generic[T]):
         pass
 
     @abc.abstractmethod
-    def sample(self, key: jax.Array) -> T:
+    def sample(self, key: PRNGKeyArray) -> T:
         """Sample a value from the space using a PRNG key."""
         pass
 
@@ -89,7 +90,7 @@ class Discrete(Space[jax.Array]):
     def size(self) -> int:
         return self.n
 
-    def sample(self, key: jax.Array) -> jax.Array:
+    def sample(self, key: PRNGKeyArray) -> jax.Array:
         return jax.random.randint(key, shape=self.shape, minval=0, maxval=self.n, dtype=self.dtype)
 
     def contains(self, x: jax.Array) -> bool:
@@ -114,7 +115,7 @@ class OneHotDiscrete(Discrete):
         super().__init__(n=n, dtype=dtype)
         self.shape = (n,)
 
-    def sample(self, key: jax.Array) -> jax.Array:
+    def sample(self, key: PRNGKeyArray) -> jax.Array:
         random_idx = jax.random.randint(key, shape=(), minval=0, maxval=self.n)
         return jax.nn.one_hot(random_idx, self.n, dtype=self.dtype)
 
@@ -149,7 +150,7 @@ class Box(Space[jax.Array]):
             jnp.all(jnp.isfinite(self.high))
         )
 
-    def sample(self, key: jax.Array) -> jax.Array:
+    def sample(self, key: PRNGKeyArray) -> jax.Array:
         def bounded_sample(key):
             if jnp.issubdtype(self.dtype, jnp.integer):
                 return jax.random.randint(
@@ -216,7 +217,7 @@ class MultiDiscrete(Space[jax.Array]):
     def size(self) -> int:
         return int(jnp.sum(self.nvec))
 
-    def sample(self, key: jax.Array) -> jax.Array:
+    def sample(self, key: PRNGKeyArray) -> jax.Array:
         return jax.random.randint(key, shape=self.shape, minval=0, maxval=self.nvec, dtype=self.dtype)
 
     def contains(self, x: jax.Array) -> bool:
@@ -255,20 +256,20 @@ class Dict(Space[PyDict[str, Any]]):
         super().__init__(shape=shape, dtype=dtype)
 
     @property
-    def is_discrete(self) -> bool:
+    def is_discrete(self) -> PyDict[str, bool]:
         if len(self.spaces) == 1:
             space = next(iter(self.spaces.values()))
             return space.is_discrete
         return {k: space.is_discrete for k, space in self.spaces.items()}
 
     @property
-    def size(self) -> int:
+    def size(self) -> PyDict[str, int]:
         if len(self.spaces) == 1:
             space = next(iter(self.spaces.values()))
             return space.size
         return {k: space.size for k, space in self.spaces.items()}
 
-    def sample(self, key: jax.Array) -> PyDict[str, Any]:
+    def sample(self, key: PRNGKeyArray) -> PyDict[str, Any]:
         keys = jax.random.split(key, len(self.spaces))
         return {
             k: space.sample(k_key)
@@ -293,5 +294,37 @@ class Dict(Space[PyDict[str, Any]]):
 
 
 @jax.tree_util.register_pytree_node_class
-class Tuple(Space[PyTuple[Any]]):
-    pass
+class Tuple(Space[PyTuple[Any, ...]]):
+    def __init__(self, spaces: PyTuple[Space, ...]):
+        self.spaces = tuple(spaces)
+
+        shape = tuple(space.shape for space in self.spaces)
+        dtype = tuple(space.dtype for space in self.spaces)
+
+        super().__init__(shape=shape, dtype=dtype)
+
+    @property
+    def is_discrete(self) -> PyTuple[bool, ...]:
+        return tuple(space.is_discrete for space in self.spaces)
+
+    @property
+    def size(self) -> PyTuple[int, ...]:
+        return tuple(space.size for space in self.spaces)
+
+    def sample(self, key: PRNGKeyArray) -> PyTuple[Any, ...]:
+        keys = jax.random.split(key, len(self.spaces))
+        return tuple(
+            space.sample(k) for space, k in zip(self.spaces, keys)
+        )
+
+    def contains(self, x: PyTuple[Any, ...]) -> bool:
+        if not isinstance(x, tuple) or len(x) != len(self.spaces):
+            return False
+        return all(space.contains(item) for space, item in zip(self.spaces, x))
+
+    def tree_flatten(self):
+        return self.spaces, None
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(tuple(children))
