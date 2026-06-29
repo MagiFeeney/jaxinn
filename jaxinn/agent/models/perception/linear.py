@@ -29,16 +29,16 @@ class LinearEncoder(Encoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(obs_shape) == 1, (
-            f"Expected a 1D observation shape, but got {obs_shape} with {len(obs_shape)} dimensions "
-            f"in {self.__class__.__name__}."
+        assert len(obs_shape) <= 1, (
+            f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
         activation = get_activation_fn(activation_function)
 
         if hidden_size is not None and \
            embedding_size is not None:
             self.net = make_mlp(
-                input_size = obs_shape[0],
+                input_size = math.prod(obs_shape),
                 hidden_size = hidden_size,
                 output_size = embedding_size,
                 activation = StaticCallable(activation),
@@ -51,13 +51,14 @@ class LinearEncoder(Encoder):
             self,
             obs: jax.Array
     ) -> jax.Array:
-        return self.net(obs)
+        return self.net(jnp.atleast_1d(obs))
 
 
 class LinearDecoder(Decoder):
     config_cls: ClassVar[Type] = LinearDecoderConfig
 
     net: eqx.Module
+    obs_shape: Tuple[int, ...] = eqx.field(static=True)
 
     def __init__(
             self,
@@ -69,10 +70,11 @@ class LinearDecoder(Decoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(obs_shape) == 1, (
-            f"Expected a 1D observation shape, but got {obs_shape} with {len(obs_shape)} dimensions "
-            f"in {self.__class__.__name__}."
+        assert len(obs_shape) <= 1, (
+            f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
+        self.obs_shape = obs_shape
         activation = get_activation_fn(activation_function)
 
         if isinstance(state_size, tuple):
@@ -81,7 +83,7 @@ class LinearDecoder(Decoder):
         self.net = make_mlp(
             input_size = belief_size + state_size,
             hidden_size = hidden_size,
-            output_size = obs_shape[0],
+            output_size = math.prod(obs_shape),
             activation = StaticCallable(activation),
             key = key
         )
@@ -93,5 +95,6 @@ class LinearDecoder(Decoder):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         out = self.net(latent_state)
+        out = out.reshape(out.shape[:-1] + self.obs_shape)
         dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(1))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.obs_shape)))

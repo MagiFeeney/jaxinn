@@ -28,7 +28,7 @@ _FACTORY_REGISTRY = {
 
     # Non-JAX envs
     "gymnasium": EnvSpec(".adapters.gymnasium", "Gymnasium", native_autoreset=True),
-    "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True)
+    "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True),
     "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
 
 }
