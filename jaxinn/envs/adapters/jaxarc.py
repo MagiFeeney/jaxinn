@@ -14,12 +14,14 @@ import stoa.spaces as stoa_spaces
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
-from ..spaces import Discrete, Box, Dict, Tuple
+from ..spaces import Discrete, MultiDiscrete, Box, Dict, Tuple
 
 
 def stoa_space_to_jaxinn_space(space):
     if isinstance(space, stoa_spaces.DiscreteSpace):
         return Discrete(n=space.num_values, dtype=space.dtype)
+    elif isinstance(space, stoa_spaces.MultiDiscreteSpace):
+        return MultiDiscrete(nvec=space.num_values, dtype=space.dtype)
     elif isinstance(space, stoa_spaces.BoundedArraySpace):
         return Box(
             low=space.minimum,
@@ -27,10 +29,10 @@ def stoa_space_to_jaxinn_space(space):
             shape=space.shape,
             dtype=space.dtype,
         )
-    elif isinstance(space, stoa_spaces.Dict):
+    elif isinstance(space, stoa_spaces.DictSpace):
         converted_spaces = {k: stoa_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
         return Dict(converted_spaces)
-    elif isinstance(space, stoa_spaces.Tuple):
+    elif isinstance(space, stoa_spaces.TupleSpace):
         converted_spaces = tuple(stoa_space_to_jaxinn_space(s) for s in space.spaces)
         return Tuple(converted_spaces)
     else:
@@ -66,11 +68,14 @@ class JaxARC(Environment):
             ) from e
 
     def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, JaxARCTimeStep]:
-        key_reset, key_action = jax.random.split(key, 2)
-        env_state, timestep = self.env.reset(key_reset, self.env_params)
-        dummy_action = self.action_space.sample(key_action)
+        env_state, timestep = self.env.reset(key, self.env_params)
         transition = Transition(
-            action=jax.tree.map(jnp.zeros_like, dummy_action),
+            action = jax.tree.map(
+                lambda shape, dtype: jnp.zeros(shape, dtype=dtype),
+                self.action_space.shape,
+                self.action_space.dtype,
+                is_leaf=lambda x: isinstance(x, tuple)
+            ),
             next_obs=timestep.observation.astype(jnp.float32),
             reward=jnp.zeros(()),
             terminated=jnp.zeros((), dtype=bool),
