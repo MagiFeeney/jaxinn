@@ -24,11 +24,13 @@ _FACTORY_REGISTRY = {
     "brax":      EnvSpec(".adapters.brax", "Brax", native_time_limit=False),
     "navix":     EnvSpec(".adapters.navix", "Navix"),
     "craftax":   EnvSpec(".adapters.craftax", "Craftax"),
-    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
+    "jaxarc":    EnvSpec(".adapters.jaxarc", "JaxARC"),
 
     # Non-JAX envs
     "gymnasium": EnvSpec(".adapters.gymnasium", "Gymnasium", native_autoreset=True),
     "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True)
+    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
+
 }
 
 
