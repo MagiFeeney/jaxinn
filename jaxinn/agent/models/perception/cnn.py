@@ -21,7 +21,7 @@ class CNNEncoder(Encoder):
 
     body: eqx.nn.Sequential
     head: Union[eqx.nn.Linear, eqx.nn.Identity]
-    obs_shape: Tuple[int, int, int] = eqx.field(static=True)
+    obs_shape: Tuple[int, int, ...] = eqx.field(static=True)
     kernel_size: int = eqx.field(static=True)
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
@@ -30,9 +30,9 @@ class CNNEncoder(Encoder):
 
     feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
 
-    def __init__(
+    def __init__(               # TODO: add num_layers
             self,
-            obs_shape: Tuple[int, int, int],
+            obs_shape: Tuple[int, int, ...],
             embedding_size: int,
             kernel_size: int = 4,
             depth: int = 32,
@@ -42,6 +42,10 @@ class CNNEncoder(Encoder):
             *,
             key: PRNGKeyArray
     ):
+        assert len(obs_shape) >= 2, (
+            f"Expected a 2D+ observation shape in {self.__class__.__name__}, "
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
+        )
         activation = get_activation_fn(activation_function)
         self.dtype = get_precision_fn(dtype)
 
@@ -73,6 +77,7 @@ class CNNEncoder(Encoder):
             self,
             obs: jax.Array
     ) -> jax.Array:
+        obs = jnp.atleast_3d(obs)
         obs = obs.astype(self.dtype)
         feature = eqx.filter_checkpoint(self.body)(obs)
         feature = feature.astype(jnp.float32) # upcast for stability
@@ -90,7 +95,7 @@ class CNNDecoder(Decoder):
 
     embedding: eqx.nn.Linear
     body: eqx.nn.Sequential
-    obs_shape: Tuple[int, int, int] = eqx.field(static=True)
+    obs_shape: Tuple[int, int, ...] = eqx.field(static=True)
     kernel_size: int = eqx.field(static=True)
     depth: int = eqx.field(static=True)
     stride: int = eqx.field(static=True)
@@ -102,7 +107,7 @@ class CNNDecoder(Decoder):
             self,
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
-            obs_shape: Tuple[int, int, int],
+            obs_shape: Tuple[int, int, ...],
             feature_map_shape: Tuple[int, int, int],
             kernel_size: int = 4,
             depth: int = 32,
@@ -112,6 +117,10 @@ class CNNDecoder(Decoder):
             *,
             key: PRNGKeyArray
     ):
+        assert len(obs_shape) >= 2, (
+            f"Expected a 2D+ observation shape in {self.__class__.__name__}, "
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
+        )
         activation = get_activation_fn(activation_function)
         self.dtype = get_precision_fn(dtype)
         self.feature_map_shape = feature_map_shape
@@ -122,8 +131,10 @@ class CNNDecoder(Decoder):
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)
 
+        out_channels = obs_shape[0] if len(obs_shape) > 2 else 1
+
         self.embedding = eqx.nn.Linear(belief_size + state_size, feature_map_size, key=keys[0])
-        self.body = eqx.nn.Sequential([
+        self.body = eqx.nn.Sequential([ # TODO: support 4D spatial dims and fix this line
             StaticCallable(activation),
             eqx.nn.ConvTranspose2d(feature_map_shape[0], 4 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[1], dtype=self.dtype),
             StaticCallable(activation),
@@ -131,7 +142,7 @@ class CNNDecoder(Decoder):
             StaticCallable(activation),
             eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[3], dtype=self.dtype),
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(1 * depth, obs_shape[0], kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[4], dtype=self.dtype),
+            eqx.nn.ConvTranspose2d(1 * depth, out_channels, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[4], dtype=self.dtype),
         ])
 
         self.obs_shape = obs_shape
@@ -150,7 +161,9 @@ class CNNDecoder(Decoder):
         out = eqx.filter_checkpoint(self.body)(embedding)
         out = out.astype(jnp.float32)
 
-        if out.shape[-3:] != self.obs_shape:
+        out = out.reshape(out.shape[:-3] + self.obs_shape) # TODO: support 4D spatial dims and fix this line
+
+        if out.shape[-3:] != self.obs_shape: # TODO: support 4D spatial dims and fix this line
             out = jax.image.resize(out, shape=out.shape[:-3] + self.obs_shape, method="bilinear")
 
         dist = dx.Normal(out, jnp.ones_like(out))

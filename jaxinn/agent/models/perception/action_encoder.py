@@ -5,6 +5,8 @@ import jax.numpy as jnp
 from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
 
+from .cnn import CNNEncoder
+from .linear import LinearEncoder
 from ..utils import get_flatten_size, is_shape_leaf
 
 
@@ -27,7 +29,16 @@ class ActionEncoder(eqx.Module):
             keys = jax.random.split(key, num_leaves)
 
             flat_embeddings = [
-                eqx.nn.Linear(get_flatten_size(shape), action_embedding_size, key=k)
+                LinearEncoder(
+                    shape,
+                    hidden_size=[], # Single layer embedding
+                    embedding_size=action_embedding_size,
+                    key=k
+                ) if len(shape) <= 1 else CNNEncoder(
+                    shape,
+                    action_embedding_size,
+                    key=k
+                )
                 for shape, k in zip(flat_shapes, keys)
             ]
 
@@ -38,14 +49,14 @@ class ActionEncoder(eqx.Module):
             self.output_size = action_size
 
     def __call__(self, action: PyTree[jax.Array]) -> jax.Array:
-        action = jax.tree.map(jnp.atleast_1d, action)
-
         if self.action_embedding is not None:
             action = jax.tree.map(
                 lambda ebd, act: ebd(act),
                 self.action_embedding,
                 action
             )
+        else:
+            action = jax.tree.map(jnp.ravel, action)
 
         flat_action, _ = jax.tree.flatten(action)
         return jnp.concatenate(flat_action, axis=-1)
