@@ -1,8 +1,9 @@
+import math
 from typing import Tuple, Optional
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
 import equinox as eqx
 import distrax
 
@@ -98,3 +99,78 @@ class SampleDist(eqx.Module):
 
     def log_prob(self, value: jax.Array) -> jax.Array:
         return self.dist.log_prob(value)
+
+
+class IndependentJointDistribution(eqx.Module):
+    """Wraps any sequence of independent distributions into a single joint distribution."""
+
+    dists: Tuple[distrax.Distribution, ...]
+    target_shape: Optional[Tuple[int, ...]] = eqx.field(static=True)
+
+    def __init__(
+            self,
+            dists: Tuple[distrax.Distribution, ...],
+            target_shape: Optional[Tuple[int, ...]] = None
+    ):
+        if target_shape is not None and math.prod(target_shape) != len(dists):
+            raise ValueError(
+                f"target_shape product must match the number of flattened dists. "
+                f"Got shape {target_shape} of product {math.prod(target_shape)} "
+                f"for {len(dists)} dists."
+            )
+
+        self.target_shape = target_shape if target_shape is not None else (len(dists),)
+        self.dists = dists
+
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
+        keys = jax.random.split(seed, len(self.dists))
+        samples = [d.sample(seed=k, sample_shape=sample_shape) for d, k in zip(self.dists, keys)]
+        stacked = jnp.stack(samples, axis=-1)
+        return stacked.reshape(*stacked.shape[:-1], *self.target_shape)
+
+    def log_prob(self, x: jax.Array) -> jax.Array:
+        x = x.reshape(*x.shape[:-len(self.target_shape)], -1)
+        log_probs = [d.log_prob(x[..., i]) for i, d in enumerate(self.dists)]
+        return sum(log_probs)
+
+    def entropy(self) -> jax.Array:
+        return sum(d.entropy() for d in self.dists)
+
+    def mode(self) -> jax.Array:
+        modes = [d.mode() for d in self.dists]
+        stacked = jnp.stack(modes, axis=-1)
+        return stacked.reshape(*stacked.shape[:-1], *self.target_shape)
+
+
+class TreeJointDistribution(eqx.Module):
+    """Wraps a PyTree of independent distributions into a single joint distribution."""
+
+    dists_tree: PyTree
+    dists_treedef: PyTreeDef
+
+    def __init__(self, dists_tree: PyTree[distrax.Distribution]):
+        self.dists_tree = dists_tree
+        self.dists_treedef = jax.tree.structure(dists_tree)
+
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
+        num_leaves = self.dists_treedef.num_leaves
+        keys = jax.random.split(seed, num_leaves)
+        keys_tree = jax.tree.unflatten(self.dists_treedef, keys)
+        return jax.tree.map(
+            lambda d, k: d.sample(seed=k, sample_shape=sample_shape),
+            self.dists_tree,
+            keys_tree
+        )
+
+    def log_prob(self, x: PyTree[jax.Array]) -> jax.Array:
+        log_probs_tree = jax.tree.map(lambda d, v: d.log_prob(v), self.dists_tree, x)
+        log_probs_leaves = jax.tree.leaves(log_probs_tree)
+        return jnp.sum(jnp.stack(log_probs_leaves), axis=0)
+
+    def entropy(self) -> jax.Array:
+        entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists_tree)
+        entropies_leaves = jax.tree.leaves(entropies_tree)
+        return jnp.sum(jnp.stack(entropies_leaves), axis=0)
+
+    def mode(self, seed: PRNGKeyArray) -> PyTree[jax.Array]:
+        return jax.tree.map(lambda d: d.mode(), self.dists_tree)

@@ -29,10 +29,10 @@ class Memory(Resolvable, Base):
 
         # Set obs and action shape and dtype
         try:
-            self.obs_shape = ctx["obs_shape"]
-            self.obs_dtype = ctx["obs_dtype"]
-            self.action_shape = ctx["action_shape"]
-            self.action_dtype = ctx["action_dtype"]
+            self.obs_shape = ctx["observation_space"].shape
+            self.obs_dtype = ctx["observation_space"].dtype
+            self.action_shape = ctx["action_space"].shape
+            self.action_dtype = ctx["action_space"].dtype
         except KeyError as e:
             raise ValueError(f"Creating Memory requires knowing observation and action metadata. Missing key: {e}")
 

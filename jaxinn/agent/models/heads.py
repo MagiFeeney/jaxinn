@@ -4,13 +4,14 @@ from typing import Tuple, Optional, ClassVar, Type
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
 import equinox as eqx
 from equinox._module import Static
 import distrax
 
 from jaxinn.agent.registry import Registrable
 from jaxinn.configs.head import (
+    HeadConfig,
     NormalHeadConfig,
     IsotropicNormalHeadConfig,
     ExpNormalHeadConfig,
@@ -19,9 +20,10 @@ from jaxinn.configs.head import (
     BetaHeadConfig,
     CategoricalHeadConfig,
     OneHotCategoricalHeadConfig,
+    MultiCategoricalHeadConfig,
 )
 
-from .distributions import SampleDist, TanhNormal, AffineBeta
+from .distributions import SampleDist, TanhNormal, AffineBeta, IndependentJointDistribution, TreeJointDistribution
 from .utils import dx
 
 
@@ -78,7 +80,7 @@ class NormalHead(Head):
         self.softplus_std = softplus_std
         self.min_std = min_std
 
-    def __call__(self, x: jax.Array) -> dx.Distribution:
+    def __call__(self, x: jax.Array) -> distrax.Distribution:
         if self.state_dependent_std:
             mean, log_std = jnp.split(x, 2, axis=-1)
         else:
@@ -120,7 +122,7 @@ class TanhNormalHead(Head):
         self.mean_scale = mean_scale
         self.raw_init_std = math.log(math.exp(init_std) - 1)
 
-    def __call__(self, x: jax.Array) -> dx.Distribution:
+    def __call__(self, x: jax.Array) -> distrax.Distribution:
         mean, log_std = jnp.split(x, 2, axis=-1)
         mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
         std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
@@ -144,7 +146,7 @@ class BetaHead(Head):
 
         self.min_std = min_std
 
-    def __call__(self, x: jax.Array) -> dx.Distribution:
+    def __call__(self, x: jax.Array) -> distrax.Distribution:
         alpha_beta = jax.nn.softplus(x) + self.min_std
         alpha, beta = jnp.split(alpha_beta, 2, axis=-1)
 
@@ -166,7 +168,7 @@ class CategoricalHead(Head):
 
         self.param_size = math.prod(self.event_size)
 
-    def __call__(self, x: jax.Array) -> dx.Distribution:
+    def __call__(self, x: jax.Array) -> distrax.Distribution:
         logits = x.reshape(*x.shape[:-1], *self.event_size)
         dist = dx.Categorical(logits=logits)
         return dist
@@ -182,7 +184,7 @@ class CategoricalHead(Head):
 class OneHotCategoricalHead(CategoricalHead):
     config_cls: ClassVar[Type] = OneHotCategoricalHeadConfig
 
-    def __call__(self, x: jax.Array) -> dx.Distribution:
+    def __call__(self, x: jax.Array) -> distrax.Distribution:
         logits = x.reshape(*x.shape[:-1], *self.event_size)
         dist = dx.Independent(dx.OneHotCategorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1)) # TODO: whether reduce the dims before event
         return dist
@@ -194,5 +196,62 @@ class OneHotCategoricalHead(CategoricalHead):
         return sample
 
 
-class Orchestrator(eqx.Module):
-    pass
+class MultiCategoricalHead(CategoricalHead):
+    config_cls: ClassVar[Type] = MultiCategoricalHeadConfig
+
+    nvec: jax.Array = eqx.field(static=True)
+    split_points: jax.Array = eqx.field(static=True)
+
+    def __init__(self, event_size: int, nvec: jax.Array):
+        super().__init__(event_size)
+
+        self.nvec = nvec
+        flat_nvec = jnp.ravel(nvec)
+        self.split_points = jnp.cumsum(flat_nvec)[:-1]
+
+    def __call__(self, x: jax.Array) -> IndependentJointDistribution:
+        logits = jnp.split(x, self.split_points, axis=-1)
+        dists = jax.tree.map(lambda l: dx.Categorical(logits=l), logits)
+        return IndependentJointDistribution(
+            dists=dists,
+            target_shape=self.nvec.shape
+        )
+
+
+class TreeHead(Head):
+    heads_tree: PyTree[Head]
+    heads_treedef: PyTreeDef
+
+    param_size: int = eqx.field(static=True)
+    split_points: jax.Array = eqx.field(static=True)
+
+    @classmethod
+    def create(cls, head_config: PyTree[HeadConfig], **kwargs):
+        action_size = kwargs.pop("action_size", None)
+
+        if action_size is None:
+            raise ValueError("action_size cannot be None for creating heads.")
+
+        heads_tree = jax.tree.map(
+            lambda config, size: Head.create(config, event_size=size),
+            head_config,
+            action_size
+        )
+
+        param_size_tree = jax.tree.map(lambda h: h.param_size, heads_tree)
+        flat_param_size, treedef = jax.tree.flatten(param_size_tree)
+        split_points = jnp.cumsum(flat_param_size)[:-1]
+        param_size = int(sum(flat_param_size))
+
+        return cls(
+            heads_tree=heads_tree,
+            heads_treedef=treedef,
+            param_size=param_size,
+            split_points=split_points,
+        )
+
+    def __call__(self, x: jax.Array) -> TreeJointDistribution:
+        params = jnp.split(x, self.split_points, axis=-1)
+        params_tree = jax.tree.unflatten(self.treedef, params)
+        dists_tree = jax.tree.map(lambda h, p: h(p), self.heads, params_tree)
+        return TreeJointDistribution(dists_tree=dists_tree)

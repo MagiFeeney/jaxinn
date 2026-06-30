@@ -1,5 +1,7 @@
-from dataclasses import dataclass
-from typing import Union
+from dataclasses import dataclass, field
+from typing import Union, Optional
+
+from jaxtyping import Float, Array
 
 from .base import Base
 
@@ -62,4 +64,19 @@ class OneHotCategoricalHeadConfig(CategoricalHeadConfig):
     pass
 
 
-HeadUnion = Union[NormalHeadConfig, IsotropicNormalHeadConfig, ExpNormalHeadConfig, FreeStdNormalHeadConfig, TanhNormalHeadConfig, BetaHeadConfig, CategoricalHeadConfig, OneHotCategoricalHeadConfig]
+class MultiCategoricalHeadConfig(CategoricalHeadConfig):
+    nvec: Optional[Float[Array]] = field(default=None, init=False)
+
+
+HeadUnion = Union[
+    NormalHeadConfig, IsotropicNormalHeadConfig, ExpNormalHeadConfig, FreeStdNormalHeadConfig, TanhNormalHeadConfig, BetaHeadConfig, CategoricalHeadConfig, OneHotCategoricalHeadConfig, MultiCategoricalHeadConfig
+]
+
+ContinuousHeadUnion = Union[
+    NormalHeadConfig, IsotropicNormalHeadConfig, ExpNormalHeadConfig,
+    FreeStdNormalHeadConfig, TanhNormalHeadConfig, BetaHeadConfig,
+]
+
+DiscreteHeadUnion = Union[
+    CategoricalHeadConfig, OneHotCategoricalHeadConfig, MultiCategoricalHeadConfig
+]

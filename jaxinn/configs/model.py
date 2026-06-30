@@ -1,11 +1,23 @@
+from copy import deepcopy
 from enum import Enum
 from dataclasses import dataclass, field, InitVar
 from typing import Tuple, Optional, Union, ClassVar
 
-from jaxtyping import PyTree, DTypeLike
+from jaxtyping import PyTree
+
+import jaxinn.envs.spaces as jaxinn_spaces
 
 from .base import Base, Resolvable, StaticShared, ConfigNamespace
-from .head import HeadUnion, IsotropicNormalHeadConfig, TanhNormalHeadConfig, NormalHeadConfig, CategoricalHeadConfig, OneHotCategoricalHeadConfig
+from .head import (
+    HeadUnion,
+    ContinuousHeadUnion,
+    IsotropicNormalHeadConfig,
+    TanhNormalHeadConfig,
+    NormalHeadConfig,
+    CategoricalHeadConfig,
+    OneHotCategoricalHeadConfig,
+    MultiCategoricalHeadConfig
+)
 
 
 @dataclass
@@ -38,8 +50,7 @@ class PerceptionShared(Resolvable, Model):
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
-        obs_shape = ctx.get("obs_shape", None)
-        self.obs_shape = obs_shape
+        obs_shape = ctx["observation_space"].shape
 
         env_domain = Domain.PIXEL if len(obs_shape) > 1 else Domain.STATE
 
@@ -49,6 +60,8 @@ class PerceptionShared(Resolvable, Model):
                 f"observations {obs_shape}, but {type(self).__name__} "
                 f"expects {self.DOMAIN.value} inputs."
             )
+
+        self.obs_shape = obs_shape
 
         # Propagate downstream for representation to consume
         embedding_size = getattr(self, "embedding_size", None)
@@ -109,7 +122,7 @@ class RepresentationConfig(Resolvable, ModelShared):
         if "embedding_size" not in ctx:
             return
 
-        obs_shape = ctx["obs_shape"]
+        obs_shape = ctx["observation_space"].shape
         embedding_size = ctx["embedding_size"]
 
         if embedding_size is not None:
@@ -132,7 +145,7 @@ class TransitionConfig(Resolvable, ModelShared):
     head: HeadUnion = field(default_factory=NormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        self.action_shape = ctx["action_shape"]
+        self.action_shape = ctx["action_space"].shape
 
 
 @dataclass
@@ -146,7 +159,7 @@ class RewardConfig(ModelShared):
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
-            self.action_shape = ctx["action_shape"]
+            self.action_shape = ctx["action_space"].shape
 
 
 @dataclass
@@ -180,19 +193,35 @@ class ActorConfig(Resolvable, ModelShared):
     activation_function: str = "elu"
     action_size: Optional[PyTree[int]] = field(default=None, init=False) # Pass from the env params
 
-    head: HeadUnion = field(default_factory=TanhNormalHeadConfig)
+    head: Optional[PyTree[HeadUnion]] = field(default=None, init=False) # TODO: add head_overrides
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
+    # For building head; discard after use
+    continuous_head: InitVar[ContinuousHeadUnion] = field(default_factory=TanhNormalHeadConfig)
+
     def _resolve(self, ctx: dict) -> None:
-        if ctx["is_action_space_discrete"] ^ isinstance(self.head, (CategoricalHeadConfig, OneHotCategoricalHeadConfig)):
-            raise ValueError(f"Inconsistent actor head: action space is discrete={ctx['is_action_space_discrete']}, but received head type {type(self.head).__name__}.")
+        action_space = ctx["action_space"]
+        self.action_size = action_space.size
 
-        if isinstance(self.head, OneHotCategoricalHeadConfig) != ctx["use_one_hot_action"]:
-            raise ValueError(
-                f"Mismatch: Head is {type(self.head).__name__}, but env use_one_hot_action is {ctx['use_one_hot_action']}."
-            )
+        def _resolve_head(space):
+            if isinstance(space, jaxinn_spaces.Dict):
+                return {k: _resolve_head(s) for k, s in space.spaces.items()}
+            elif isinstance(space, jaxinn_spaces.Tuple):
+                return tuple(_resolve_head(s) for s in space.spaces)
+            elif isinstance(space, jaxinn_spaces.Box):
+                return deepcopy(self.continuous_head)
+            elif isinstance(space, jaxinn_spaces.Discrete):
+                return CategoricalHeadConfig()
+            elif isinstance(space, jaxinn_spaces.OneHotDiscrete):
+                return OneHotCategoricalHeadConfig()
+            elif isinstance(space, jaxinn_spaces.MultiDiscrete):
+                return MultiCategoricalHeadConfig(nvec=space.nvec)
+            else:
+                raise TypeError(
+                    f"Unsupported space type for creating head: '{type(space).__name__}'."
+                )
 
-        self.action_size = ctx["action_size"]
+        self.head = _resolve_head(action_space)
 
 
 # Critic
@@ -215,4 +244,4 @@ class CriticConfig(Resolvable, ModelShared):
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
-            self.action_shape = ctx["action_shape"]
+            self.action_shape = ctx["action_space"].shape
