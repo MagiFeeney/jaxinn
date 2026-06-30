@@ -11,7 +11,7 @@ def _resolve_input_size(ctx: dict, *modules) -> None:
     if "embedding_size" not in ctx:
         return
 
-    obs_shape = ctx.get("obs_shape", ())
+    obs_shape = ctx["observation_space"].shape
     embedding_size = ctx.get("embedding_size", None)
 
     if embedding_size is not None:

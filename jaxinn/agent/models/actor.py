@@ -11,12 +11,12 @@ from jaxinn.configs.model import ActorConfig
 from jaxinn.configs.head import HeadConfig
 
 from .utils import make_mlp
-from .heads import Head
+from .heads import TreeHead
 
 
 class Actor(eqx.Module):
     net: eqx.Module
-    head: Head
+    head: TreeHead
 
     @classmethod
     def create(cls, config: ActorConfig, *, key: PRNGKeyArray):
@@ -28,14 +28,14 @@ class Actor(eqx.Module):
         state_size: Union[int, Tuple[int, ...]],
         hidden_size: list[int],
         action_size: PyTree[int],
-        head_config: HeadConfig,
+        head_config: PyTree[HeadConfig],
         activation_function: Union[str, Callable] = "elu",
         *,
         key: PRNGKeyArray,
     ):
-        self.head = Head.create(head_config, event_size=action_size)
+        self.head = TreeHead.create(head_config, event_size=action_size)
 
-        if isinstance(state_size, tuple):
+        if isinstance(state_size, tuple): # TODO: fix state_size when it is Categorical
             state_size = math.prod(state_size)
 
         # Build network

@@ -99,7 +99,7 @@ class Interactor:
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
 
             if not eval and self.action_noise > 0:
-                if self.env.get("is_action_space_discrete"):
+                if self.env.get("is_action_space_discrete"): # TODO: fix Categorical sampling
                     key_idx, key_cond = jax.random.split(key_noise, 2)
                     random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.get("action_size"))
                     expl_action = jax.nn.one_hot(random_idx, self.env.get("action_size"))
@@ -346,12 +346,8 @@ class Trainer(Interactor, eqx.Module):
 
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     ctx = {
-        "obs_shape":                env.get("observation_space").shape,
-        "obs_dtype":                env.get("observation_space").dtype,
-        "action_shape":             env.get("action_space").shape,       # For memory & dependent models
-        "action_dtype":             env.get("action_space").dtype,
-        "action_size":              env.get("action_size"),              # For actor creation
-        "is_action_space_discrete": env.get("is_action_space_discrete"),
+        "observation_space":        env.get("observation_space"),
+        "action_space":             env.get("action_space"),
         "num_environment_steps":    config.exploration.num_environment_steps,
         "episode_length":           config.exploration.episode_length,
         "num_seeds":                config.num_seeds,
