@@ -220,27 +220,33 @@ class MultiCategoricalHead(CategoricalHead):
 
 class TreeHead(Head):
     heads_tree: PyTree[Head]
-    heads_treedef: PyTreeDef
-
+    heads_treedef: PyTreeDef = eqx.field(static=True)
     param_size: int = eqx.field(static=True)
     split_points: jax.Array = eqx.field(static=True)
+    is_leaf: callable = eqx.field(static=True)
 
     @classmethod
     def create(cls, head_config: PyTree[HeadConfig], **kwargs):
-        action_size = kwargs.pop("action_size", None)
+        event_size = kwargs.pop("event_size", None)
 
-        if action_size is None:
-            raise ValueError("action_size cannot be None for creating heads.")
+        if event_size is None:
+            raise ValueError("event_size cannot be None for creating heads.")
 
         heads_tree = jax.tree.map(
             lambda config, size: Head.create(config, event_size=size),
             head_config,
-            action_size
+            event_size
         )
 
-        param_size_tree = jax.tree.map(lambda h: h.param_size, heads_tree)
+        is_leaf = lambda x: isinstance(x, Head)
+
+        param_size_tree = jax.tree.map(
+            lambda h: h.param_size,
+            heads_tree,
+            is_leaf=is_leaf
+        )
         flat_param_size, treedef = jax.tree.flatten(param_size_tree)
-        split_points = jnp.cumsum(flat_param_size)[:-1]
+        split_points = jnp.cumsum(jnp.array(flat_param_size))[:-1]
         param_size = int(sum(flat_param_size))
 
         return cls(
@@ -248,10 +254,28 @@ class TreeHead(Head):
             heads_treedef=treedef,
             param_size=param_size,
             split_points=split_points,
+            is_leaf=is_leaf,
         )
 
     def __call__(self, x: jax.Array) -> TreeJointDistribution:
         params = jnp.split(x, self.split_points, axis=-1)
-        params_tree = jax.tree.unflatten(self.treedef, params)
-        dists_tree = jax.tree.map(lambda h, p: h(p), self.heads, params_tree)
+        params_tree = jax.tree.unflatten(self.heads_treedef, params)
+        dists_tree = jax.tree.map(
+            lambda h, p: h(p),
+            self.heads_tree,
+            params_tree,
+            is_leaf=self.is_leaf
+        )
         return TreeJointDistribution(dists_tree=dists_tree)
+
+    def sample(self, dist: TreeJointDistribution, key: PRNGKeyArray, det: bool = False) -> PyTree[jax.Array]:
+        num_leaves = self.heads_treedef.num_leaves
+        keys = jax.random.split(key, num_leaves)
+        keys_tree = jax.tree.unflatten(self.heads_treedef, keys)
+        return jax.tree.map(
+            lambda h, d, k: h.sample(d, key=k, det=det),
+            self.heads_tree,
+            dist.dists_tree,
+            keys_tree,
+            is_leaf=self.is_leaf
+        )

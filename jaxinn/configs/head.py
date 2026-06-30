@@ -65,7 +65,7 @@ class OneHotCategoricalHeadConfig(CategoricalHeadConfig):
 
 
 class MultiCategoricalHeadConfig(CategoricalHeadConfig):
-    nvec: Optional[Float[Array]] = field(default=None, init=False)
+    nvec: Optional[Float[Array, "..."]] = field(default=None, init=False)
 
 
 HeadUnion = Union[

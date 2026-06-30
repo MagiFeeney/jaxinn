@@ -210,12 +210,12 @@ class ActorConfig(Resolvable, ModelShared):
                 return tuple(_resolve_head(s) for s in space.spaces)
             elif isinstance(space, jaxinn_spaces.Box):
                 return deepcopy(self.continuous_head)
-            elif isinstance(space, jaxinn_spaces.Discrete):
-                return CategoricalHeadConfig()
             elif isinstance(space, jaxinn_spaces.OneHotDiscrete):
                 return OneHotCategoricalHeadConfig()
             elif isinstance(space, jaxinn_spaces.MultiDiscrete):
                 return MultiCategoricalHeadConfig(nvec=space.nvec)
+            elif isinstance(space, jaxinn_spaces.Discrete):
+                return CategoricalHeadConfig()
             else:
                 raise TypeError(
                     f"Unsupported space type for creating head: '{type(space).__name__}'."

@@ -7,6 +7,8 @@ from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
 import equinox as eqx
 import distrax
 
+from .utils import FixedDistrax
+
 
 class TanhNormal(distrax.Transformed):
     """Normal distribution transformed by an Tanh transformation: X ↦ tanh(X)."""
@@ -146,11 +148,13 @@ class TreeJointDistribution(eqx.Module):
     """Wraps a PyTree of independent distributions into a single joint distribution."""
 
     dists_tree: PyTree
-    dists_treedef: PyTreeDef
+    dists_treedef: PyTreeDef = eqx.field(static=True)
+    is_leaf: callable = eqx.field(static=True)
 
     def __init__(self, dists_tree: PyTree[distrax.Distribution]):
         self.dists_tree = dists_tree
         self.dists_treedef = jax.tree.structure(dists_tree)
+        self.is_leaf = lambda x: isinstance(x, FixedDistrax)
 
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
         num_leaves = self.dists_treedef.num_leaves
@@ -159,16 +163,17 @@ class TreeJointDistribution(eqx.Module):
         return jax.tree.map(
             lambda d, k: d.sample(seed=k, sample_shape=sample_shape),
             self.dists_tree,
-            keys_tree
+            keys_tree,
+            is_leaf=self.is_leaf
         )
 
     def log_prob(self, x: PyTree[jax.Array]) -> jax.Array:
-        log_probs_tree = jax.tree.map(lambda d, v: d.log_prob(v), self.dists_tree, x)
+        log_probs_tree = jax.tree.map(lambda d, v: d.log_prob(v), self.dists_tree, x, is_leaf=self.is_leaf)
         log_probs_leaves = jax.tree.leaves(log_probs_tree)
         return jnp.sum(jnp.stack(log_probs_leaves), axis=0)
 
     def entropy(self) -> jax.Array:
-        entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists_tree)
+        entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists_tree, is_leaf=self.is_leaf)
         entropies_leaves = jax.tree.leaves(entropies_tree)
         return jnp.sum(jnp.stack(entropies_leaves), axis=0)
 
