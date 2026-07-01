@@ -197,7 +197,7 @@ class ActorConfig(Resolvable, ModelShared):
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
     # For building head; discard after use
-    continuous_head: InitVar[ContinuousHeadUnion] = field(default_factory=TanhNormalHeadConfig)
+    continuous_head: ContinuousHeadUnion = field(default_factory=TanhNormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         action_space = ctx["action_space"]

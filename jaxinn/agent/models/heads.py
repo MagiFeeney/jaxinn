@@ -2,6 +2,7 @@ import abc
 import math
 from typing import Tuple, Optional, ClassVar, Type
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
@@ -199,22 +200,24 @@ class OneHotCategoricalHead(CategoricalHead):
 class MultiCategoricalHead(CategoricalHead):
     config_cls: ClassVar[Type] = MultiCategoricalHeadConfig
 
-    nvec: jax.Array = eqx.field(static=True)
-    split_points: jax.Array = eqx.field(static=True)
+    nvec_shape: Tuple[int, ...] = eqx.field(static=True)
+    split_points: Tuple[int, ...] = eqx.field(static=True)
 
     def __init__(self, event_size: int, nvec: jax.Array):
         super().__init__(event_size)
 
-        self.nvec = nvec
-        flat_nvec = jnp.ravel(nvec)
-        self.split_points = jnp.cumsum(flat_nvec)[:-1]
+        self.nvec_shape = nvec.shape
+
+        np_nvec = np.array(nvec)
+        flat_nvec = np.ravel(np_nvec)
+        self.split_points = tuple(np.cumsum(flat_nvec)[:-1].tolist())
 
     def __call__(self, x: jax.Array) -> IndependentJointDistribution:
         logits = jnp.split(x, self.split_points, axis=-1)
         dists = jax.tree.map(lambda l: dx.Categorical(logits=l), logits)
         return IndependentJointDistribution(
             dists=dists,
-            target_shape=self.nvec.shape
+            target_shape=self.nvec_shape
         )
 
 
@@ -222,7 +225,7 @@ class TreeHead(Head):
     heads_tree: PyTree[Head]
     heads_treedef: PyTreeDef = eqx.field(static=True)
     param_size: int = eqx.field(static=True)
-    split_points: jax.Array = eqx.field(static=True)
+    split_points: Tuple[int, ...] = eqx.field(static=True)
     is_leaf: callable = eqx.field(static=True)
 
     @classmethod
@@ -246,7 +249,7 @@ class TreeHead(Head):
             is_leaf=is_leaf
         )
         flat_param_size, treedef = jax.tree.flatten(param_size_tree)
-        split_points = jnp.cumsum(jnp.array(flat_param_size))[:-1]
+        split_points = tuple(np.cumsum(np.array(flat_param_size))[:-1].tolist())
         param_size = int(sum(flat_param_size))
 
         return cls(

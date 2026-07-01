@@ -74,7 +74,7 @@ class EnvPoolVmapMixIn(VmapTransformation):
 
 
 class EnvPool(Environment, EnvPoolVmapMixIn):
-    _handle: jax.Array = eqx.field(static=True)
+    _handle: jax.Array
     _step: Callable = eqx.field(static=True)
 
     def __init__(
