@@ -7,7 +7,41 @@ from jaxtyping import PRNGKeyArray, Array, Bool, Float, PyTree, DTypeLike
 import equinox as eqx
 
 
-class Transition(eqx.Module):
+class ArrayLikeOps:
+    """Enables array-like behavior for a PyTree."""
+
+    def __getitem__(self, index: Any):
+        return jax.tree.map(lambda x: x[index], self)
+
+    def __mul__(self, other):
+        if isinstance(other, type(self)):
+            return jax.tree.map(lambda x, y: x * y, self, other)
+        return jax.tree.map(lambda x: x * other, self)
+
+    def __rmul__(self, other):
+        if isinstance(other, type(self)):
+            return jax.tree.map(lambda x, y: x * y, other, self)
+        return jax.tree.map(lambda x: other * x, self)
+
+    def __add__(self, other):
+        if isinstance(other, type(self)):
+            return jax.tree.map(lambda x, y: x + y, self, other)
+        return jax.tree.map(lambda x: x + other, self)
+
+    def flatten(self):
+        return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
+
+    def narrow(self, axis: int, start: int, length: int):
+        return jax.tree.map(
+            lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
+            self
+        )
+
+    def detach(self):
+        return jax.lax.stop_gradient(self)
+
+
+class Transition(eqx.Module, ArrayLikeOps):
     action: Float[Array, " action_dim"]
     next_obs: Float[Array, " obs_dim"]
     reward: Float[Array, ""]
@@ -63,7 +97,7 @@ class Experience(eqx.Module):
         return cls(transition=transition, terminal_observation=terminal_observation)
 
 
-class LatentState(eqx.Module):
+class LatentState(eqx.Module, ArrayLikeOps):
     """
     Combine deterministic history encoding (belief) and the stochastic predictor (state) into a single state.
     """
@@ -106,27 +140,6 @@ class LatentState(eqx.Module):
     @property
     def feature(self) -> jax.Array:
         return jnp.concatenate([self.belief, self.state], axis=-1)
-
-    def __getitem__(self, index: Any) -> "LatentState":
-        return jax.tree.map(lambda x: x[index], self)
-
-    def __mul__(self, other):
-        return jax.tree.map(lambda x: x * other, self)
-
-    def __rmul__(self, other):
-        return jax.tree.map(lambda x: other * x, self)
-
-    def flatten(self) -> "LatentState":
-        return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
-
-    def narrow(self, axis: int, start: int, length: int) -> "LatentState":
-        return jax.tree.map(
-            lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
-            self
-        )
-
-    def detach(self):
-        return jax.tree.map(jax.lax.stop_gradient, self)
 
 
 class LatentStateWithParams(eqx.Module):

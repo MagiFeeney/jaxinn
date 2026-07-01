@@ -199,10 +199,11 @@ class PPOAgent(PPOLossMixIn, Agent):
 
         # Get action log probs
         actor_dists = jax.vmap(jax.vmap(self.actor_critic.get_actor_dist))(transition.next_obs[:-1])
-        log_probs = actor_dists.log_prob(transition.action[1:])
+        actions = jax.tree.map(lambda x: x[1:], transition.action)
+        log_probs = actor_dists.log_prob(actions)
 
         # Apply shuffle and split for training data
-        train_data = (transition.next_obs[:-1], transition.action[1:], advantages, returns, values[:-1], log_probs)
+        train_data = (transition.next_obs[:-1], actions, advantages, returns, values[:-1], log_probs)
         flatten_train_data = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), train_data)
 
         def step_fn(key: PRNGKeyArray):
