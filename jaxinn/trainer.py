@@ -125,7 +125,7 @@ class Interactor:
                 interaction_state.latent_state,
                 agent.init_latent_state(key_init, batch_shape=(num_envs,))
             )
-            last_action = last_transition.action * mask
+            last_action = jax.tree.map(lambda x: x * mask, last_transition.action)
             obs = last_transition.next_obs
 
             operand = (last_latent_state, last_action, obs, key_action)
