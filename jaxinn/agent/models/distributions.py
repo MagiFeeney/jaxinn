@@ -169,13 +169,11 @@ class TreeJointDistribution(eqx.Module):
 
     def log_prob(self, x: PyTree[jax.Array]) -> jax.Array:
         log_probs_tree = jax.tree.map(lambda d, v: d.log_prob(v), self.dists_tree, x, is_leaf=self.is_leaf)
-        log_probs_leaves = jax.tree.leaves(log_probs_tree)
-        return jnp.sum(jnp.stack(log_probs_leaves), axis=0)
+        return jax.tree.reduce(jnp.add, log_probs_tree)
 
     def entropy(self) -> jax.Array:
         entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists_tree, is_leaf=self.is_leaf)
-        entropies_leaves = jax.tree.leaves(entropies_tree)
-        return jnp.sum(jnp.stack(entropies_leaves), axis=0)
+        return jax.tree.reduce(jnp.add, entropies_tree)
 
     def mode(self, seed: PRNGKeyArray) -> PyTree[jax.Array]:
         return jax.tree.map(lambda d: d.mode(), self.dists_tree)

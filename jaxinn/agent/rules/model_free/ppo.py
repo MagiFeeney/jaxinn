@@ -100,11 +100,6 @@ class ActorCriticDecoupled(ActorCritic):
     def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
         return self.critic(obs)
 
-    def sample_action(self, obs: jax.Array, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        actor_dist = self.actor(obs)
-        action = self.actor.sample(actor_dist, key, det)
-        return action
-
 
 # Shared encoder
 class ActorCriticShared(ActorCritic):
@@ -130,12 +125,6 @@ class ActorCriticShared(ActorCritic):
     def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
         feature = self.encoder(obs)
         return self.critic(feature)
-
-    def sample_action(self, obs: jax.Array, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        feature = self.encoder(obs)
-        actor_dist = self.actor(feature)
-        action = self.actor.sample(actor_dist, key, det)
-        return action
 
 
 class PPOAgent(PPOLossMixIn, Agent):
@@ -177,7 +166,8 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None
 
     def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
-        action = jax.vmap(self.actor_critic.sample_action, in_axes=(0, None, None))(obs, key, eval)
+        actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
+        action = self.actor_critic.actor.sample(actor_dist, key, eval)
         return None, action
 
     def make_batch_fn(self) -> callable:
