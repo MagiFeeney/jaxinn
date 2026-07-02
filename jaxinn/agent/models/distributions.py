@@ -1,5 +1,5 @@
 import math
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +8,13 @@ import equinox as eqx
 import distrax
 
 from .utils import FixedDistrax
+
+
+class Distribution(eqx.Module):
+    dist: Any
+
+    def __getattr__(self, name):
+        return getattr(self.dist, name)
 
 
 class TanhNormal(distrax.Transformed):
@@ -21,9 +28,6 @@ class TanhNormal(distrax.Transformed):
     # Approximate mean after Tanh transformation as tanh(base_mean)
     def mean(self) -> jnp.ndarray:
         return jnp.tanh(self.distribution.mean())
-
-    def sample(self, seed: PRNGKeyArray, sample_shape=()):
-        return super().sample(seed=seed, sample_shape=sample_shape)
 
 
 # Patched version: correct the batch_shape when used with vmap
@@ -56,20 +60,16 @@ class AffineBeta(distrax.Transformed):
         transform = distrax.ScalarAffine(shift=loc, scale=scale)
         super().__init__(_distribution, transform)
 
-    def mode(self) -> Optional[jnp.ndarray]:
-        return super().mode()
 
-    def sample(self, seed: PRNGKeyArray, sample_shape=()):
-        return super().sample(seed=seed, sample_shape=sample_shape)
+class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
+        sample = super().sample(seed=seed, sample_shape=sample_shape)
+        sample = sample + self.probs - jax.lax.stop_gradient(self.probs)
+        return sample
 
 
-class SampleDist(eqx.Module):
-    dist: distrax.Distribution
-    num_samples: int = eqx.field(static=True)
-
-    def __init__(self, dist, num_samples=100):
-        self.dist = dist
-        self.num_samples = num_samples
+class SampleDist(Distribution):
+    num_samples: int = eqx.field(static=True, default=100)
 
     def mean(self, seed: PRNGKeyArray) -> jax.Array:
         samples = self.dist.sample(
@@ -101,6 +101,29 @@ class SampleDist(eqx.Module):
 
     def log_prob(self, value: jax.Array) -> jax.Array:
         return self.dist.log_prob(value)
+
+
+class FlattenSampleDist(Distribution):
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
+        sample = self.dist.sample(seed=seed, sample_shape=sample_shape)
+        event_shape = self.dist.event_shape
+        if len(event_shape) == 0:
+            return sample
+        sample = sample.reshape(*sample.shape[:-len(event_shape)], -1)
+        return sample
+
+    def log_prob(self, x: jax.Array) -> jax.Array:
+        event_shape = self.dist.event_shape
+        if len(event_shape) > 0:
+            x = x.reshape(*x.shape[:-1], *event_shape)
+        return self.dist.log_prob(x)
+
+    def mode(self) -> jax.Array:
+        mode = self.dist.mode()
+        event_shape = self.dist.event_shape
+        if len(event_shape) == 0:
+            return mode
+        return mode.reshape(*mode.shape[:-len(event_shape)], -1)
 
 
 class IndependentJointDistribution(eqx.Module):
@@ -147,14 +170,14 @@ class IndependentJointDistribution(eqx.Module):
 class TreeJointDistribution(eqx.Module):
     """Wraps a PyTree of independent distributions into a single joint distribution."""
 
-    dists_tree: PyTree
+    dists_tree: PyTree[Any]
     dists_treedef: PyTreeDef = eqx.field(static=True)
     is_leaf: callable = eqx.field(static=True)
 
     def __init__(self, dists_tree: PyTree[distrax.Distribution]):
         self.dists_tree = dists_tree
         self.dists_treedef = jax.tree.structure(dists_tree)
-        self.is_leaf = lambda x: isinstance(x, FixedDistrax)
+        self.is_leaf = lambda x: isinstance(x, (FixedDistrax, Distribution, distrax.Distribution))
 
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
         num_leaves = self.dists_treedef.num_leaves
@@ -176,4 +199,4 @@ class TreeJointDistribution(eqx.Module):
         return jax.tree.reduce(jnp.add, entropies_tree)
 
     def mode(self, seed: PRNGKeyArray) -> PyTree[jax.Array]:
-        return jax.tree.map(lambda d: d.mode(), self.dists_tree)
+        return jax.tree.map(lambda d: d.mode(), self.dists_tree, is_leaf=self.is_leaf)

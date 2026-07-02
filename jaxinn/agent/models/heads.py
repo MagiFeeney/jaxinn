@@ -24,7 +24,15 @@ from jaxinn.configs.head import (
     MultiCategoricalHeadConfig,
 )
 
-from .distributions import SampleDist, TanhNormal, AffineBeta, IndependentJointDistribution, TreeJointDistribution
+from .distributions import (
+    SampleDist,
+    TanhNormal,
+    AffineBeta,
+    StraightThroughOneHotCategorical,
+    FlattenSampleDist,
+    IndependentJointDistribution,
+    TreeJointDistribution,
+)
 from .utils import dx
 
 
@@ -34,11 +42,6 @@ class Head(Registrable, eqx.Module):
     @abc.abstractmethod
     def __call__(self, x: jax.Array) -> distrax.Distribution:
         pass
-
-    def sample(self, dist: distrax.Distribution, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        if det:
-            return dist.mode(seed=key)
-        return dist.sample(seed=key)
 
 
 class NormalHead(Head):
@@ -95,11 +98,6 @@ class NormalHead(Head):
 
         dist = dx.Independent(dx.Normal(loc=mean, scale=std), reinterpreted_batch_ndims=Static(1))
         return dist
-
-    def sample(self, dist: distrax.Distribution, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        if det:
-            return dist.mode()
-        return dist.sample(seed=key)
 
 
 class TanhNormalHead(Head):
@@ -171,15 +169,8 @@ class CategoricalHead(Head):
 
     def __call__(self, x: jax.Array) -> distrax.Distribution:
         logits = x.reshape(*x.shape[:-1], *self.event_size)
-        dist = dx.Categorical(logits=logits)
-        return dist
-
-    def sample(self, dist: distrax.Distribution, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        sample = dist.sample(seed=key)
-        event_ndims = len(self.event_size)
-        if event_ndims > 1:
-            sample = sample.reshape(*sample.shape[:-event_ndims + 1], -1)
-        return sample
+        dist = dx.Independent(dx.Categorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
+        return FlattenSampleDist(dist)
 
 
 class OneHotCategoricalHead(CategoricalHead):
@@ -187,34 +178,36 @@ class OneHotCategoricalHead(CategoricalHead):
 
     def __call__(self, x: jax.Array) -> distrax.Distribution:
         logits = x.reshape(*x.shape[:-1], *self.event_size)
-        dist = dx.Independent(dx.OneHotCategorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1)) # TODO: whether reduce the dims before event
-        return dist
-
-    def sample(self, dist: distrax.Distribution, key: PRNGKeyArray, det: bool = False) -> jax.Array: # TODO: use mode for eval?
-        sample = dist.sample(seed=key)
-        sample = sample + dist.probs - jax.lax.stop_gradient(dist.probs)
-        sample = sample.reshape(*sample.shape[:-len(self.event_size)], -1)
-        return sample
+        dist = dx.Independent(dx(StraightThroughOneHotCategorical)(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
+        return FlattenSampleDist(dist)
 
 
 class MultiCategoricalHead(CategoricalHead):
     config_cls: ClassVar[Type] = MultiCategoricalHeadConfig
 
+    heads: Tuple[CategoricalHead, ...]
     nvec_shape: Tuple[int, ...] = eqx.field(static=True)
     split_points: Tuple[int, ...] = eqx.field(static=True)
+    variable_shape: Tuple[int, ...] = eqx.field(static=True)
 
-    def __init__(self, event_size: int, nvec: jax.Array):
+    def __init__(self, event_size: int, nvec: jax.Array, variable_shape: Tuple[int, ...] = ()):
         super().__init__(event_size)
 
         self.nvec_shape = nvec.shape
+        self.variable_shape = variable_shape
 
         np_nvec = np.array(nvec)
         flat_nvec = np.ravel(np_nvec)
         self.split_points = tuple(np.cumsum(flat_nvec)[:-1].tolist())
 
+        self.heads = tuple(
+            CategoricalHead(event_size=variable_shape + (int(n),))
+            for n in flat_nvec
+        )
+
     def __call__(self, x: jax.Array) -> IndependentJointDistribution:
         logits = jnp.split(x, self.split_points, axis=-1)
-        dists = jax.tree.map(lambda l: dx.Categorical(logits=l), logits)
+        dists = tuple(head(l) for head, l in zip(self.heads, logits))
         return IndependentJointDistribution(
             dists=dists,
             target_shape=self.nvec_shape
