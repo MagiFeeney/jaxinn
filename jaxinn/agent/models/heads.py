@@ -168,7 +168,10 @@ class CategoricalHead(Head):
         self.param_size = math.prod(self.event_size)
 
     def __call__(self, x: jax.Array) -> distrax.Distribution:
-        logits = x.reshape(*x.shape[:-1], *self.event_size)
+        if x.shape[-len(self.event_size):] != self.event_size:
+            logits = x.reshape(*x.shape[:-1], *self.event_size)
+        else:
+            logits = x
         dist = dx.Independent(dx.Categorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
         return FlattenSampleDist(dist)
 
@@ -177,7 +180,10 @@ class OneHotCategoricalHead(CategoricalHead):
     config_cls: ClassVar[Type] = OneHotCategoricalHeadConfig
 
     def __call__(self, x: jax.Array) -> distrax.Distribution:
-        logits = x.reshape(*x.shape[:-1], *self.event_size)
+        if x.shape[-len(self.event_size):] != self.event_size:
+            logits = x.reshape(*x.shape[:-1], *self.event_size)
+        else:
+            logits = x
         dist = dx.Independent(dx(StraightThroughOneHotCategorical)(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
         return FlattenSampleDist(dist)
 
@@ -191,7 +197,7 @@ class MultiCategoricalHead(CategoricalHead):
     variable_shape: Tuple[int, ...] = eqx.field(static=True)
 
     def __init__(self, event_size: int, nvec: jax.Array, variable_shape: Tuple[int, ...] = ()):
-        super().__init__(event_size)
+        super().__init__(event_size=math.prod(variable_shape) * event_size)
 
         self.nvec_shape = nvec.shape
         self.variable_shape = variable_shape
@@ -206,6 +212,7 @@ class MultiCategoricalHead(CategoricalHead):
         )
 
     def __call__(self, x: jax.Array) -> IndependentJointDistribution:
+        x = x.reshape(*x.shape[:-1], *self.variable_shape, -1)
         logits = jnp.split(x, self.split_points, axis=-1)
         dists = tuple(head(l) for head, l in zip(self.heads, logits))
         return IndependentJointDistribution(

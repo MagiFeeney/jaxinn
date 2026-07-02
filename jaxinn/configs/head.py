@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Union, Optional
+from typing import Tuple, Union, Optional
 
 from jaxtyping import Float, Array
 
@@ -11,6 +11,7 @@ class HeadConfig(Base):
     pass
 
 
+@dataclass
 class NormalHeadConfig(HeadConfig):
     state_dependent_std: bool = True
     constant_std: bool = False
@@ -46,24 +47,29 @@ class FreeStdNormalHeadConfig(HeadConfig):
     min_std: float = 0.0
 
 
+@dataclass
 class TanhNormalHeadConfig(HeadConfig):
     min_std: float = 1e-4
     init_std: float = 5.0
     mean_scale: float = 5.0
 
 
+@dataclass
 class BetaHeadConfig(HeadConfig):
     min_std: float = 1e-4
 
 
+@dataclass
 class CategoricalHeadConfig(HeadConfig):
     pass
 
 
+@dataclass
 class OneHotCategoricalHeadConfig(CategoricalHeadConfig):
     pass
 
 
+@dataclass
 class MultiCategoricalHeadConfig(CategoricalHeadConfig):
     nvec: Optional[Float[Array, "..."]] = field(default=None, init=False)
     variable_shape: Tuple[int, ...] = ()
