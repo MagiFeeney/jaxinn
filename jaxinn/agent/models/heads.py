@@ -29,7 +29,7 @@ from .distributions import (
     TanhNormal,
     AffineBeta,
     StraightThroughOneHotCategorical,
-    FlattenSampleDist,
+    FlattenDist,
     IndependentJointDistribution,
     TreeJointDistribution,
 )
@@ -126,8 +126,7 @@ class TanhNormalHead(Head):
         mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
         std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
 
-        dist = dx.Independent(dx(TanhNormal)(mean=mean, std=std), reinterpreted_batch_ndims=Static(1))
-        return SampleDist(dist)
+        return dx.Independent(dx(TanhNormal)(mean=mean, std=std), reinterpreted_batch_ndims=Static(1))
 
 
 class BetaHead(Head):
@@ -149,8 +148,7 @@ class BetaHead(Head):
         alpha_beta = jax.nn.softplus(x) + self.min_std
         alpha, beta = jnp.split(alpha_beta, 2, axis=-1)
 
-        dist = dx.Independent(dx(AffineBeta)(alpha=alpha, beta=beta), reinterpreted_batch_ndims=Static(1))
-        return SampleDist(dist)
+        return dx.Independent(dx(AffineBeta)(alpha=alpha, beta=beta), reinterpreted_batch_ndims=Static(1))
 
 
 class CategoricalHead(Head):
@@ -173,7 +171,7 @@ class CategoricalHead(Head):
         else:
             logits = x
         dist = dx.Independent(dx.Categorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
-        return FlattenSampleDist(dist)
+        return FlattenDist(dist)
 
 
 class OneHotCategoricalHead(CategoricalHead):
@@ -185,7 +183,7 @@ class OneHotCategoricalHead(CategoricalHead):
         else:
             logits = x
         dist = dx.Independent(dx(StraightThroughOneHotCategorical)(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
-        return FlattenSampleDist(dist)
+        return FlattenDist(dist)
 
 
 class MultiCategoricalHead(CategoricalHead):
