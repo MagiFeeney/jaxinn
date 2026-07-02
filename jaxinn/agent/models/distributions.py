@@ -1,5 +1,5 @@
 import math
-from typing import Tuple, Optional, Any
+from typing import Tuple, Optional, Any, TypeAlias
 
 import jax
 import jax.numpy as jnp
@@ -9,9 +9,11 @@ import distrax
 
 from .utils import FixedDistrax
 
+DistributionLike: TypeAlias = FixedDistrax | "Distribution" | distrax.Distribution
+
 
 class Distribution(eqx.Module):
-    dist: Any
+    dist: DistributionLike
 
     def __getattr__(self, name):
         return getattr(self.dist, name)
@@ -192,7 +194,7 @@ class TreeJointDistribution(eqx.Module):
     def __init__(self, dists_tree: PyTree[distrax.Distribution]):
         self.dists_tree = dists_tree
         self.dists_treedef = jax.tree.structure(dists_tree)
-        self.is_leaf = lambda x: isinstance(x, (FixedDistrax, Distribution, distrax.Distribution))
+        self.is_leaf = lambda x: isinstance(x, DistributionLike)
 
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
         num_leaves = self.dists_treedef.num_leaves

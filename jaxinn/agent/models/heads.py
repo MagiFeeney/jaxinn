@@ -8,7 +8,6 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
 import equinox as eqx
 from equinox._module import Static
-import distrax
 
 from jaxinn.agent.registry import Registrable
 from jaxinn.configs.head import (
@@ -25,7 +24,7 @@ from jaxinn.configs.head import (
 )
 
 from .distributions import (
-    SampleDist,
+    DistributionLike,
     TanhNormal,
     AffineBeta,
     StraightThroughOneHotCategorical,
@@ -33,14 +32,14 @@ from .distributions import (
     IndependentJointDistribution,
     TreeJointDistribution,
 )
-from .utils import dx
+from .utils import dx, FixedDistrax
 
 
 class Head(Registrable, eqx.Module):
     param_size: eqx.AbstractVar[int]
 
     @abc.abstractmethod
-    def __call__(self, x: jax.Array) -> distrax.Distribution:
+    def __call__(self, x: jax.Array) -> DistributionLike:
         pass
 
 
@@ -84,7 +83,7 @@ class NormalHead(Head):
         self.softplus_std = softplus_std
         self.min_std = min_std
 
-    def __call__(self, x: jax.Array) -> distrax.Distribution:
+    def __call__(self, x: jax.Array) -> FixedDistrax:
         if self.state_dependent_std:
             mean, log_std = jnp.split(x, 2, axis=-1)
         else:
@@ -121,7 +120,7 @@ class TanhNormalHead(Head):
         self.mean_scale = mean_scale
         self.raw_init_std = math.log(math.exp(init_std) - 1)
 
-    def __call__(self, x: jax.Array) -> distrax.Distribution:
+    def __call__(self, x: jax.Array) -> FixedDistrax:
         mean, log_std = jnp.split(x, 2, axis=-1)
         mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
         std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
@@ -144,7 +143,7 @@ class BetaHead(Head):
 
         self.min_std = min_std
 
-    def __call__(self, x: jax.Array) -> distrax.Distribution:
+    def __call__(self, x: jax.Array) -> FixedDistrax:
         alpha_beta = jax.nn.softplus(x) + self.min_std
         alpha, beta = jnp.split(alpha_beta, 2, axis=-1)
 
@@ -165,7 +164,7 @@ class CategoricalHead(Head):
 
         self.param_size = math.prod(self.event_size)
 
-    def __call__(self, x: jax.Array) -> distrax.Distribution:
+    def __call__(self, x: jax.Array) -> FlattenDist:
         if x.shape[-len(self.event_size):] != self.event_size:
             logits = x.reshape(*x.shape[:-1], *self.event_size)
         else:
@@ -177,7 +176,7 @@ class CategoricalHead(Head):
 class OneHotCategoricalHead(CategoricalHead):
     config_cls: ClassVar[Type] = OneHotCategoricalHeadConfig
 
-    def __call__(self, x: jax.Array) -> distrax.Distribution:
+    def __call__(self, x: jax.Array) -> FlattenDist:
         if x.shape[-len(self.event_size):] != self.event_size:
             logits = x.reshape(*x.shape[:-1], *self.event_size)
         else:
