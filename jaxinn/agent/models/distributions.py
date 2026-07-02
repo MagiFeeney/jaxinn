@@ -18,23 +18,23 @@ class Distribution(eqx.Module):
 
 
 class TanhNormal(distrax.Transformed):
-    """Normal distribution transformed by an Tanh transformation: X ↦ tanh(X)."""
+    """Normal distribution transformed by a Tanh transformation: X ↦ tanh(X)."""
 
     def __init__(self, mean, std):
         _distribution = distrax.Normal(mean, std)
         transform = distrax.Tanh()
         super().__init__(_distribution, transform)
 
-    # Approximate mean after Tanh transformation as tanh(base_mean)
+    # Approximate mean after Tanh transformation as tanh(mean)
     def mean(self) -> jnp.ndarray:
         return jnp.tanh(self.distribution.mean())
 
 
-# Patched version: correct the batch_shape when used with vmap
 class PatchedBeta(distrax.Beta):
+    """Patched Beta to correct the batch_shape when used with vmap."""
+
     @property
     def batch_shape(self) -> Tuple[int, ...]:
-      """Shape of batch of distribution samples."""
       return jax.lax.broadcast_shapes(self._alpha.shape, self._beta.shape)
 
 
@@ -62,6 +62,7 @@ class AffineBeta(distrax.Transformed):
 
 
 class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
+    """A differentiable OneHotCategorical distribution using the straight-through gradient estimator."""
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
         sample = super().sample(seed=seed, sample_shape=sample_shape)
         sample = sample + self.probs - jax.lax.stop_gradient(self.probs)
@@ -69,6 +70,8 @@ class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
 
 
 class SampleDist(Distribution):
+    """Provides sample-based estimates of distribution attributes when closed-form expressions are unavailable."""
+
     num_samples: int = eqx.field(static=True, default=100)
 
     def mean(self, seed: PRNGKeyArray) -> jax.Array:
@@ -103,7 +106,12 @@ class SampleDist(Distribution):
         return self.dist.log_prob(value)
 
 
-class FlattenSampleDist(Distribution): # TODO: apply flatten to other attr if available
+class FlattenSampleDist(Distribution):
+    """Flatten the samples into 1D vector and inflates them back for log-prob.
+
+    Useful for network input.
+    """
+
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
         sample = self.dist.sample(seed=seed, sample_shape=sample_shape)
         event_shape = self.dist.event_shape
@@ -167,7 +175,7 @@ class IndependentJointDistribution(eqx.Module):
         return stacked.reshape(*stacked.shape[:-1], *self.target_shape)
 
 
-class TreeJointDistribution(eqx.Module): # TODO: fix other attrs
+class TreeJointDistribution(eqx.Module):
     """Wraps a PyTree of independent distributions into a single joint distribution."""
 
     dists_tree: PyTree[Any]
