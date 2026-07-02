@@ -103,7 +103,7 @@ class SampleDist(Distribution):
         return self.dist.log_prob(value)
 
 
-class FlattenSampleDist(Distribution):
+class FlattenSampleDist(Distribution): # TODO: apply flatten to other attr if available
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
         sample = self.dist.sample(seed=seed, sample_shape=sample_shape)
         event_shape = self.dist.event_shape
@@ -167,7 +167,7 @@ class IndependentJointDistribution(eqx.Module):
         return stacked.reshape(*stacked.shape[:-1], *self.target_shape)
 
 
-class TreeJointDistribution(eqx.Module):
+class TreeJointDistribution(eqx.Module): # TODO: fix other attrs
     """Wraps a PyTree of independent distributions into a single joint distribution."""
 
     dists_tree: PyTree[Any]
