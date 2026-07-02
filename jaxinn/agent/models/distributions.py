@@ -70,7 +70,10 @@ class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
 
 
 class SampleDist(Distribution):
-    """Provides sample-based estimates of distribution attributes when closed-form expressions are unavailable."""
+    """Provides sample-based estimates of distribution attributes when closed-form expressions are unavailable.
+
+    Works for either pure or nested distributions.
+    """
 
     num_samples: int = eqx.field(static=True, default=100)
 
@@ -78,19 +81,23 @@ class SampleDist(Distribution):
         samples = self.dist.sample(
             seed=seed, sample_shape=(self.num_samples,)
         )
-        return jnp.mean(samples, axis=0)
+        return jax.tree.map(lambda x: jnp.mean(x, axis=0), samples)
 
     def mode(self, seed: PRNGKeyArray) -> jax.Array:
         samples = self.dist.sample(
             seed=seed, sample_shape=(self.num_samples,)
         )
         logprobs = self.dist.log_prob(samples)
-
         indices = jnp.argmax(logprobs, axis=0, keepdims=True)
-        mode = jnp.take_along_axis(
-            samples, indices[..., None], axis=0
-        )
-        return jnp.squeeze(mode, axis=0)
+
+        def _extract_mode(x):
+            event_dims = x.ndim - indices.ndim
+            idx = indices.reshape(indices.shape + (1,) * event_dims)
+
+            mode = jnp.take_along_axis(x, idx, axis=0)
+            return jnp.squeeze(mode, axis=0)
+
+        return jax.tree.map(_extract_mode, samples)
 
     def entropy(self, seed: PRNGKeyArray) -> jax.Array:
         samples = self.dist.sample(
@@ -99,14 +106,14 @@ class SampleDist(Distribution):
         logprobs = self.dist.log_prob(samples)
         return -jnp.mean(logprobs, axis=0)
 
-    def sample(self, seed: PRNGKeyArray) -> jax.Array:
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
         return self.dist.sample(seed=seed)
 
     def log_prob(self, value: jax.Array) -> jax.Array:
         return self.dist.log_prob(value)
 
 
-class FlattenSampleDist(Distribution):
+class FlattenDist(Distribution):
     """Flatten the samples into 1D vector and inflates them back for log-prob.
 
     Useful for network input.
@@ -206,5 +213,5 @@ class TreeJointDistribution(eqx.Module):
         entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists_tree, is_leaf=self.is_leaf)
         return jax.tree.reduce(jnp.add, entropies_tree)
 
-    def mode(self, seed: PRNGKeyArray) -> PyTree[jax.Array]:
+    def mode(self) -> PyTree[jax.Array]:
         return jax.tree.map(lambda d: d.mode(), self.dists_tree, is_leaf=self.is_leaf)

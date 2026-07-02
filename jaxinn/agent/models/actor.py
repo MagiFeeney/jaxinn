@@ -63,8 +63,14 @@ class Actor(eqx.Module):
             self,
             dist: distrax.Distribution,
             key: PRNGKeyArray,
-            det: bool = False,      # default to training
+            det: bool = False,      # Default to training
     ) -> jax.Array:
         if det:
-            return dist.mode(seed=key) if isinstance(dist, SampleDist) else dist.mode()
+            if hasattr(dist, "mode") and callable(dist.mode):
+                try:
+                    return dist.mode()
+                except NotImplementedError:
+                    pass
+            dist = SampleDist(dist) # Fall back to sample-based estimates
+            return dist.mode(seed=key)
         return dist.sample(seed=key)
