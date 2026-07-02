@@ -12,6 +12,7 @@ from jaxinn.configs.head import HeadConfig
 
 from .utils import make_mlp
 from .heads import TreeHead
+from .distributions import SampleDist
 
 
 class Actor(eqx.Module):
@@ -64,4 +65,6 @@ class Actor(eqx.Module):
             key: PRNGKeyArray,
             det: bool = False,      # default to training
     ) -> jax.Array:
-        return self.head.sample(dist, key=key, det=det)
+        if det:
+            return dist.mode(seed=key) if isinstance(dist, SampleDist) else dist.mode()
+        return dist.sample(seed=key)
