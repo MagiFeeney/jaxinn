@@ -9,14 +9,15 @@ import distrax
 
 from .utils import FixedDistrax
 
-DistributionLike: TypeAlias = FixedDistrax | "Distribution" | distrax.Distribution
-
 
 class Distribution(eqx.Module):
-    dist: DistributionLike
+    dist: "DistributionLike"
 
     def __getattr__(self, name):
         return getattr(self.dist, name)
+
+
+DistributionLike: TypeAlias = FixedDistrax | Distribution | distrax.Distribution
 
 
 class TanhNormal(distrax.Transformed):
@@ -193,8 +194,8 @@ class TreeJointDistribution(eqx.Module):
 
     def __init__(self, dists_tree: PyTree[distrax.Distribution]):
         self.dists_tree = dists_tree
-        self.dists_treedef = jax.tree.structure(dists_tree)
         self.is_leaf = lambda x: isinstance(x, DistributionLike)
+        self.dists_treedef = jax.tree.structure(dists_tree, is_leaf=self.is_leaf)
 
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
         num_leaves = self.dists_treedef.num_leaves
