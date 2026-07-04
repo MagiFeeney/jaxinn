@@ -1,3 +1,4 @@
+import abc
 import math
 from typing import Tuple, Optional, Any, TypeAlias
 
@@ -17,7 +18,24 @@ class Distribution(eqx.Module):
         return getattr(self.dist, name)
 
 
-DistributionLike: TypeAlias = FixedDistrax | Distribution | distrax.Distribution
+class JointDistribution(eqx.Module):
+    dists: PyTree["DistributionLike"]
+
+    @abc.abstractmethod
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
+        pass
+
+    @abc.abstractmethod
+    def log_prob(self, x: PyTree[jax.Array]) -> jax.Array:
+        pass
+
+    @abc.abstractmethod
+    def mode(self) -> PyTree[jax.Array]:
+        pass
+
+
+Primitive: TypeAlias = FixedDistrax | distrax.Distribution
+DistributionLike: TypeAlias =  Primitive | Distribution | JointDistribution
 
 
 class TanhNormal(distrax.Transformed):
@@ -144,15 +162,15 @@ class FlattenDist(Distribution):
         return mode.reshape(*mode.shape[:-len(event_shape)], -1)
 
 
-class IndependentJointDistribution(eqx.Module):
+class IndependentJointDistribution(JointDistribution):
     """Wraps any sequence of independent distributions into a single joint distribution."""
 
-    dists: Tuple[distrax.Distribution, ...]
+    dists: Tuple[DistributionLike, ...]
     target_shape: Optional[Tuple[int, ...]] = eqx.field(static=True)
 
     def __init__(
             self,
-            dists: Tuple[distrax.Distribution, ...],
+            dists: Tuple[DistributionLike, ...],
             target_shape: Optional[Tuple[int, ...]] = None
     ):
         if target_shape is not None and math.prod(target_shape) != len(dists):
@@ -188,33 +206,33 @@ class IndependentJointDistribution(eqx.Module):
 class TreeJointDistribution(eqx.Module):
     """Wraps a PyTree of independent distributions into a single joint distribution."""
 
-    dists_tree: PyTree[Any]
-    dists_treedef: PyTreeDef = eqx.field(static=True)
+    dists: PyTree[Any]
+    treedef: PyTreeDef = eqx.field(static=True)
     is_leaf: callable = eqx.field(static=True)
 
-    def __init__(self, dists_tree: PyTree[distrax.Distribution]):
-        self.dists_tree = dists_tree
+    def __init__(self, dists: PyTree[DistributionLike]):
+        self.dists = dists
         self.is_leaf = lambda x: isinstance(x, DistributionLike)
-        self.dists_treedef = jax.tree.structure(dists_tree, is_leaf=self.is_leaf)
+        self.treedef = jax.tree.structure(dists, is_leaf=self.is_leaf)
 
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> PyTree[jax.Array]:
-        num_leaves = self.dists_treedef.num_leaves
+        num_leaves = self.treedef.num_leaves
         keys = jax.random.split(seed, num_leaves)
-        keys_tree = jax.tree.unflatten(self.dists_treedef, keys)
+        keys_tree = jax.tree.unflatten(self.treedef, keys)
         return jax.tree.map(
             lambda d, k: d.sample(seed=k, sample_shape=sample_shape),
-            self.dists_tree,
+            self.dists,
             keys_tree,
             is_leaf=self.is_leaf
         )
 
     def log_prob(self, x: PyTree[jax.Array]) -> jax.Array:
-        log_probs_tree = jax.tree.map(lambda d, v: d.log_prob(v), self.dists_tree, x, is_leaf=self.is_leaf)
+        log_probs_tree = jax.tree.map(lambda d, v: d.log_prob(v), self.dists, x, is_leaf=self.is_leaf)
         return jax.tree.reduce(jnp.add, log_probs_tree)
 
     def entropy(self) -> jax.Array:
-        entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists_tree, is_leaf=self.is_leaf)
+        entropies_tree = jax.tree.map(lambda d: d.entropy(), self.dists, is_leaf=self.is_leaf)
         return jax.tree.reduce(jnp.add, entropies_tree)
 
     def mode(self) -> PyTree[jax.Array]:
-        return jax.tree.map(lambda d: d.mode(), self.dists_tree, is_leaf=self.is_leaf)
+        return jax.tree.map(lambda d: d.mode(), self.dists, is_leaf=self.is_leaf)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, Dict, Any
 
 from jaxtyping import Float, Array
 
@@ -9,6 +9,32 @@ from .base import Base
 @dataclass
 class HeadConfig(Base):
     pass
+
+
+@dataclass
+class ComplexHeadConfig(HeadConfig):
+    data: Any
+
+    def __call__(self) -> Any:
+        return self.data
+
+
+@dataclass
+class DictHeadConfig(ComplexHeadConfig):
+    data: Dict[str, HeadConfig]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.data, dict):
+            raise TypeError(f"Expected dict for DictHeadConfig, got {type(self.data)}.")
+
+
+@dataclass
+class TupleHeadConfig(ComplexHeadConfig):
+    data: Tuple[HeadConfig, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.data, tuple):
+            raise TypeError(f"Expected tuple for TupleHeadConfig, got {type(self.data)}.")
 
 
 @dataclass
@@ -71,7 +97,7 @@ class OneHotCategoricalHeadConfig(CategoricalHeadConfig):
 
 @dataclass
 class MultiCategoricalHeadConfig(CategoricalHeadConfig):
-    nvec: Optional[Float[Array, "..."]] = field(default=None, init=False)
+    nvec: Optional[Float[Array, "..."]] = field(default=None)
     variable_shape: Tuple[int, ...] = ()
 
 
