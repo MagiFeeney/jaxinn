@@ -58,7 +58,7 @@ class Batched(Wrapper):
         return self.vmap_reset(keys)
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
-        num_keys = action.shape[0] # Infer from action since we have already known that at reset
+        num_keys = jax.tree.leaves(action)[0].shape[0] # Infer from action since we have already known that at reset
         keys = jax.random.split(key, num_keys)
         return self.vmap_step(keys, env_state, action)
 

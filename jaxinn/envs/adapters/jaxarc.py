@@ -14,7 +14,7 @@ import stoa.spaces as stoa_spaces
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
-from ..spaces import Discrete, MultiDiscrete, Box, Dict, Tuple
+from ..spaces import Space, Discrete, MultiDiscrete, Box, Dict, Tuple
 
 
 def stoa_space_to_jaxinn_space(space):
@@ -42,12 +42,21 @@ def stoa_space_to_jaxinn_space(space):
 
 
 class JaxARC(Environment):
+    _observation_space: Space
+    _action_space: Space
+
     def __init__(
             self,
             env: JaxARCEnvironment,
             env_params: Optional[JaxARCEnvParams] = None,
     ):
         super().__init__(env, env_params)
+
+        observation_space = env.observation_space(env_params)
+        self._observation_space = stoa_space_to_jaxinn_space(observation_space)
+
+        action_space = env.action_space(env_params)
+        self._action_space = stoa_space_to_jaxinn_space(action_space)
 
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "JaxARC":
@@ -101,15 +110,11 @@ class JaxARC(Environment):
 
     @property
     def observation_space(self):
-        space = self.env.observation_space(self.env_params)
-        space = stoa_space_to_jaxinn_space(space)
-        return space
+        return self._observation_space
 
     @property
     def action_space(self):
-        space = self.env.action_space(self.env_params)
-        space = stoa_space_to_jaxinn_space(space)
-        return space
+        return self._action_space
 
     @property
     def max_episode_length(self) -> int:

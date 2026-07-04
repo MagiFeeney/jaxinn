@@ -11,6 +11,8 @@ from .base import Base, Resolvable, StaticShared, ConfigNamespace
 from .head import (
     HeadUnion,
     ContinuousHeadUnion,
+    DictHeadConfig,
+    TupleHeadConfig,
     IsotropicNormalHeadConfig,
     TanhNormalHeadConfig,
     NormalHeadConfig,
@@ -205,9 +207,9 @@ class ActorConfig(Resolvable, ModelShared):
 
         def _resolve_head(space):
             if isinstance(space, jaxinn_spaces.Dict):
-                return {k: _resolve_head(s) for k, s in space.spaces.items()}
+                return DictHeadConfig({k: _resolve_head(s) for k, s in space.spaces.items()})
             elif isinstance(space, jaxinn_spaces.Tuple):
-                return tuple(_resolve_head(s) for s in space.spaces)
+                return TupleHeadConfig(tuple(_resolve_head(s) for s in space.spaces))
             elif isinstance(space, jaxinn_spaces.Box):
                 return deepcopy(self.continuous_head)
             elif isinstance(space, jaxinn_spaces.OneHotDiscrete):
