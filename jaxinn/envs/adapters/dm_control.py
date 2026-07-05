@@ -3,7 +3,7 @@ from typing import Any, Optional, Dict
 
 import gymnasium as gym
 from gymnasium.envs.registration import register
-from gymnasium import core, spaces
+from gymnasium import spaces
 from dm_control import suite
 from dm_env import specs
 
@@ -19,7 +19,7 @@ class DMControl(Gymnasium):
         super().__init__(env, env_params)
 
     @classmethod
-    def create(cls, env_name: str, num_envs: int, **kwargs) -> "Gymnasium":
+    def create(cls, env_name: str, num_envs: int, **kwargs) -> "DMControl":
         domain_name, task_name = env_name.split("_")
         env = make(domain_name, task_name, num_envs=num_envs, **kwargs)
         return cls(env, env_params={"capacity": num_envs, **kwargs})
@@ -55,7 +55,7 @@ def _flatten_obs(obs):
     return np.concatenate(obs_pieces, axis=0)
 
 
-class DMCtoGym(core.Env):
+class DMCGymnasium(gym.Env):
     def __init__(
         self,
         domain_name,
@@ -239,7 +239,7 @@ def make(
 
         register(
             id=env_id,
-            entry_point=DMCtoGym,
+            entry_point=DMCGymnasium,
             kwargs=dict(
                 domain_name=domain_name,
                 task_name=task_name,
