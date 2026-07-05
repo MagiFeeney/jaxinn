@@ -81,7 +81,7 @@ class GymnasiumVmapMixIn(VmapTransformation):
         inner = key.shape[1] if flattened else 1
 
         if flattened:
-            flatten_action = action.reshape(axis_size * action.shape[1], *action.shape[2:])
+            flatten_action = jax.tree.map(lambda x: x.reshape(axis_size * x.shape[1], *x.shape[2:]), action)
             flatten_key = key.reshape(axis_size * key.shape[1], *key.shape[2:])
         else:
             flatten_action, flatten_key = action, key
@@ -118,7 +118,7 @@ class JaxConverterMixIn:
         return obs
 
     def _python_step(self, action):
-        action = np.array(action, dtype=np.float32)
+        action = jax.tree.map(lambda x: np.array(x, dtype=np.float32), action)
         obs, reward, term, trunc, _ = self.env.step(action)
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
@@ -160,7 +160,12 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
     def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, jax.Array]:
         obs = self.v_reset(self, key)
         transition = Transition(
-            action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
+            action = jax.tree.map(
+                lambda shape, dtype: jnp.zeros(shape, dtype=dtype),
+                self.action_space.shape,
+                self.action_space.dtype,
+                is_leaf=lambda x: isinstance(x, tuple)
+            ),
             next_obs=obs,
             reward=jnp.zeros(()),
             terminated=jnp.zeros((), dtype=bool),
@@ -174,9 +179,12 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         # VmapMixIn → Jax callback → python env
         next_obs, reward, terminated, truncated = self.v_step(self, key, action)
         # Gymnasium reset observation is independent of the action
-        action = jnp.where(
-            env_state.last_done,
-            jnp.zeros_like(action),
+        action = jax.tree.map(
+            lambda x: jnp.where(
+                env_state.last_done,
+                jnp.zeros_like(x),
+                x
+            ),
             action
         )
         transition = Transition(
