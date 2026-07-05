@@ -243,30 +243,19 @@ class Dict(Space[PyDict[str, Any]]):
     def __init__(self, spaces: PyDict[str, Space]):
         self.spaces = spaces
 
-        if len(self.spaces) == 1:
-            space = next(iter(self.spaces.values()))
-            shape = space.shape
-            dtype = space.dtype
-        else:
-            shape, dtype = {}, {}
-            for k, space in self.spaces.items():
-                shape[k] = space.shape
-                dtype[k] = space.dtype
+        shape, dtype = {}, {}
+        for k, space in self.spaces.items():
+            shape[k] = space.shape
+            dtype[k] = space.dtype
 
         super().__init__(shape=shape, dtype=dtype)
 
     @property
     def is_discrete(self) -> PyDict[str, bool]:
-        if len(self.spaces) == 1:
-            space = next(iter(self.spaces.values()))
-            return space.is_discrete
         return {k: space.is_discrete for k, space in self.spaces.items()}
 
     @property
     def size(self) -> PyDict[str, int]:
-        if len(self.spaces) == 1:
-            space = next(iter(self.spaces.values()))
-            return space.size
         return {k: space.size for k, space in self.spaces.items()}
 
     def sample(self, key: PRNGKeyArray) -> PyDict[str, Any]:
