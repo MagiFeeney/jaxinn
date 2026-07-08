@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Any, Dict, Optional
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -6,6 +7,8 @@ from gymnasium.envs.registration import register
 from arcengine import GameState
 import arc_agi
 from arc_agi.rendering import frame_to_rgb_array
+
+from jaxinn.envs.adapters.gymnasium import Gymnasium
 
 
 class ARC(Gymnasium):

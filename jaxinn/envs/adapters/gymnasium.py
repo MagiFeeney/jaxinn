@@ -25,13 +25,13 @@ def _to_jax_dtype(dtype: Any) -> jnp.dtype:
 
 def gymnasium_space_to_jaxinn_space(space):
     if isinstance(space, gym.spaces.Discrete):
-        return Discrete(n=space.n, dtype=_to_jax_space(space.dtype))
+        return Discrete(n=space.n, dtype=_to_jax_dtype(space.dtype))
     elif isinstance(space, gym.spaces.Box):
         return Box(
             low=space.low,
             high=space.high,
             shape=space.shape,
-            dtype=_to_jax_space(space.dtype),
+            dtype=_to_jax_dtype(space.dtype),
         )
     elif isinstance(space, gym.spaces.Dict):
         converted_spaces = {k: gymnasium_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
@@ -118,7 +118,7 @@ class JaxConverterMixIn:
         return obs
 
     def _python_step(self, action):
-        action = jax.tree.map(lambda x: np.array(x, dtype=np.float32), action)
+        action = jax.device_get(action)
         obs, reward, term, trunc, _ = self.env.step(action)
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
