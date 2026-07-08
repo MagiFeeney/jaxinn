@@ -32,6 +32,7 @@ from .distributions import (
     FlattenDist,
     IndependentJointDistribution,
     TreeJointDistribution,
+    HierarchicalJointDistribution,
 )
 from .utils import dx, FixedDistrax
 
@@ -226,6 +227,8 @@ class TreeHead(Head):
     split_points: Tuple[int, ...] = eqx.field(static=True)
     is_leaf: callable = eqx.field(static=True)
 
+    dist_cls: ClassVar[Type[TreeJointDistribution]] = TreeJointDistribution
+
     @classmethod
     def create(cls, head_config: PyTree[HeadConfig], **kwargs):
         event_size = kwargs.pop("event_size", None)
@@ -267,4 +270,8 @@ class TreeHead(Head):
             params_tree,
             is_leaf=self.is_leaf
         )
-        return TreeJointDistribution(dists=dists)
+        return self.dist_cls(dists=dists)
+
+
+class HierarchicalHead(TreeHead):
+    dist_cls: ClassVar[Type[HierarchicalJointDistribution]] = HierarchicalJointDistribution
