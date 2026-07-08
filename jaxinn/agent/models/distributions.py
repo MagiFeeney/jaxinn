@@ -1,6 +1,7 @@
 import abc
 import math
-from typing import Tuple, Optional, Any, TypeAlias
+from typing import Tuple, Optional, Any, TypeAlias, Dict
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -84,6 +85,7 @@ class AffineBeta(distrax.Transformed):
 
 class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
     """A differentiable OneHotCategorical distribution using the straight-through gradient estimator."""
+
     def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> jax.Array:
         sample = super().sample(seed=seed, sample_shape=sample_shape)
         sample = sample + self.probs - jax.lax.stop_gradient(self.probs)
@@ -203,7 +205,7 @@ class IndependentJointDistribution(JointDistribution):
         return stacked.reshape(*stacked.shape[:-1], *self.target_shape)
 
 
-class TreeJointDistribution(eqx.Module):
+class TreeJointDistribution(JointDistribution):
     """Wraps a PyTree of independent distributions into a single joint distribution."""
 
     dists: PyTree[Any]
@@ -236,3 +238,118 @@ class TreeJointDistribution(eqx.Module):
 
     def mode(self) -> PyTree[jax.Array]:
         return jax.tree.map(lambda d: d.mode(), self.dists, is_leaf=self.is_leaf)
+
+
+class HierarchicalJointDistribution(TreeJointDistribution):
+    """A hierarchical distribution with exactly one active branch at a time.
+
+    Expects a PyTree dictionary containing the keys 'option' and 'actions'.
+    """
+
+    def _mask_branches(self, option: jax.Array, branch_tree: Dict[str, Any], reduce_to_scalar: bool) -> Any:
+        """Helper function to mask inactive branches.
+
+        If reduce_to_scalar is True, sums the active branch leaves and returns a scalar.
+        If False, zeroes the inactive leaves and returns the full PyTree dictionary.
+        """
+        sorted_keys = sorted(self.dists["actions"].keys())
+
+        if reduce_to_scalar:
+            masked_scalars = []
+            for i, branch_key in enumerate(sorted_keys):
+                is_active = (option == i)
+                branch_sum = jax.tree.reduce(jnp.add, branch_tree[branch_key])
+                masked_scalars.append(jnp.where(is_active, branch_sum, 0.0))
+
+            return jnp.sum(jnp.stack(masked_scalars), axis=0)
+
+        else:
+            masked_dict = {}
+            for i, branch_key in enumerate(sorted_keys):
+                is_active = (option == i)
+                masked_dict[branch_key] = jax.tree.map(
+                    lambda x: jnp.where(is_active, x, jnp.zeros_like(x)),
+                    branch_tree[branch_key]
+                )
+
+            return masked_dict
+
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> Dict[str, jax.Array]:
+        key_option, key_branch = jax.random.split(seed)
+        option = self.dists["option"].sample(seed=key_option, sample_shape=sample_shape)
+
+        zero_tree = jax.tree.map(
+            lambda d: jnp.zeros(d.event_shape, dtype=d.dtype),
+            self.dists["actions"],
+            is_leaf=self.is_leaf
+        )
+
+        def _sample_single_branch(key, selector):
+            active_sample = self.dists["actions"][selector].sample(seed=key)
+            return {**zero_tree, selector: active_sample}
+
+        sorted_keys = sorted(self.dists["actions"].keys())
+        branch_fns = [partial(_sample_single_branch, selector=k) for k in sorted_keys]
+
+        if sample_shape == ():
+            actions = jax.lax.switch(
+                option,
+                branch_fns,
+                key_branch
+            )
+        else:
+            keys_branch = jax.random.split(key_branch, math.prod(sample_shape))
+            flat_option = option.reshape(-1)
+            flat_actions = jax.vmap(jax.lax.switch, in_axes=(0, None, 0))(
+                flat_option,
+                branch_fns,
+                keys_branch
+            )
+
+            actions = jax.tree.map(
+                lambda x: x.reshape(sample_shape + x.shape[1:]),
+                flat_actions
+            )
+
+        return {
+            "option": option,
+            "actions": actions
+        }
+
+    def log_prob(self, x: Dict[str, jax.Array]) -> jax.Array:
+        option = x["option"]
+        option_log_prob = self.dists["option"].log_prob(option)
+
+        branch_log_probs = jax.tree.map(
+            lambda d, v: d.log_prob(v),
+            self.dists["actions"],
+            x["actions"],
+            is_leaf=self.is_leaf
+        )
+
+        return option_log_prob + self._mask_branches(option, branch_log_probs, reduce_to_scalar=True)
+
+    def entropy(self, x: Dict[str, jax.Array]) -> jax.Array:
+        option = x["option"]
+        option_entropy = self.dists["option"].entropy()
+
+        branch_entropies = jax.tree.map(
+            lambda d: d.entropy(),
+            self.dists["actions"],
+            is_leaf=self.is_leaf
+        )
+
+        return option_entropy + self._mask_branches(option, branch_entropies, reduce_to_scalar=True)
+
+    def mode(self) -> Dict[str, jax.Array]:
+        option_mode = self.dists["option"].mode()
+        branch_modes = jax.tree.map(
+            lambda d: d.mode(),
+            self.dists["actions"],
+            is_leaf=self.is_leaf
+        )
+
+        return {
+            "option": option_mode,
+            "actions": self._mask_branches(option_mode, branch_modes, reduce_to_scalar=False)
+        }

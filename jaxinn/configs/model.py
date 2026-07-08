@@ -13,6 +13,7 @@ from .head import (
     ContinuousHeadUnion,
     DictHeadConfig,
     TupleHeadConfig,
+    HierarchicalHeadConfig,
     IsotropicNormalHeadConfig,
     TanhNormalHeadConfig,
     NormalHeadConfig,
@@ -207,9 +208,9 @@ class ActorConfig(Resolvable, ModelShared):
 
         def _resolve_head(space):
             if isinstance(space, jaxinn_spaces.Dict):
-                return DictHeadConfig({k: _resolve_head(s) for k, s in space.spaces.items()})
+                return {k: _resolve_head(s) for k, s in space.spaces.items()}
             elif isinstance(space, jaxinn_spaces.Tuple):
-                return TupleHeadConfig(tuple(_resolve_head(s) for s in space.spaces))
+                return tuple(_resolve_head(s) for s in space.spaces)
             elif isinstance(space, jaxinn_spaces.Box):
                 return deepcopy(self.continuous_head)
             elif isinstance(space, jaxinn_spaces.OneHotDiscrete):
@@ -223,7 +224,16 @@ class ActorConfig(Resolvable, ModelShared):
                     f"Unsupported space type for creating head: '{type(space).__name__}'."
                 )
 
-        self.head = _resolve_head(action_space)
+        resolved_head = _resolve_head(action_space)
+        if isinstance(resolved_head, dict):
+            if isinstance(action_space, jaxinn_spaces.Hierarchical):
+                self.head = HierarchicalHeadConfig(resolved_head)
+            else:
+                self.head = DictHeadConfig(resolved_head)
+        elif isinstance(resolved_head, tuple):
+            self.head = TupleHeadConfig(resolved_head)
+        else:
+            self.head = resolved_head
 
 
 # Critic

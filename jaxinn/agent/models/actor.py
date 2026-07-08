@@ -8,10 +8,14 @@ import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import ActorConfig
-from jaxinn.configs.head import HeadConfig
+from jaxinn.configs.head import (
+    HeadConfig,
+    ComplexHeadConfig,
+    HierarchicalHeadConfig
+)
 
 from .utils import make_mlp
-from .heads import TreeHead
+from .heads import Head, TreeHead, HierarchicalHead
 from .distributions import SampleDist
 
 
@@ -34,7 +38,12 @@ class Actor(eqx.Module):
         *,
         key: PRNGKeyArray,
     ):
-        self.head = TreeHead.create(head_config, event_size=action_size)
+        if not isinstance(head_config, ComplexHeadConfig):
+            self.head = Head.create(head_config, event_size=action_size)
+        elif isinstance(head_config, HierarchicalHeadConfig):
+            self.head = HierarchicalHead.create(head_config, event_size=action_size)
+        else:
+            self.head = TreeHead.create(head_config, event_size=action_size)
 
         if isinstance(state_size, tuple): # TODO: fix state_size when it is Categorical
             state_size = math.prod(state_size)

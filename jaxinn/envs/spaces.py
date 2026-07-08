@@ -317,3 +317,66 @@ class Tuple(Space[PyTuple[Any, ...]]):
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(tuple(children))
+
+
+@jax.tree_util.register_pytree_node_class
+class Hierarchical(Dict):
+    """
+    A hierarchical action space with a flat dictionary of low-level actions and a high-level option that selects the route.
+    """
+
+    def __init__(self, spaces: PyDict[str, Space]):
+        if not self._valid_structure(spaces):
+            spaces = self._restructure(spaces)
+        super().__init__(spaces)
+
+    def sample(self, key: PRNGKeyArray) -> PyDict[str, Any]: # TODO: only sample for a specific branch
+        key_option, key_actions = jax.random.split(key)
+        option = self.spaces["option"].sample(key_option)
+        actions = self.spaces["actions"].sample(key_actions)
+        return {
+            "option": option,
+            "actions": actions
+        }
+
+    @staticmethod
+    def _valid_structure(spaces: PyDict[str, Space]) -> bool:
+        if "option" not in spaces or "actions" not in spaces:
+            return False
+
+        if not isinstance(spaces["option"], Discrete) or (not isinstance(spaces["actions"], Dict)):
+            return False
+
+        num_options = spaces["option"].n
+        num_actions = len(spaces["actions"].spaces)
+        if num_options != num_actions:
+            return False
+
+        return True
+
+    @staticmethod
+    def _restructure(spaces: PyDict[str, Space]) -> PyDict[str, Space]:
+        def _flatten_spaces(space, parent_key=""):
+            flat_spaces = {}
+            if hasattr(space, 'spaces') and isinstance(space.spaces, dict):
+                target_dict = space.spaces
+            elif isinstance(space, dict):
+                target_dict = space
+            else:
+                return {parent_key: space}
+
+            for k, v in target_dict.items():
+                new_key = f"{parent_key}/{k}" if parent_key else str(k)
+                flat_spaces.update(_flatten_spaces(v, new_key))
+
+            return flat_spaces
+
+        flat_actions = _flatten_spaces(spaces)
+
+        actions_space = Dict(flat_actions)
+        option_space = Discrete(len(flat_actions))
+
+        return {
+            "option": option_space,
+            "actions": actions_space
+        }
