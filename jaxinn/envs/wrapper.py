@@ -7,7 +7,7 @@ import equinox as eqx
 
 from jaxinn.structs import Transition
 from .environment import Environment, EnvInfo, EnvState
-from .spaces import OneHotDiscrete
+from .spaces import Discrete, OneHotDiscrete
 
 
 class Wrapper(Environment):
@@ -292,9 +292,14 @@ class OneHotAction(Wrapper):
     @property
     def action_space(self):
         space = self.env.action_space
-        if self.env.is_action_space_discrete:
+
+        if isinstance(space, Discrete):
             return OneHotDiscrete(n=space.n, dtype=jnp.float32)
-        return space
+
+        raise TypeError(
+            f"OneHotAction wrapper can only be applied to Discrete spaces. "
+            f"Received: {type(space).__name__}"
+        )
 
 
 class ResizeImage(Wrapper):

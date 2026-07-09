@@ -43,11 +43,6 @@ class Space(abc.ABC, Generic[T]):
 
     @property
     @abc.abstractmethod
-    def is_discrete(self) -> bool:
-        pass
-
-    @property
-    @abc.abstractmethod
     def size(self) -> int:
         pass
 
@@ -81,10 +76,6 @@ class Discrete(Space[jax.Array]):
     def __init__(self, n: int, dtype=jnp.int32):
         super().__init__(shape=(), dtype=dtype)
         self.n = n
-
-    @property
-    def is_discrete(self) -> bool:
-        return True
 
     @property
     def size(self) -> int:
@@ -134,10 +125,6 @@ class Box(Space[jax.Array]):
         super().__init__(shape, dtype)
         self.low = jnp.broadcast_to(jnp.asarray(low, dtype=dtype), shape)
         self.high = jnp.broadcast_to(jnp.asarray(high, dtype=dtype), shape)
-
-    @property
-    def is_discrete(self) -> bool:
-        return False
 
     @property
     def size(self) -> int:
@@ -210,10 +197,6 @@ class MultiDiscrete(Space[jax.Array]):
         super().__init__(shape=self.nvec.shape, dtype=dtype)
 
     @property
-    def is_discrete(self) -> bool:
-        return True
-
-    @property
     def size(self) -> int:
         return int(jnp.sum(self.nvec))
 
@@ -249,10 +232,6 @@ class Dict(Space[PyDict[str, Any]]):
             dtype[k] = space.dtype
 
         super().__init__(shape=shape, dtype=dtype)
-
-    @property
-    def is_discrete(self) -> PyDict[str, bool]:
-        return {k: space.is_discrete for k, space in self.spaces.items()}
 
     @property
     def size(self) -> PyDict[str, int]:
@@ -291,10 +270,6 @@ class Tuple(Space[PyTuple[Any, ...]]):
         dtype = tuple(space.dtype for space in self.spaces)
 
         super().__init__(shape=shape, dtype=dtype)
-
-    @property
-    def is_discrete(self) -> PyTuple[bool, ...]:
-        return tuple(space.is_discrete for space in self.spaces)
 
     @property
     def size(self) -> PyTuple[int, ...]:

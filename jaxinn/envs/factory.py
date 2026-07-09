@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 from typing import Dict, Any
 import re
@@ -5,6 +6,7 @@ import importlib
 
 from .wrapper import Batched, TimeLimit, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, ResizeImage, Branched
 from .environment import Environment
+from .spaces import Discrete
 
 
 @dataclass(frozen=True)
@@ -88,7 +90,7 @@ def make_env(
             env = AutoReset(env)
 
         use_one_hot_action = wrapper.get("use_one_hot_action", False)
-        if env.is_action_space_discrete and use_one_hot_action:
+        if isinstance(env.action_space, Discrete) and use_one_hot_action:
             env = OneHotAction(env)
 
         if wrapper.get("target_shape") is not None:

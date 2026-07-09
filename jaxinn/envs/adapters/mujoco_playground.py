@@ -295,6 +295,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
 
     def step(self, key: PRNGKeyArray, env_state: MjxState, action: jax.Array) -> Tuple[Transition, EnvInfo, MjxState]:
         next_env_state = self.v_step(self, key, env_state, action)
+        terminated = next_env_state.done.astype(bool)
         transition = Transition(
             action=action,
             next_obs=next_env_state.obs["pixels/view_0"] if self.vision else next_env_state.obs,

@@ -110,7 +110,7 @@ class ActorCriticShared(ActorCritic):
     critic: Critic
 
     @classmethod
-    def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray): # TODO: import
+    def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray):
         key_encoder, key_actor, key_critic = jax.random.split(key, 3)
         encoder = Encoder.create(config.encoder, key=key_encoder)
         actor = Actor.create(config.actor, key=key_actor)
@@ -173,6 +173,7 @@ class PPOAgent(PPOLossMixIn, Agent):
     def make_batch_fn(self) -> callable:
         transition, terminal_obs = self.memory.transition, self.memory.terminal_observation
 
+        # TODO: fix next-step reset using last_done
         # Get advantages and returns
         values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs[:-1]).mean()
         next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs[1:]).mean() # Recalculate values on actual terminal observation to handle truncation

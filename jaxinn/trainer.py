@@ -8,6 +8,7 @@ from jaxtyping import PRNGKeyArray
 from jaxinn.structs import Experience, LatentState
 from jaxinn.agent import Agent
 from jaxinn.envs import Environment, make_env
+from jaxinn.envs.spaces import Discrete, OneHotDiscrete
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
 
@@ -98,17 +99,32 @@ class Interactor:
             key_act, key_noise = jax.random.split(key, 2)
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
 
-            if not eval and self.action_noise > 0:
-                if self.env.get("is_action_space_discrete"): # TODO: fix Categorical sampling
-                    key_idx, key_cond = jax.random.split(key_noise, 2)
-                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, self.env.get("action_size"))
-                    expl_action = jax.nn.one_hot(random_idx, self.env.get("action_size"))
+            def apply_noise(action, action_space, key):
+                if isinstance(action_space, Discrete):
+                    key_idx, key_cond = jax.random.split(key, 2)
+                    expl_action = jax.random.randint(key_idx, action.shape, 0, action_space.size)
+                    should_explore = jax.random.uniform(key_cond, action.shape) < self.action_noise
+                    action = jnp.where(should_explore, expl_action, action)
+                elif isinstance(action_space, OneHotDiscrete):
+                    key_idx, key_cond = jax.random.split(key, 2)
+                    random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, action_space.size)
+                    expl_action = jax.nn.one_hot(random_idx, action_space.size)
 
                     should_explore = jax.random.uniform(key_cond, (*action.shape[:-1], 1)) < self.action_noise
                     action = jnp.where(should_explore, expl_action, action)
                 else:
-                    noise = jax.random.normal(key_noise, shape=action.shape) * self.action_noise
+                    noise = jax.random.normal(key, shape=action.shape) * self.action_noise
                     action = jnp.clip(action + noise, -1.0, 1.0)
+
+            if not eval and self.action_noise > 0:
+                action_space = self.env.get("action_space")
+                if hasattr(action_space, "spaces"):
+                    action_space = action_space.spaces
+
+                treedef = jax.tree.structure(action)
+                keys = jax.random.split(key_noise, treedef.num_leaves)
+                keys_tree = jax.tree.unflatten(treedef, keys)
+                action = jax.tree.map(apply_noise, action, action_space, keys_tree)
 
             return latent_state, action
 
