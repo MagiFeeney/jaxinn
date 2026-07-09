@@ -25,7 +25,7 @@ def _to_jax_dtype(dtype: Any) -> jnp.dtype:
 
 def gymnasium_space_to_jaxinn_space(space):
     if isinstance(space, gym.spaces.Discrete):
-        return Discrete(n=space.n, dtype=_to_jax_dtype(space.dtype))
+        return Discrete(n=int(space.n), dtype=_to_jax_dtype(space.dtype))
     elif isinstance(space, gym.spaces.Box):
         return Box(
             low=space.low,
@@ -210,4 +210,12 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
 
     @property
     def max_episode_length(self) -> int:
-        return self.max_episode_steps
+        if getattr(self, "max_episode_steps", None) is not None:
+            return self.max_episode_steps
+        if getattr(self, "spec", None) is not None:
+            if getattr(self.spec, "max_episode_steps", None) is not None:
+                return self.spec.max_episode_steps
+        raise AttributeError(
+            f"Environment '{self.__class__.__name__}' does not define 'max_episode_steps' "
+            f"directly or within its spec."
+        )

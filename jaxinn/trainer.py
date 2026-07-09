@@ -354,6 +354,6 @@ def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
         "num_environment_steps":    config.exploration.num_environment_steps,
         "episode_length":           config.exploration.episode_length,
         "num_seeds":                config.num_seeds,
-        **config.env.wrapper()
+        **config.env.wrapper()  # TODO: fix this
     }
     return config.agent.resolve(ctx)
