@@ -348,12 +348,13 @@ class Trainer(Interactor, eqx.Module):
 
 
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
+    env_wrapper_config = config.env.wrapper.train() if config.env.separated else config.env.wrapper()
     ctx = {
         "observation_space":        env.get("observation_space"),
         "action_space":             env.get("action_space"),
         "num_environment_steps":    config.exploration.num_environment_steps,
         "episode_length":           config.exploration.episode_length,
         "num_seeds":                config.num_seeds,
-        **config.env.wrapper()  # TODO: fix this
+        **env_wrapper_config
     }
     return config.agent.resolve(ctx)
