@@ -1,4 +1,3 @@
-import math
 from typing import Any, Callable, Optional, Tuple, Dict
 
 import jax

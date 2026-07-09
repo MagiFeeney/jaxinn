@@ -1,4 +1,3 @@
-import math
 from typing import Any, Optional, Tuple as PyTuple
 from functools import partial
 

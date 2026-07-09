@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple as PyTuple
+from typing import Optional, Tuple as PyTuple
 
 import jax
 import jax.numpy as jnp
