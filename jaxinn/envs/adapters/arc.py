@@ -40,10 +40,10 @@ def _make_observation_space(arc_observation_space, render_mode=None):
 
 
 class ARCGymnasium(gym.Env):
-    def __init__(self, game_id="ls20", render_mode=None):
+    def __init__(self, game_id="ls20", _render_mode=None):
         super().__init__()
         self.game_id = game_id
-        self.render_mode = render_mode
+        self._render_mode = _render_mode
         self.current_level = 1
 
         self.arc = arc_agi.Arcade()
@@ -51,7 +51,7 @@ class ARCGymnasium(gym.Env):
 
         self._arc_actions = self.env.action_space
         self._action_space = _make_action_space(self.env.action_space)
-        self._observation_space = _make_observation_space(self.env.observation_space, render_mode)
+        self._observation_space = _make_observation_space(self.env.observation_space, _render_mode)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -101,10 +101,15 @@ class ARCGymnasium(gym.Env):
         return obs, reward, terminated, False, info
 
     def _get_obs(self, frame: list[np.ndarray]):
-        if self.render_mode == "rgb_array" and len(frame) == 1:
-            rgb_obs = frame_to_rgb_array(None, frame[0], scale=1).astype(self.observation_space.dtype)
+        active_frame = frame[-1]
+        if self._render_mode == "rgb_array":
+            rgb_obs = frame_to_rgb_array(None, active_frame, scale=1).astype(self.observation_space.dtype)
             return rgb_obs.swapaxes(0, -1)
-        return np.stack(frame).astype(self.observation_space.dtype)
+        else:
+            obs = np.asarray(active_frame, dtype=self.observation_space.dtype)
+            if obs.ndim == 2:
+                obs = np.expand_dims(obs, axis=0)
+            return obs
 
     @property
     def observation_space(self):
@@ -130,7 +135,7 @@ def make_env(
             entry_point=ARCGymnasium,
             kwargs=dict(
                 game_id=game_id,
-                render_mode=render_mode,
+                _render_mode=render_mode,
             ),
             max_episode_steps=max_episode_length,
         )
