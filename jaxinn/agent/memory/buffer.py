@@ -3,7 +3,7 @@ from typing import Tuple, Union
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import PRNGKeyArray, PyTree, DTypeLike
 import equinox as eqx
 
 from jaxinn.structs import Transition
@@ -19,14 +19,23 @@ class Memory(eqx.Module):
     size: jax.Array
     capacity: Union[int, Tuple[int, ...]] = eqx.field(static=True)
 
-    def __init__(self, seed_idx: jax.Array, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
+    def __init__(
+            self,
+            seed_idx: jax.Array,
+            capacity: Union[int, Tuple[int, ...]],
+            obs_shape: PyTree[Tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[Tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
+            num_seeds: int | None = None
+    ):
         self.seed_idx = jnp.array(seed_idx, dtype=jnp.int32)
         self.capacity = capacity
         # Initialize data on either the CPU or GPU, depending on the memory requirements of the task
         if num_seeds is not None:
-            self.storage = CPUStorage(num_seeds, capacity, obs_shape, action_size)
+            self.storage = CPUStorage(num_seeds, capacity, obs_shape, obs_dtype, action_shape, action_dtype)
         else:
-            self.storage = GPUStorage(capacity, obs_shape, action_size) # vmap automatically handle multiple seeds
+            self.storage = GPUStorage(capacity, obs_shape, obs_dtype, action_shape, action_dtype) # vmap automatically handle multiple seeds
         self.ptr = jnp.array(0)
         self.size = jnp.array(0)
 
@@ -207,8 +216,17 @@ class Prioritized(Uniform):
 
 
 class Batched(Uniform):
-    def __init__(self, seed_idx: jax.Array, capacity: Union[int, Tuple[int, ...]], obs_shape: Tuple[int, ...], action_size: int, num_seeds: int | None = None):
-        super().__init__(seed_idx, capacity, obs_shape, action_size, num_seeds)
+    def __init__(
+            self,
+            seed_idx: jax.Array,
+            capacity: Union[int, Tuple[int, ...]],
+            obs_shape: PyTree[Tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[Tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
+            num_seeds: int | None = None
+    ):
+        super().__init__(seed_idx, capacity, obs_shape, obs_dtype, action_shape, action_dtype, num_seeds)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
         return super().sample_batch_index(batch_size, key, chunk_size=1)

@@ -36,7 +36,7 @@ def flatten_time_major(x: jax.Array, source: int, target_dim: int = 1) -> jax.Ar
     # For storage
     if flattened.dtype == jnp.float32 and flattened.ndim > 3:
         is_normalized = flattened.max() <= 1.0
-        return jax.lax.cond(
+        flattened = jax.lax.cond(
             is_normalized,
             lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
             lambda arr: arr.astype(jnp.uint8),

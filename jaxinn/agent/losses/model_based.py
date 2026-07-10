@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.structs import Transition, LatentStateWithParams
+from jaxinn.structs import Transition, LatentStateWithDist
 
 from .base import Loss, ActorLoss, CriticLoss, WorldLoss
 from .utils import differentiable
@@ -13,7 +13,7 @@ from .utils import differentiable
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
 
-    def _compute_kl_loss(self, prior: LatentStateWithParams, posterior: LatentStateWithParams) -> jax.Array:
+    def _compute_kl_loss(self, prior: LatentStateWithDist, posterior: LatentStateWithDist) -> jax.Array:
         if self.kl_balance > 0:
             kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist)
             kl_loss_prior = jax.lax.stop_gradient(posterior).kl_divergence(prior.dist)
@@ -44,7 +44,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             self,
             data: Transition,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], LatentStateWithParams]]:
+    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], LatentStateWithDist]]:
         prior, posterior = self.reason(data, key)
 
         reward_dist = jax.vmap(jax.vmap(self.world.reward))(posterior.latent_state)
@@ -77,7 +77,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
     @differentiable(['actor'])
     def actor_loss_fn(
             self,
-            posterior: LatentStateWithParams,
+            posterior: LatentStateWithDist,
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
@@ -114,7 +114,7 @@ class MixedActorGradientLoss(DreamerLossMixIn):
     @differentiable(['actor'])
     def actor_loss_fn(
             self,
-            posterior: LatentStateWithParams,
+            posterior: LatentStateWithDist,
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)

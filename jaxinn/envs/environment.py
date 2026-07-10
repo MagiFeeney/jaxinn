@@ -1,7 +1,8 @@
 import abc
-import jax
 from typing import Tuple, Any, Dict, ClassVar, Optional
-from jaxtyping import PRNGKeyArray
+
+import jax
+from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
 from jaxinn.structs import Transition
@@ -55,14 +56,13 @@ class Environment(eqx.Module):
         pass
 
     @property
-    def is_action_space_discrete(self) -> bool:
-        discrete_spaces = ("Discrete", "OneHotDiscrete")
-        return type(self.action_space).__name__ in discrete_spaces
-
-    @property
     @abc.abstractmethod
     def max_episode_length(self) -> Optional[int]:
         pass
+
+    @property
+    def action_size(self) -> PyTree[int]:
+        return self.action_space.size
 
     def __getattr__(self, name):
         if isinstance(self.env_params, dict):

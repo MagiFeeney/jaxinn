@@ -1,7 +1,9 @@
 import math
 import warnings
-from dataclasses import dataclass
-from typing import Tuple, Union, Literal
+from dataclasses import dataclass, field, InitVar
+from typing import Tuple, Union, Literal, Optional
+
+from jaxtyping import PyTree, DTypeLike
 
 from .base import Base, Resolvable
 
@@ -10,15 +12,34 @@ from .base import Base, Resolvable
 @dataclass
 class Memory(Resolvable, Base):
     capacity: Union[int, Tuple[int, ...]] = 1000000
-    device: Literal['cpu', 'gpu'] = 'gpu'
-    type: Literal['uniform', 'prioritized', 'batched'] = 'uniform'
+    device: InitVar[Literal['cpu', 'gpu']] = 'gpu'
+    type: Literal['uniform', 'prioritized', 'batched'] = 'uniform' # TODO: switch to registry
+
+    num_seeds: Optional[int] = field(default=None, init=False)
+    obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    action_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
+    needs_terminal_obs: bool = field(default=None, init=False)
 
     def _resolve(self, ctx: dict) -> None:
-        if self.device == "cpu":
-            self.num_seeds = ctx.get("num_seeds", 1) # pre-allocate for all seeds upfront
-        else:
-            self.num_seeds = None                    # vmap handles this
+        self.needs_terminal_obs = True if not ctx.get("next_step_autoreset", False) else False
 
+        # If device is cpu, pre-allocate for all seeds upfront
+        # Otherwise vmap handles this
+        if self.device == "cpu":
+            self.num_seeds = ctx.get("num_seeds", 1)
+
+        # Set obs and action shape and dtype
+        try:
+            self.obs_shape = ctx["observation_space"].shape
+            self.obs_dtype = ctx["observation_space"].dtype
+            self.action_shape = ctx["action_space"].shape
+            self.action_dtype = ctx["action_space"].dtype
+        except KeyError as e:
+            raise ValueError(f"Creating Memory requires knowing observation and action metadata. Missing key: {e}")
+
+        # Handle capacity
         num_envs = ctx.get("num_envs", 1)
         action_repeat = ctx.get("action_repeat", 1)
         episode_length = ctx.get("episode_length", 0)

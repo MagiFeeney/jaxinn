@@ -105,7 +105,7 @@ def post_process(env_id: str, config: Config) -> Config:
             "Prefill with external dataset is not implemented."
         )
     env_family = env_id.split("/", maxsplit=1)[0] if "/" in env_id else None
-    if env_family in ("envpool", "mjx", "gymnasium", "dmc"):
+    if env_family in ("envpool", "mjx", "gymnasium", "dmc", "arc"):
         if config.env.separated: # Multiple envs for different purposes
             separated_creations, separated_wrappers = get_separate_env_config(config)
             config.env.creation = separated_creations

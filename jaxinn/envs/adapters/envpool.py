@@ -1,4 +1,3 @@
-import math
 from typing import Any, Callable, Optional, Tuple, Dict
 
 import jax
@@ -11,8 +10,9 @@ import equinox as eqx
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
-from ..spaces import to_jax_space
 from ..vmap import VmapTransformation
+
+from .gymnasium import gymnasium_space_to_jaxinn_space
 
 
 class EnvPoolVmapMixIn(VmapTransformation):
@@ -73,7 +73,7 @@ class EnvPoolVmapMixIn(VmapTransformation):
 
 
 class EnvPool(Environment, EnvPoolVmapMixIn):
-    _handle: jax.Array = eqx.field(static=True)
+    _handle: jax.Array
     _step: Callable = eqx.field(static=True)
 
     def __init__(
@@ -100,10 +100,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
             terminated=jnp.zeros((), dtype=bool),
             truncated=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(
-            info=info,
-            terminal_observation=None,
-        )
+        env_info = EnvInfo(info=info)
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
@@ -115,25 +112,16 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
             terminated=terminated,
             truncated=truncated,
         )
-        env_info = EnvInfo(
-            info=info,
-            terminal_observation=None, # envpool uses next-step autoreset instead of same-step autoreset; same as gymnasium logic
-        )
+        env_info = EnvInfo(info=info)
         return transition, env_info, next_env_state
 
     @property
     def observation_space(self):
-        return to_jax_space(self.env.observation_space)
+        return gymnasium_space_to_jaxinn_space(self.env.observation_space)
 
     @property
     def action_space(self):
-        return to_jax_space(self.env.action_space)
-
-    @property
-    def action_size(self):
-        if self.is_action_space_discrete:
-            return self.action_space.n
-        return math.prod(self.action_space.shape)
+        return gymnasium_space_to_jaxinn_space(self.env.action_space)
 
     @property
     def max_episode_length(self) -> int:

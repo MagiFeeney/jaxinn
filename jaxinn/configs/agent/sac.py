@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base
-from .base import Agent
+from .base import AgentConfig
 
 
 # SAC
@@ -18,5 +18,5 @@ class SACOptimization(Base):
 
 
 @dataclass
-class SACAgent(Agent):
+class SACAgentConfig(AgentConfig):
     optimization: SACOptimization = field(default_factory=SACOptimization)

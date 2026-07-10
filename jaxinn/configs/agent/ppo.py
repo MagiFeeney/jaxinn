@@ -2,16 +2,16 @@ from typing import Union
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base, Resolvable
-from jaxinn.configs.model import Model, Actor, Critic, EncoderUnion, LinearEncoder, OptimizerShared
+from jaxinn.configs.model import Model, ActorConfig, CriticConfig, EncoderUnion, LinearEncoderConfig, OptimizerShared
 
-from .base import Agent
+from .base import AgentConfig
 
 
 def _resolve_input_size(ctx: dict, *modules) -> None:
     if "embedding_size" not in ctx:
         return
 
-    obs_shape = ctx.get("obs_shape", ())
+    obs_shape = ctx["observation_space"].shape
     embedding_size = ctx.get("embedding_size", None)
 
     if embedding_size is not None:
@@ -32,18 +32,18 @@ def _resolve_input_size(ctx: dict, *modules) -> None:
 
 
 @dataclass
-class PerceptionActor(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=LinearEncoder)
-    actor: Actor = field(default_factory=Actor)
+class PerceptionActorConfig(Resolvable, Model):
+    encoder: EncoderUnion = field(default_factory=LinearEncoderConfig)
+    actor: ActorConfig = field(default_factory=ActorConfig)
 
     def _resolve(self, ctx: dict) -> None:
         _resolve_input_size(ctx, self.actor)
 
 
 @dataclass
-class PerceptionCritic(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=LinearEncoder)
-    critic: Critic = field(default_factory=Critic)
+class PerceptionCriticConfig(Resolvable, Model):
+    encoder: EncoderUnion = field(default_factory=LinearEncoderConfig)
+    critic: CriticConfig = field(default_factory=CriticConfig)
 
     def _resolve(self, ctx: dict) -> None:
         _resolve_input_size(ctx, self.critic)
@@ -57,42 +57,26 @@ class ActorCriticOptimizer(OptimizerShared):
 
 
 @dataclass
-class ActorCriticDecoupled(Resolvable, Model):
-    perception_actor: PerceptionActor = field(default_factory=PerceptionActor)
-    perception_critic: PerceptionCritic = field(default_factory=PerceptionCritic)
+class ActorCriticDecoupledConfig(Resolvable, Model):
+    perception_actor: PerceptionActorConfig = field(default_factory=PerceptionActorConfig)
+    perception_critic: PerceptionCriticConfig = field(default_factory=PerceptionCriticConfig)
 
     optimizer: ActorCriticOptimizer = field(default_factory=ActorCriticOptimizer)
 
-    @property
-    def obs_shape(self):
-        return self.perception_actor.encoder.shape
-
-    @property
-    def action_size(self):
-        return self.perception_actor.actor.action_size
-
 
 @dataclass
-class ActorCriticShared(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=LinearEncoder)
-    actor: Actor = field(default_factory=Actor)
-    critic: Critic = field(default_factory=Critic)
+class ActorCriticSharedConfig(Resolvable, Model):
+    encoder: EncoderUnion = field(default_factory=LinearEncoderConfig)
+    actor: ActorConfig = field(default_factory=ActorConfig)
+    critic: CriticConfig = field(default_factory=CriticConfig)
 
     optimizer: ActorCriticOptimizer = field(default_factory=ActorCriticOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
         _resolve_input_size(ctx, self.actor, self.critic)
 
-    @property
-    def obs_shape(self):
-        return self.encoder.shape
 
-    @property
-    def action_size(self):
-        return self.actor.action_size
-
-
-ActorCriticUnion = Union[ActorCriticDecoupled, ActorCriticShared]
+ActorCriticUnion = Union[ActorCriticDecoupledConfig, ActorCriticSharedConfig]
 
 
 # PPO
@@ -106,7 +90,7 @@ class PPOOptimization(Base):
 
 
 @dataclass
-class PPOAgent(Agent):
-    actor_critic: ActorCriticUnion = field(default_factory=ActorCriticDecoupled)
+class PPOAgentConfig(AgentConfig):
+    actor_critic: ActorCriticUnion = field(default_factory=ActorCriticDecoupledConfig)
 
     optimization: PPOOptimization = field(default_factory=PPOOptimization)
