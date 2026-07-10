@@ -1,3 +1,4 @@
+import math
 from typing import Any, Callable, Dict, Union, Optional
 
 import jax
@@ -49,6 +50,13 @@ def _create_getter(registry: Dict[str, Any], entity_name: str) -> Callable[[Regi
 
 get_activation_fn = _create_getter(ACTIVATIONS, "activation")
 get_precision_fn = _create_getter(DTYPES, "dtype")
+
+
+is_shape_leaf = lambda x: isinstance(x, tuple) and all(isinstance(i, int) for i in x)
+
+
+def get_flatten_size(shape):
+    return sum(math.prod(l) for l in jax.tree.leaves(shape, is_leaf=is_shape_leaf))
 
 
 class StaticCallable(eqx.Module):

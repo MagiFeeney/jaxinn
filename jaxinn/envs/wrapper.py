@@ -7,7 +7,7 @@ import equinox as eqx
 
 from jaxinn.structs import Transition
 from .environment import Environment, EnvInfo, EnvState
-from .spaces import OneHotDiscrete
+from .spaces import Discrete, OneHotDiscrete
 
 
 class Wrapper(Environment):
@@ -58,7 +58,7 @@ class Batched(Wrapper):
         return self.vmap_reset(keys)
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
-        num_keys = action.shape[0] # Infer from action since we have already known that at reset
+        num_keys = jax.tree.leaves(action)[0].shape[0] # Infer from action since we have already known that at reset
         keys = jax.random.split(key, num_keys)
         return self.vmap_step(keys, env_state, action)
 
@@ -244,12 +244,28 @@ class UnsqueezeScalar(Wrapper):
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
-        transition = jax.tree.map(jnp.atleast_1d, transition)
+        transition = eqx.tree_at(
+            lambda t: (t.reward, t.terminated, t.truncated),
+            transition,
+            (
+                jnp.atleast_1d(transition.reward),
+                jnp.atleast_1d(transition.terminated),
+                jnp.atleast_1d(transition.truncated),
+            )
+        )
         return transition, info, state
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
-        transition = jax.tree.map(jnp.atleast_1d, transition)
+        transition = eqx.tree_at(
+            lambda t: (t.reward, t.terminated, t.truncated),
+            transition,
+            (
+                jnp.atleast_1d(transition.reward),
+                jnp.atleast_1d(transition.terminated),
+                jnp.atleast_1d(transition.truncated),
+            )
+        )
         return transition, info, next_state
 
 
@@ -276,9 +292,45 @@ class OneHotAction(Wrapper):
     @property
     def action_space(self):
         space = self.env.action_space
-        if self.env.is_action_space_discrete:
+
+        if isinstance(space, Discrete):
             return OneHotDiscrete(n=space.n, dtype=jnp.float32)
-        return space
+
+        raise TypeError(
+            f"OneHotAction wrapper can only be applied to Discrete spaces. "
+            f"Received: {type(space).__name__}"
+        )
+
+
+class NextStepAutoResetTerminalObs(Wrapper):
+    def __init__(self, env: Environment):
+        super().__init__(env)
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+        env_info = EnvInfo(**env_info.data, terminal_observation=None)
+        env_state = EnvState(
+            state=env_state,
+            last_done=jnp.zeros((), dtype=bool)
+        )
+        return transition, env_info, env_state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        action = jax.tree.map(
+            lambda x: jnp.where(
+                env_state.last_done,
+                jnp.zeros_like(x),
+                x
+            ),
+            action
+        )
+        transition, env_info, next_env_state = self.env.step(key, env_state, action)
+        env_info = EnvInfo(**env_info.data, terminal_observation=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
+        next_env_state = EnvState(
+            state=next_env_state,
+            last_done=transition.terminated | transition.truncated
+        )
+        return transition, env_info, next_env_state
 
 
 class ResizeImage(Wrapper):

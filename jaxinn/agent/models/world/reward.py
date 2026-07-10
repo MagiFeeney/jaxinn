@@ -3,82 +3,77 @@ from typing import Optional, Union, Tuple
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Float, PRNGKeyArray
+from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
-import distrax
-
-from jaxinn.agent.models.utils import make_mlp, dx, StaticCallable
 
 from jaxinn.structs import LatentState
+from jaxinn.configs.head import HeadConfig
+from jaxinn.configs.model import RewardConfig
+
+from ..utils import make_mlp
+from ..perception import ActionEncoder
+from ..heads import Head
+from ..distributions import DistributionLike
 
 
 class Reward(eqx.Module):
-    net: eqx.nn.Sequential
-    action_size: Optional[int] = eqx.field(static=True)
-    head_type: str = eqx.field(static=True)
-    min_std: float = eqx.field(static=True)
+    net: eqx.Module
+    head: Head
+    action_encoder: Optional[ActionEncoder]
+
+    @classmethod
+    def create(cls, config: RewardConfig, *, key: PRNGKeyArray):
+        return cls(**config(), head_config=config.head, key=key)
 
     def __init__(
             self,
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
             hidden_size: list[int],
+            head_config: HeadConfig,
             activation_function="elu",
-            action_size: Optional[int] = None,
-            min_std: float = 0.0,
-            head_type="Isotropic Normal",
+            action_shape: Optional[PyTree[Tuple[int, ...]]] = None,
+            action_embedding_size: Optional[int] = None,
             *,
             key: PRNGKeyArray,
     ):  # if action_size is not None, Q fn
-        if head_type == "Isotropic Normal":
-            output_size = 1
-        elif head_type == "Normal":
-            output_size = 2
-        else:
-            raise NotImplementedError
+        self.head = Head.create(head_config, event_size=1)
 
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)
 
-        input_size = belief_size + state_size + (
-            0 if action_size is None else int(action_size)
-        )
+        if action_shape is not None:
+            key, key_encoder = jax.random.split(key, 2)
+            self.action_encoder = ActionEncoder(action_shape, action_embedding_size, key=key_encoder)
+            encoded_action_size = self.action_encoder.output_size
+        else:
+            self.action_encoder = None
+            encoded_action_size = 0
+
+        input_size = belief_size + state_size + encoded_action_size
 
         self.net = make_mlp(
             input_size = input_size,
             hidden_size = hidden_size,
-            output_size = output_size,
+            output_size = self.head.param_size,
             activation = activation_function,
             key = key
         )
 
-        self.head_type = head_type
-        self.action_size = action_size
-        self.min_std = min_std
-
     def __call__(
         self,
-        latent_state: Union[Float[Array, "... input_size"], LatentState],
-        action: Optional[Float[Array, "... action_size"]] = None,
-    ) -> distrax.Distribution:
+        latent_state: Union[jax.Array, LatentState],
+        action: Optional[jax.Array] = None,
+    ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 
-        assert (action is None) == (self.action_size is None)
+        assert (action is None) == (self.action_encoder is None)
+
         if action is not None:
-            latent_state = jnp.concatenate([latent_state, action], axis=-1)
+            encoded_action = self.action_encoder(action)
+            latent_state = jnp.concatenate([latent_state, encoded_action], axis=-1)
 
         out = self.net(latent_state)
 
-        if self.head_type == "Isotropic Normal":
-            mean = out
-            std = jnp.ones_like(mean)
-            dist = dx.Normal(mean, std)
-        elif self.head_type == "Normal":
-            mean, log_std = jax.split(out, 2, axis=-1)
-            std = jax.nn.softplus(log_std) + self.min_std
-            dist = dx.Normal(mean, std)
-        else:
-            raise ValueError(f"Unknown head type: {self.head_type}")
-
-        return dist
+        return self.head(out)

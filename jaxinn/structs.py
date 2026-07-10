@@ -1,13 +1,49 @@
 import math
-from typing import Callable, Union, Dict, Tuple, Any
+from typing import Union, Tuple, Any
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, Array, Bool, Float
+from jaxtyping import PRNGKeyArray, Array, Bool, Float, PyTree, DTypeLike
 import equinox as eqx
 
+from jaxinn.agent.models.distributions import DistributionLike
 
-class Transition(eqx.Module):
+
+class ArrayLikeOps:
+    """Enables array-like behavior for a PyTree."""
+
+    def __getitem__(self, index: Any):
+        return jax.tree.map(lambda x: x[index], self)
+
+    def __mul__(self, other):
+        if isinstance(other, type(self)):
+            return jax.tree.map(lambda x, y: x * y, self, other)
+        return jax.tree.map(lambda x: x * other, self)
+
+    def __rmul__(self, other):
+        if isinstance(other, type(self)):
+            return jax.tree.map(lambda x, y: x * y, other, self)
+        return jax.tree.map(lambda x: other * x, self)
+
+    def __add__(self, other):
+        if isinstance(other, type(self)):
+            return jax.tree.map(lambda x, y: x + y, self, other)
+        return jax.tree.map(lambda x: x + other, self)
+
+    def flatten(self):
+        return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
+
+    def narrow(self, axis: int, start: int, length: int):
+        return jax.tree.map(
+            lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
+            self
+        )
+
+    def detach(self):
+        return jax.lax.stop_gradient(self)
+
+
+class Transition(eqx.Module, ArrayLikeOps):
     action: Float[Array, " action_dim"]
     next_obs: Float[Array, " obs_dim"]
     reward: Float[Array, ""]
@@ -18,13 +54,27 @@ class Transition(eqx.Module):
     def initialize(
             cls,
             capacity: Union[int, Tuple[int, ...]],
-            obs_shape: Tuple[int, ...],
-            action_size: int,
+            obs_shape: PyTree[Tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[Tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
     ):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
+        action = jax.tree.map(
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=dtype),
+            action_shape,
+            action_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
+        next_obs = jax.tree.map(
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=jnp.uint8 if len(shape) >= 3 else dtype),
+            obs_shape,
+            obs_dtype,
+            is_leaf=lambda x: isinstance(x, tuple)
+        )
         return cls(
-            action=jnp.zeros((*capacity, action_size), dtype=jnp.float32),
-            next_obs=jnp.zeros((*capacity, *obs_shape), dtype=jnp.uint8 if len(obs_shape) >= 3 else jnp.float32),
+            action=action,
+            next_obs=next_obs,
             reward=jnp.zeros((*capacity, 1), dtype=jnp.float32),
             terminated=jnp.zeros((*capacity, 1), dtype=bool),
             truncated=jnp.zeros((*capacity, 1), dtype=bool),
@@ -39,15 +89,18 @@ class Experience(eqx.Module):
     def initialize(
             cls,
             capacity: Union[int, Tuple[int, ...]],
-            obs_shape: Tuple[int, ...],
-            action_size: int,
+            obs_shape: PyTree[Tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[Tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
+            needs_terminal_obs: bool,
     ):
-        transition = Transition.initialize(capacity, obs_shape, action_size)
-        terminal_observation = jnp.zeros_like(transition.next_obs)
+        transition = Transition.initialize(capacity, obs_shape, obs_dtype, action_shape, action_dtype)
+        terminal_observation = jnp.zeros_like(transition.next_obs) if needs_terminal_obs else None
         return cls(transition=transition, terminal_observation=terminal_observation)
 
 
-class LatentState(eqx.Module):
+class LatentState(eqx.Module, ArrayLikeOps):
     """
     Combine deterministic history encoding (belief) and the stochastic predictor (state) into a single state.
     """
@@ -91,39 +144,17 @@ class LatentState(eqx.Module):
     def feature(self) -> jax.Array:
         return jnp.concatenate([self.belief, self.state], axis=-1)
 
-    def __getitem__(self, index: Any) -> "LatentState":
-        return jax.tree.map(lambda x: x[index], self)
 
-    def __mul__(self, other):
-        return jax.tree.map(lambda x: x * other, self)
-
-    def __rmul__(self, other):
-        return jax.tree.map(lambda x: other * x, self)
-
-    def flatten(self) -> "LatentState":
-        return jax.tree.map(lambda x: x.reshape(-1, x.shape[-1]), self)
-
-    def narrow(self, axis: int, start: int, length: int) -> "LatentState":
-        return jax.tree.map(
-            lambda x: jax.lax.dynamic_slice_in_dim(x, start, length, axis),
-            self
-        )
-
-    def detach(self):
-        return jax.tree.map(jax.lax.stop_gradient, self)
-
-
-class LatentStateWithParams(eqx.Module):
+class LatentStateWithDist(eqx.Module):
     """
-    Store the LatentState along with its parameters
+    Store the LatentState along with its dist
     """
     latent_state: LatentState
-    params: Dict[str, jax.Array]
-    dist_cls: Callable[..., Any] = eqx.field(static=True)
+    fixed_dist: DistributionLike
 
     @property
     def dist(self):
-        return self.dist_cls(**self.params).dist # FixedDistrax -> distrax.Distribution
+        return self.fixed_dist.dist
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self.dist, name)
+        return getattr(self.fixed_dist, name)

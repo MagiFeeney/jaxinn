@@ -7,7 +7,7 @@ from .memory import Memory
 
 # Base class
 @dataclass
-class Agent(Resolvable, Base):
+class AgentConfig(Resolvable, Base):
     memory: Memory = field(default_factory=Memory)
 
     def _resolve(self, ctx: dict) -> None:

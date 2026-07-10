@@ -5,8 +5,8 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from jaxinn.structs import Transition, LatentState, LatentStateWithParams
-from jaxinn.configs import (
+from jaxinn.structs import Transition, LatentState, LatentStateWithDist
+from jaxinn.configs.agent.dreamer import (
     DreamerAgentConfig,
     DreamerV2AgentConfig,
 )
@@ -53,15 +53,17 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         actor = Learner.create(Actor, config.actor, key=key_actor)
         critic = Learner.create(Critic, config.critic, key=key_critic)
 
-        if config.memory.type.lower() == "uniform":
+        if config.memory.type.lower() == "uniform": # TODO: fix this
             memory_cls = Uniform
         else:
             memory_cls = Prioritized
         memory = memory_cls(
             seed_idx=memory_id,
             capacity=config.memory.capacity,
-            obs_shape=config.world.perception.encoder.shape,
-            action_size=config.world.transition.action_size,
+            obs_shape=config.memory.obs_shape,
+            obs_dtype=config.memory.obs_dtype,
+            action_shape=config.memory.action_shape,
+            action_dtype=config.memory.action_dtype,
             num_seeds=config.memory.num_seeds,
         )
 
@@ -88,37 +90,35 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         key_perceive, key_action = jax.random.split(key, 2)
         obs = jax.vmap(self.world.perception.encoder)(transform(obs))
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
-        params = jax.vmap(self.actor)(posterior.latent_state)
-        action = self.actor.sample(params, key_action, eval)
+        actor_dist = jax.vmap(self.actor)(posterior.latent_state)
+        action = self.actor.sample(actor_dist, key_action, eval)
         return posterior.latent_state, action
 
-    def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray) -> LatentStateWithParams:
+    def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray) -> LatentStateWithDist:
         """Predict based on the belief without seeing observation."""
-        params, belief = jax.vmap(self.world.transition)(latent_state, action)
-        state = self.world.transition.sample(params, key)
-        prior = LatentStateWithParams(
+        dist, belief = jax.vmap(self.world.transition)(latent_state, action)
+        state = self.world.transition.sample(dist, key)
+        prior = LatentStateWithDist(
             latent_state=LatentState(belief=belief, state=state),
-            params=params,
-            dist_cls=self.world.transition.dist_cls
+            fixed_dist=dist,
         )
         return prior
 
-    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray) -> Tuple[LatentStateWithParams, LatentStateWithParams]:
+    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray) -> Tuple[LatentStateWithDist, LatentStateWithDist]:
         """
         Perception is the process of recognizing existing knowledge or deriving new information from sensory inputs based on memory, representations, and predictive models.
         """
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
-        params, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, observation)
-        state = self.world.representation.sample(params, key_posterior)
-        posterior = LatentStateWithParams(
+        dist, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, observation)
+        state = self.world.representation.sample(dist, key_posterior)
+        posterior = LatentStateWithDist(
             latent_state=LatentState(belief=belief, state=state),
-            params=params,
-            dist_cls=self.world.representation.dist_cls
+            fixed_dist=dist,
         )
         return prior, posterior
 
-    def reason(self, data: Transition, key: PRNGKeyArray) -> Tuple[LatentStateWithParams, LatentStateWithParams]:
+    def reason(self, data: Transition, key: PRNGKeyArray) -> Tuple[LatentStateWithDist, LatentStateWithDist]:
         """
         Reason about the relationship among data and to the goal with contexts from predictive models or memory given a fixed belief;
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
@@ -154,8 +154,8 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             latent_state, key = carry
 
             key, key_action, key_predict = jax.random.split(key, 3)
-            params = jax.vmap(self.actor)(latent_state.detach())
-            action = self.actor.sample(params, key_action)
+            actor_dist = jax.vmap(self.actor)(latent_state.detach())
+            action = self.actor.sample(actor_dist, key_action)
             prior = self.predict(latent_state, action, key_predict)
 
             return (prior.latent_state, key), (latent_state, action)
@@ -240,8 +240,7 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
     def process(self, latent_states: LatentState, actions: jax.Array) -> Tuple[Tuple[jax.Array, ...], Dict[str, jax.Array]]:
         processed, metrics = super().process(latent_states)
 
-        actor_params = jax.vmap(jax.vmap(self.actor))(latent_states[:-1])
-        actor_dists = self.actor.get_dist(actor_params)
+        actor_dists = jax.vmap(jax.vmap(self.actor))(latent_states[:-1])
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
 
         out = (*processed, action_log_probs)

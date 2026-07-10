@@ -3,7 +3,7 @@ from typing import Tuple, Optional, Literal
 
 from .base import Base
 from .env import Env
-from .agent import AgentUnion, DreamerAgent
+from .agent import AgentUnion, DreamerAgentConfig
 
 
 # Exploration
@@ -33,7 +33,7 @@ class Logger(Base):
 # console
 @dataclass
 class Config(Base):
-    agent: AgentUnion = field(default_factory=DreamerAgent)
+    agent: AgentUnion = field(default_factory=DreamerAgentConfig)
     env: Env = field(default_factory=Env)
     exploration: Exploration = field(default_factory=Exploration)    # Trainer particulars
     logger: Logger = field(default_factory=Logger)

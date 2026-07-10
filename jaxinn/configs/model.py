@@ -1,8 +1,26 @@
+from copy import deepcopy
 from enum import Enum
 from dataclasses import dataclass, field, InitVar
-from typing import Tuple, Optional, Literal, Union, ClassVar
+from typing import Tuple, Optional, Union, ClassVar
+
+from jaxtyping import PyTree
+
+import jaxinn.envs.spaces as jaxinn_spaces
 
 from .base import Base, Resolvable, StaticShared, ConfigNamespace
+from .head import (
+    HeadUnion,
+    ContinuousHeadUnion,
+    DictHeadConfig,
+    TupleHeadConfig,
+    HierarchicalHeadConfig,
+    IsotropicNormalHeadConfig,
+    TanhNormalHeadConfig,
+    NormalHeadConfig,
+    CategoricalHeadConfig,
+    OneHotCategoricalHeadConfig,
+    MultiCategoricalHeadConfig
+)
 
 
 @dataclass
@@ -31,12 +49,11 @@ class PerceptionShared(Resolvable, Model):
     """Shared parameters across perception modules."""
     DOMAIN: ClassVar[Domain]
 
-    shape: Optional[Tuple[int, ...]] = field(default=None, init=False)
+    obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
-        obs_shape = ctx["obs_shape"]
-        self.shape = obs_shape
+        obs_shape = ctx["observation_space"].shape
 
         env_domain = Domain.PIXEL if len(obs_shape) > 1 else Domain.STATE
 
@@ -46,6 +63,8 @@ class PerceptionShared(Resolvable, Model):
                 f"observations {obs_shape}, but {type(self).__name__} "
                 f"expects {self.DOMAIN.value} inputs."
             )
+
+        self.obs_shape = obs_shape
 
         # Propagate downstream for representation to consume
         embedding_size = getattr(self, "embedding_size", None)
@@ -64,54 +83,49 @@ class OptimizerShared(Base):
 # World Model
 ## For pixel-based tasks
 @dataclass
-class CNNEncoder(PerceptionShared):
+class CNNEncoderConfig(PerceptionShared):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     embedding_size: int = 1024
     dtype: str = "bfloat16"
 
 
 @dataclass
-class CNNDecoder(PerceptionShared, ModelShared):
+class CNNDecoderConfig(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     dtype: str = "bfloat16"
 
 
 ## For state-based tasks
 @dataclass
-class LinearEncoder(PerceptionShared):
+class LinearEncoderConfig(PerceptionShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: Optional[list[int]] = None
     embedding_size: Optional[int] = None
 
 
 @dataclass
-class LinearDecoder(PerceptionShared, ModelShared):
+class LinearDecoderConfig(PerceptionShared, ModelShared):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: list[int] = field(default_factory=lambda: [300, 300])
 
 
-EncoderUnion = Union[CNNEncoder, LinearEncoder] # TODO: automate this
-DecoderUnion = Union[CNNDecoder, LinearDecoder]
+EncoderUnion = Union[CNNEncoderConfig, LinearEncoderConfig] # TODO: automate this
+DecoderUnion = Union[CNNDecoderConfig, LinearDecoderConfig]
 
 
 @dataclass
-class Perception(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=CNNEncoder)
-    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoder)
-
-
-@dataclass
-class Representation(Resolvable, ModelShared):
+class RepresentationConfig(Resolvable, ModelShared):
     embedding_size: Optional[int] = field(default=None, init=False)
     hidden_size: list[int] = field(default_factory=lambda: [200])
     activation_function: str = "elu"
-    head_type: Literal['Normal', 'Categorical'] = "Normal"
+
+    head: HeadUnion = field(default_factory=NormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if "embedding_size" not in ctx:
             return
 
-        obs_shape = ctx["obs_shape"]
+        obs_shape = ctx["observation_space"].shape
         embedding_size = ctx["embedding_size"]
 
         if embedding_size is not None:
@@ -126,31 +140,29 @@ class Representation(Resolvable, ModelShared):
 
 
 @dataclass
-class Transition(Resolvable, ModelShared):
+class TransitionConfig(Resolvable, ModelShared):
     hidden_size: int = 200
-    action_size: Optional[int] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     activation_function: str = "elu"
-    head_type: Literal['Normal', 'Categorical'] = "Normal"
+
+    head: HeadUnion = field(default_factory=NormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        if ctx["is_action_space_discrete"] and not ctx["use_one_hot_action"]:
-            self.action_size = 1
-        else:
-            self.action_size = ctx["action_size"]
+        self.action_shape = ctx["action_space"].shape
 
 
 @dataclass
-class Reward(ModelShared):
+class RewardConfig(ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
-    action_size: Optional[int] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     use_action: InitVar[bool] = False # will be discarded after resolve
     activation_function: str = "elu"
-    head_type: str = "Isotropic Normal"
-    min_std: float = 0.0
+
+    head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
-            self.action_size = ctx["action_size"]
+            self.action_shape = ctx["action_space"].shape
 
 
 @dataclass
@@ -161,11 +173,12 @@ class WorldOptimizer(OptimizerShared):
 
 
 @dataclass
-class World(Resolvable, Model):
-    perception: Perception = field(default_factory=Perception)
-    representation: Representation = field(default_factory=Representation)
-    transition: Transition = field(default_factory=Transition)
-    reward: Reward = field(default_factory=Reward)
+class WorldConfig(Resolvable, Model):
+    encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
+    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
+    representation: RepresentationConfig = field(default_factory=RepresentationConfig)
+    transition: TransitionConfig = field(default_factory=TransitionConfig)
+    reward: RewardConfig = field(default_factory=RewardConfig)
     optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
 
 
@@ -178,25 +191,49 @@ class ActorOptimizer(OptimizerShared):
 
 
 @dataclass
-class Actor(Resolvable, ModelShared):
+class ActorConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
-    action_size: Optional[int] = field(default=None, init=False) # Pass from the env params
-    min_std: float = 0.0
-    head_type: Literal['Tanh Normal', 'Beta', 'Categorical', 'OneHotCategorical'] = "Tanh Normal"
+    action_size: Optional[PyTree[int]] = field(default=None, init=False) # Pass from the env params
 
+    head: Optional[PyTree[HeadUnion]] = field(default=None, init=False) # TODO: add head_overrides
     optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
+    # For building head; discard after use
+    continuous_head: ContinuousHeadUnion = field(default_factory=TanhNormalHeadConfig)
+
     def _resolve(self, ctx: dict) -> None:
-        if ctx["is_action_space_discrete"] ^ (self.head_type in ("Categorical", "OneHotCategorical")):
-            raise ValueError(f"Inconsistent actor head: action space is discrete={ctx['is_action_space_discrete']}, but received head type {self.head_type!r}.")
+        action_space = ctx["action_space"]
+        self.action_size = action_space.size
 
-        if (self.head_type == "OneHotCategorical") != ctx["use_one_hot_action"]:
-            raise ValueError(
-                f"Mismatch: Head is {self.head_type!r}, but env use_one_hot_action is {ctx['use_one_hot_action']}."
-            )
+        def _resolve_head(space):
+            if isinstance(space, jaxinn_spaces.Dict):
+                return {k: _resolve_head(s) for k, s in space.spaces.items()}
+            elif isinstance(space, jaxinn_spaces.Tuple):
+                return tuple(_resolve_head(s) for s in space.spaces)
+            elif isinstance(space, jaxinn_spaces.Box):
+                return deepcopy(self.continuous_head)
+            elif isinstance(space, jaxinn_spaces.OneHotDiscrete):
+                return OneHotCategoricalHeadConfig()
+            elif isinstance(space, jaxinn_spaces.MultiDiscrete):
+                return MultiCategoricalHeadConfig(nvec=space.nvec)
+            elif isinstance(space, jaxinn_spaces.Discrete):
+                return CategoricalHeadConfig()
+            else:
+                raise TypeError(
+                    f"Unsupported space type for creating head: '{type(space).__name__}'."
+                )
 
-        self.action_size = ctx["action_size"]
+        resolved_head = _resolve_head(action_space)
+        if isinstance(resolved_head, dict):
+            if isinstance(action_space, jaxinn_spaces.Hierarchical):
+                self.head = HierarchicalHeadConfig(resolved_head)
+            else:
+                self.head = DictHeadConfig(resolved_head)
+        elif isinstance(resolved_head, tuple):
+            self.head = TupleHeadConfig(resolved_head)
+        else:
+            self.head = resolved_head
 
 
 # Critic
@@ -208,16 +245,15 @@ class CriticOptimizer(OptimizerShared):
 
 
 @dataclass
-class Critic(Resolvable, ModelShared):
+class CriticConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
-    action_size: Optional[int] = field(default=None, init=False)
+    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     use_action: InitVar[bool] = False # will be discarded after resolve
     activation_function: str = "elu"
-    min_std: float = 0.0
-    head_type: Literal['Isotropic Normal', 'Normal'] = "Isotropic Normal"
 
+    head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
     optimizer: CriticOptimizer = field(default_factory=CriticOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
-            self.action_size = ctx["action_size"]
+            self.action_shape = ctx["action_space"].shape

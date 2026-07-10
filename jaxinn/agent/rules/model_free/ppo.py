@@ -7,7 +7,7 @@ import equinox as eqx
 import distrax
 
 from jaxinn.structs import Experience
-from jaxinn.configs import (
+from jaxinn.configs.agent.ppo import (
     PPOAgentConfig,
     ActorCriticSharedConfig,
     ActorCriticDecoupledConfig,
@@ -19,7 +19,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret
 from jaxinn.agent.models import Actor, Critic
-from jaxinn.agent.models.world.perception import Encoder
+from jaxinn.agent.models.perception import Encoder
 from jaxinn.agent.losses import PPOLossMixIn
 
 
@@ -32,8 +32,8 @@ class PerceptionActor(eqx.Module):
         key_encoder, key_actor = jax.random.split(key)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor(
-            **config.actor(),
+        actor = Actor.create(
+            config.actor,
             key=key_actor
         )
 
@@ -43,16 +43,13 @@ class PerceptionActor(eqx.Module):
         feature = self.encoder(obs)
         return self.actor(feature)
 
-    def get_dist(self, params: Dict[str, Any]) -> distrax.Distribution:
-        return self.actor.get_dist(params)
-
     def sample(
             self,
-            params: Dict[str, Any],
+            dist: distrax.Distribution,
             key: PRNGKeyArray,
             det: bool = False,
     ) -> jax.Array:
-        return self.actor.sample(params, key, det=det)
+        return self.actor.sample(dist, key, det=det)
 
 
 class PerceptionCritic(eqx.Module):
@@ -64,8 +61,8 @@ class PerceptionCritic(eqx.Module):
         key_encoder, key_critic = jax.random.split(key)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        critic = Critic(
-            **config.critic(),
+        critic = Critic.create(
+            config.critic,
             key=key_critic
         )
 
@@ -98,17 +95,10 @@ class ActorCriticDecoupled(ActorCritic):
         return cls(actor=actor, critic=critic)
 
     def get_actor_dist(self, obs: jax.Array) -> distrax.Distribution:
-        actor_params = self.actor(obs)
-        actor_dist = self.actor.get_dist(actor_params)
-        return actor_dist
+        return self.actor(obs)
 
     def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
         return self.critic(obs)
-
-    def sample_action(self, obs: jax.Array, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        actor_params = self.actor(obs)
-        action = self.actor.sample(actor_params, key, det)
-        return action
 
 
 # Shared encoder
@@ -120,29 +110,21 @@ class ActorCriticShared(ActorCritic):
     critic: Critic
 
     @classmethod
-    def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray): # TODO: import
+    def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray):
         key_encoder, key_actor, key_critic = jax.random.split(key, 3)
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor(**config.actor(), key=key_actor)
-        critic = Critic(**config.critic(), key=key_critic)
+        actor = Actor.create(config.actor, key=key_actor)
+        critic = Critic.create(config.critic, key=key_critic)
 
         return cls(encoder=encoder, actor=actor, critic=critic)
 
     def get_actor_dist(self, obs: jax.Array) -> distrax.Distribution:
         feature = self.encoder(obs)
-        actor_params = self.actor(feature)
-        actor_dist = self.actor.get_dist(actor_params)
-        return actor_dist
+        return self.actor(feature)
 
     def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
         feature = self.encoder(obs)
         return self.critic(feature)
-
-    def sample_action(self, obs: jax.Array, key: PRNGKeyArray, det: bool = False) -> jax.Array:
-        feature = self.encoder(obs)
-        actor_params = self.actor(feature)
-        action = self.actor.sample(actor_params, key, det)
-        return action
 
 
 class PPOAgent(PPOLossMixIn, Agent):
@@ -168,8 +150,11 @@ class PPOAgent(PPOLossMixIn, Agent):
         actor_critic = Learner.create(ActorCritic, config.actor_critic, key=key)
         memory = Experience.initialize(
             capacity=config.memory.capacity,
-            obs_shape=config.actor_critic.obs_shape,
-            action_size=config.actor_critic.action_size,
+            obs_shape=config.memory.obs_shape,
+            obs_dtype=config.memory.obs_dtype,
+            action_shape=config.memory.action_shape,
+            action_dtype=config.memory.action_dtype,
+            needs_terminal_obs=config.memory.needs_terminal_obs
         )
 
         return cls(
@@ -182,15 +167,24 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None
 
     def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
-        action = jax.vmap(self.actor_critic.sample_action, in_axes=(0, None, None))(obs, key, eval)
+        actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
+        action = self.actor_critic.actor.sample(actor_dist, key, eval)
         return None, action
 
     def make_batch_fn(self) -> callable:
         transition, terminal_obs = self.memory.transition, self.memory.terminal_observation
 
         # Get advantages and returns
-        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs[:-1]).mean()
-        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs[1:]).mean() # Recalculate values on actual terminal observation to handle truncation
+        if terminal_obs is None: # Next-step autoreset
+            all_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs).mean()
+            values = all_values[:-1]
+            next_values = all_values[1:]
+            last_dones = transition.terminated | transition.truncated
+            next_values = next_values * (1 - last_dones[:-1])
+        else:                    # current-step autoreset
+            values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs[:-1]).mean()
+            next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs[1:]).mean() # Recalculate values on actual terminal observation to handle truncation
+
         baselines = values
         advantages, returns = compute_adv_and_ret(
             transition.reward[1:],
@@ -204,10 +198,11 @@ class PPOAgent(PPOLossMixIn, Agent):
 
         # Get action log probs
         actor_dists = jax.vmap(jax.vmap(self.actor_critic.get_actor_dist))(transition.next_obs[:-1])
-        log_probs = actor_dists.log_prob(transition.action[1:])
+        actions = jax.tree.map(lambda x: x[1:], transition.action)
+        log_probs = actor_dists.log_prob(actions)
 
         # Apply shuffle and split for training data
-        train_data = (transition.next_obs[:-1], transition.action[1:], advantages, returns, values[:-1], log_probs)
+        train_data = (transition.next_obs[:-1], actions, advantages, returns, values[:-1], log_probs)
         flatten_train_data = jax.tree.map(lambda x: x.reshape(-1, *x.shape[2:]), train_data)
 
         def step_fn(key: PRNGKeyArray):

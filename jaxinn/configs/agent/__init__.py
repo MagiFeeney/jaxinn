@@ -1,26 +1,16 @@
 from typing import Union
 
-from .base import Agent
-from .dreamer import DreamerAgent, DreamerV2Agent
-from .ppo import (
-    PPOAgent,
-    PerceptionActor,
-    PerceptionCritic,
-    ActorCriticDecoupled,
-    ActorCriticShared,
-)
-from .sac import SACAgent
+from .base import AgentConfig
+from .dreamer import DreamerAgentConfig, DreamerV2AgentConfig
+from .ppo import PPOAgentConfig
+from .sac import SACAgentConfig
 
-AgentUnion = Union[DreamerAgent, DreamerV2Agent, PPOAgent, SACAgent]
+AgentUnion = Union[DreamerAgentConfig, DreamerV2AgentConfig, PPOAgentConfig, SACAgentConfig]
 
 __all__ = [
-    "Agent",
-    "DreamerAgent",
-    "DreamerV2Agent",
-    "PPOAgent",
-    "PerceptionActor",
-    "PerceptionCritic",
-    "ActorCriticDecoupled",
-    "ActorCriticShared",
-    "SACAgent",
+    "AgentConfig",
+    "DreamerAgentConfig",
+    "DreamerV2AgentConfig",
+    "PPOAgentConfig",
+    "SACAgentConfig",
 ]

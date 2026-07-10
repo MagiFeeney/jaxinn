@@ -1,4 +1,3 @@
-from .perception import Perception
 from .base import Encoder, Decoder
 from .cnn import (
     CNNEncoder,
@@ -8,9 +7,10 @@ from .linear import (
     LinearEncoder,
     LinearDecoder,
 )
+from .action_encoder import ActionEncoder
 
 __all__ = [
-    "Perception",
+    "ActionEncoder",
     "Encoder",
     "Decoder",
     "CNNEncoder",

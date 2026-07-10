@@ -1,6 +1,5 @@
-import math
 import numpy as np
-from typing import Any, Optional, Tuple, Dict
+from typing import Any, Optional, Tuple as PyTuple, Dict as PyDict
 
 import jax
 import jax.numpy as jnp
@@ -11,7 +10,38 @@ from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo, EnvState
 from ..vmap import VmapTransformation
-from ..spaces import to_jax_space
+from ..spaces import Discrete, Box, Dict, Tuple
+
+
+def _to_jax_dtype(dtype: Any) -> jnp.dtype:
+    parsed_dtype = jnp.dtype(dtype)
+    if parsed_dtype.name == 'float64':
+        return jnp.float64      # Return concrete dtype to avoid being caught by float dtype
+    elif parsed_dtype.name == 'int64':
+        return jnp.int64
+    return parsed_dtype
+
+
+def gymnasium_space_to_jaxinn_space(space):
+    if isinstance(space, gym.spaces.Discrete):
+        return Discrete(n=int(space.n), dtype=_to_jax_dtype(space.dtype))
+    elif isinstance(space, gym.spaces.Box):
+        return Box(
+            low=space.low,
+            high=space.high,
+            shape=space.shape,
+            dtype=_to_jax_dtype(space.dtype),
+        )
+    elif isinstance(space, gym.spaces.Dict):
+        converted_spaces = {k: gymnasium_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
+        return Dict(converted_spaces)
+    elif isinstance(space, gym.spaces.Tuple):
+        converted_spaces = tuple(gymnasium_space_to_jaxinn_space(s) for s in space.spaces)
+        return Tuple(converted_spaces)
+    else:
+        raise TypeError(
+            f"Unsupported Gymnasium space type for conversion to Jaxinn space: '{type(space).__name__}'."
+        )
 
 
 class GymnasiumVmapMixIn(VmapTransformation):
@@ -50,7 +80,7 @@ class GymnasiumVmapMixIn(VmapTransformation):
         inner = key.shape[1] if flattened else 1
 
         if flattened:
-            flatten_action = action.reshape(axis_size * action.shape[1], *action.shape[2:])
+            flatten_action = jax.tree.map(lambda x: x.reshape(axis_size * x.shape[1], *x.shape[2:]), action)
             flatten_key = key.reshape(axis_size * key.shape[1], *key.shape[2:])
         else:
             flatten_action, flatten_key = action, key
@@ -87,8 +117,8 @@ class JaxConverterMixIn:
         return obs
 
     def _python_step(self, action):
-        action = np.array(action, dtype=np.float32)
-        obs, reward, term, trunc, _ = self.env.step(action)
+        action = jax.device_get(action)
+        obs, reward, term, trunc, _ = self.env.step(action) # TODO: return info
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
         obs = obs.astype(np.uint8) if getattr(self, "from_pixels", False) else obs.astype(np.float32)
@@ -117,7 +147,7 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
     def __init__(
             self,
             env: gym.Env,
-            env_params: Optional[Dict[str, Any]] = None,
+            env_params: Optional[PyDict[str, Any]] = None,
     ):
         super().__init__(env, env_params)
 
@@ -126,26 +156,34 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         env = gym.make_vec(env_name, num_envs=num_envs, **kwargs)
         return cls(env, env_params={"capacity": num_envs, **kwargs})
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, jax.Array]:
         obs = self.v_reset(self, key)
         transition = Transition(
-            action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
+            action = jax.tree.map(
+                lambda shape, dtype: jnp.zeros(shape, dtype=dtype),
+                self.action_space.shape,
+                self.action_space.dtype,
+                is_leaf=lambda x: isinstance(x, tuple)
+            ),
             next_obs=obs,
             reward=jnp.zeros(()),
             terminated=jnp.zeros((), dtype=bool),
             truncated=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(terminal_observation=None)
-        env_state = EnvState(last_done=jnp.zeros((), dtype=bool))
+        env_info = EnvInfo()
+        env_state = EnvState()
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> PyTuple[Transition, EnvInfo, jax.Array]:
         # VmapMixIn → Jax callback → python env
         next_obs, reward, terminated, truncated = self.v_step(self, key, action)
         # Gymnasium reset observation is independent of the action
-        action = jnp.where(
-            env_state.last_done,
-            jnp.zeros_like(action),
+        action = jax.tree.map(
+            lambda x: jnp.where(
+                env_state.last_done,
+                jnp.zeros_like(x),
+                x
+            ),
             action
         )
         transition = Transition(
@@ -155,26 +193,28 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
             terminated=terminated,
             truncated=truncated,
         )
-        env_info = EnvInfo(terminal_observation=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
-        next_env_state = EnvState(last_done=terminated | truncated)
+        env_info = EnvInfo()
+        next_env_state = EnvState()
         return transition, env_info, next_env_state
 
     @property
     def observation_space(self):
         observation_space = self.env.single_observation_space if self.capacity is not None and hasattr(self.env, "single_observation_space") else self.env.observation_space
-        return to_jax_space(observation_space)
+        return gymnasium_space_to_jaxinn_space(observation_space)
 
     @property
     def action_space(self):
         action_space = self.env.single_action_space if (self.capacity is not None) and hasattr(self.env, "single_action_space") else self.env.action_space
-        return to_jax_space(action_space)
-
-    @property
-    def action_size(self):
-        if self.is_action_space_discrete:
-            return self.action_space.n
-        return math.prod(self.action_space.shape)
+        return gymnasium_space_to_jaxinn_space(action_space)
 
     @property
     def max_episode_length(self) -> int:
-        return self.max_episode_steps
+        if getattr(self, "max_episode_steps", None) is not None:
+            return self.max_episode_steps
+        if getattr(self, "spec", None) is not None:
+            if getattr(self.spec, "max_episode_steps", None) is not None:
+                return self.spec.max_episode_steps
+        raise AttributeError(
+            f"Environment '{self.__class__.__name__}' does not define 'max_episode_steps' "
+            f"directly or within its spec."
+        )

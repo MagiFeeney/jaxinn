@@ -1,17 +1,40 @@
-import math
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple as PyTuple
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import gymnax
+import gymnax.environments.spaces as gymnax_spaces
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
 
 from jaxinn.structs import Transition
 
 from ..environment import Environment, EnvInfo
+from ..spaces import Discrete, Box, Dict, Tuple
+
+
+def gymnax_space_to_jaxinn_space(space):
+    if isinstance(space, gymnax_spaces.Discrete):
+        return Discrete(n=space.n, dtype=space.dtype)
+    elif isinstance(space, gymnax_spaces.Box):
+        return Box(
+            low=space.low,
+            high=space.high,
+            shape=space.shape,
+            dtype=space.dtype,
+        )
+    elif isinstance(space, gymnax_spaces.Dict):
+        converted_spaces = {k: gymnax_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
+        return Dict(converted_spaces)
+    elif isinstance(space, gymnax_spaces.Tuple):
+        converted_spaces = tuple(gymnax_space_to_jaxinn_space(s) for s in space.spaces)
+        return Tuple(converted_spaces)
+    else:
+        raise TypeError(
+            f"Unsupported Gymnax space type for conversion to Jaxinn space: '{type(space).__name__}'."
+        )
 
 
 class TerminalObservationWrapper:
@@ -63,7 +86,7 @@ class Gymnax(Environment):
         env = TerminalObservationWrapper(env)
         return cls(env, env_params)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
+    def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, GymnaxEnvState]:
         obs, env_state = self.env.reset(key, self.env_params)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
@@ -75,7 +98,7 @@ class Gymnax(Environment):
         env_info = EnvInfo(terminal_observation=jnp.zeros_like(obs)) # dummy
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, GymnaxEnvState]:
+    def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> PyTuple[Transition, EnvInfo, GymnaxEnvState]:
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
         truncated = next_env_state.time >= self.max_episode_length
         # Infer termination from the done and truncation flags since gymnax couples the two.
@@ -95,18 +118,14 @@ class Gymnax(Environment):
     @property
     def observation_space(self):
         space = self.env.observation_space(self.env_params)
+        space = gymnax_space_to_jaxinn_space(space)
         return space
 
     @property
     def action_space(self):
         space = self.env.action_space(self.env_params)
+        space = gymnax_space_to_jaxinn_space(space)
         return space
-
-    @property
-    def action_size(self):
-        if self.is_action_space_discrete:
-            return self.action_space.n
-        return math.prod(self.action_space.shape)
 
     @property
     def max_episode_length(self) -> int:
