@@ -302,6 +302,37 @@ class OneHotAction(Wrapper):
         )
 
 
+class NextStepAutoResetTerminalObs(Wrapper):
+    def __init__(self, env: Environment):
+        super().__init__(env)
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+        env_info = EnvInfo(**env_info.data, terminal_observation=None)
+        env_state = EnvState(
+            state=env_state,
+            last_done=jnp.zeros((), dtype=bool)
+        )
+        return transition, env_info, env_state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        action = jax.tree.map(
+            lambda x: jnp.where(
+                env_state.last_done,
+                jnp.zeros_like(x),
+                x
+            ),
+            action
+        )
+        transition, env_info, next_env_state = self.env.step(key, env_state, action)
+        env_info = EnvInfo(**env_info.data, terminal_observation=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
+        next_env_state = EnvState(
+            state=next_env_state,
+            last_done=transition.terminated | transition.truncated
+        )
+        return transition, env_info, next_env_state
+
+
 class ResizeImage(Wrapper):
     """Resize image to a target shape."""
     target_shape: Tuple[int, int] = eqx.field(static=True, default=(64, 64))

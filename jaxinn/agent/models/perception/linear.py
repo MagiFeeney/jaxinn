@@ -6,13 +6,13 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import LinearEncoderConfig, LinearDecoderConfig
 
 from .base import Encoder, Decoder
 from ..utils import get_activation_fn, dx, StaticCallable, make_mlp
+from ..distributions import DistributionLike
 
 
 class LinearEncoder(Encoder):
@@ -91,7 +91,7 @@ class LinearDecoder(Decoder):
     def __call__(
             self,
             latent_state: Union[jax.Array, LatentState],
-    ) -> distrax.Distribution:
+    ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         out = self.net(latent_state)

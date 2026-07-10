@@ -3,10 +3,11 @@ from typing import Union
 
 import jax
 import equinox as eqx
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.agent.registry import Registrable
+
+from ..distributions import DistributionLike
 
 
 class Encoder(Registrable, eqx.Module):
@@ -17,5 +18,5 @@ class Encoder(Registrable, eqx.Module):
 
 class Decoder(Registrable, eqx.Module):
     @abc.abstractmethod
-    def __call__(self, latent: Union[jax.Array, LatentState]) -> Union[distrax.Distribution, jax.Array]:
+    def __call__(self, latent: Union[jax.Array, LatentState]) -> Union[DistributionLike, jax.Array]:
         pass

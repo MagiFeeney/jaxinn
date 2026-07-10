@@ -5,7 +5,6 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import CriticConfig
@@ -14,6 +13,7 @@ from jaxinn.configs.head import HeadConfig
 from .perception import ActionEncoder
 from .utils import make_mlp
 from .heads import Head
+from .distributions import DistributionLike
 
 
 class Critic(eqx.Module):
@@ -64,7 +64,7 @@ class Critic(eqx.Module):
         self,
         latent_state: Union[jax.Array, LatentState],
         action: Optional[jax.Array] = None,
-    ) -> distrax.Distribution:
+    ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 

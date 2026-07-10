@@ -100,10 +100,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
             terminated=jnp.zeros((), dtype=bool),
             truncated=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(
-            info=info,
-            terminal_observation=None,
-        )
+        env_info = EnvInfo(info=info)
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
@@ -115,10 +112,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
             terminated=terminated,
             truncated=truncated,
         )
-        env_info = EnvInfo(
-            info=info,
-            terminal_observation=None, # envpool uses next-step autoreset instead of same-step autoreset; same as gymnasium logic
-        )
+        env_info = EnvInfo(info=info)
         return transition, env_info, next_env_state
 
     @property

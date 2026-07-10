@@ -1,6 +1,6 @@
 import math
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from typing import Tuple, Union, Literal, Optional
 
 from jaxtyping import PyTree, DTypeLike
@@ -12,16 +12,19 @@ from .base import Base, Resolvable
 @dataclass
 class Memory(Resolvable, Base):
     capacity: Union[int, Tuple[int, ...]] = 1000000
-    device: Literal['cpu', 'gpu'] = 'gpu'
-    type: Literal['uniform', 'prioritized', 'batched'] = 'uniform'
+    device: InitVar[Literal['cpu', 'gpu']] = 'gpu'
+    type: Literal['uniform', 'prioritized', 'batched'] = 'uniform' # TODO: switch to registry
 
     num_seeds: Optional[int] = field(default=None, init=False)
     obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
     action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     action_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
+    needs_terminal_obs: bool = field(default=None, init=False)
 
     def _resolve(self, ctx: dict) -> None:
+        self.needs_terminal_obs = True if not ctx.get("next_step_autoreset", False) else False
+
         # If device is cpu, pre-allocate for all seeds upfront
         # Otherwise vmap handles this
         if self.device == "cpu":

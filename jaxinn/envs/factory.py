@@ -4,7 +4,7 @@ from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, TimeLimit, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, ResizeImage, Branched
+from .wrapper import Batched, TimeLimit, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, NextStepAutoResetTerminalObs, ResizeImage, Branched
 from .environment import Environment
 from .spaces import Discrete
 
@@ -17,6 +17,7 @@ class EnvSpec:
     native_batched: bool = True
     native_autoreset: bool = False
     native_time_limit: bool = True
+    next_step_autoreset: bool = False
 
 
 _FACTORY_REGISTRY = {
@@ -29,9 +30,9 @@ _FACTORY_REGISTRY = {
     "jaxarc":    EnvSpec(".adapters.jaxarc", "JaxARC"),
 
     # Non-JAX envs
-    "gymnasium": EnvSpec(".adapters.gymnasium", "Gymnasium", native_autoreset=True),
-    "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True),
-    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True),
+    "gymnasium": EnvSpec(".adapters.gymnasium", "Gymnasium", native_autoreset=True, next_step_autoreset=True),
+    "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True), # TODO: check whether dmc is next_step_autoreset
+    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True, next_step_autoreset=True),
     "arc":       EnvSpec(".adapters.arc", "ARC", channel_first=True, native_autoreset=True),
 }
 
@@ -88,6 +89,9 @@ def make_env(
 
         if not spec.native_autoreset:
             env = AutoReset(env)
+
+        if spec.next_step_autoreset:
+            env = NextStepAutoResetTerminalObs(env)
 
         use_one_hot_action = wrapper.get("use_one_hot_action", False)
         if isinstance(env.action_space, Discrete) and use_one_hot_action:

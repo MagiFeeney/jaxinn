@@ -5,7 +5,6 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.head import HeadConfig
@@ -14,6 +13,7 @@ from jaxinn.configs.model import RewardConfig
 from ..utils import make_mlp
 from ..perception import ActionEncoder
 from ..heads import Head
+from ..distributions import DistributionLike
 
 
 class Reward(eqx.Module):
@@ -64,7 +64,7 @@ class Reward(eqx.Module):
         self,
         latent_state: Union[jax.Array, LatentState],
         action: Optional[jax.Array] = None,
-    ) -> distrax.Distribution:
+    ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 

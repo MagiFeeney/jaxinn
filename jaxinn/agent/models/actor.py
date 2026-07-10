@@ -4,7 +4,6 @@ from typing import Tuple, Union, Callable
 import jax
 from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import ActorConfig
@@ -16,7 +15,7 @@ from jaxinn.configs.head import (
 
 from .utils import make_mlp
 from .heads import Head, TreeHead, HierarchicalHead
-from .distributions import SampleDist
+from .distributions import SampleDist, DistributionLike
 
 
 class Actor(eqx.Module):
@@ -60,7 +59,7 @@ class Actor(eqx.Module):
     def __call__(
         self,
         latent_state: Union[jax.Array, LatentState],
-    ) -> distrax.Distribution:
+    ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
 
@@ -70,10 +69,10 @@ class Actor(eqx.Module):
 
     def sample(
             self,
-            dist: distrax.Distribution,
+            dist: DistributionLike,
             key: PRNGKeyArray,
             det: bool = False,      # Default to training
-    ) -> jax.Array:
+    ) -> PyTree[jax.Array]:
         if det:
             if hasattr(dist, "mode") and callable(dist.mode):
                 try:

@@ -118,7 +118,7 @@ class JaxConverterMixIn:
 
     def _python_step(self, action):
         action = jax.device_get(action)
-        obs, reward, term, trunc, _ = self.env.step(action)
+        obs, reward, term, trunc, _ = self.env.step(action) # TODO: return info
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
         obs = obs.astype(np.uint8) if getattr(self, "from_pixels", False) else obs.astype(np.float32)
@@ -170,8 +170,8 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
             terminated=jnp.zeros((), dtype=bool),
             truncated=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(terminal_observation=None)
-        env_state = EnvState(last_done=jnp.zeros((), dtype=bool))
+        env_info = EnvInfo()
+        env_state = EnvState()
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> PyTuple[Transition, EnvInfo, jax.Array]:
@@ -193,8 +193,8 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
             terminated=terminated,
             truncated=truncated,
         )
-        env_info = EnvInfo(terminal_observation=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
-        next_env_state = EnvState(last_done=terminated | truncated)
+        env_info = EnvInfo()
+        next_env_state = EnvState()
         return transition, env_info, next_env_state
 
     @property

@@ -1,10 +1,12 @@
 import math
-from typing import Callable, Union, Dict, Tuple, Any
+from typing import Union, Tuple, Any
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, Array, Bool, Float, PyTree, DTypeLike
 import equinox as eqx
+
+from jaxinn.agent.models.distributions import DistributionLike
 
 
 class ArrayLikeOps:
@@ -91,9 +93,10 @@ class Experience(eqx.Module):
             obs_dtype: PyTree[DTypeLike],
             action_shape: PyTree[Tuple[int, ...]],
             action_dtype: PyTree[DTypeLike],
+            needs_terminal_obs: bool,
     ):
         transition = Transition.initialize(capacity, obs_shape, obs_dtype, action_shape, action_dtype)
-        terminal_observation = jnp.zeros_like(transition.next_obs)
+        terminal_observation = jnp.zeros_like(transition.next_obs) if needs_terminal_obs else None
         return cls(transition=transition, terminal_observation=terminal_observation)
 
 
@@ -142,17 +145,16 @@ class LatentState(eqx.Module, ArrayLikeOps):
         return jnp.concatenate([self.belief, self.state], axis=-1)
 
 
-class LatentStateWithParams(eqx.Module):
+class LatentStateWithDist(eqx.Module):
     """
-    Store the LatentState along with its parameters
+    Store the LatentState along with its dist
     """
     latent_state: LatentState
-    params: Dict[str, jax.Array]
-    dist_cls: Callable[..., Any] = eqx.field(static=True)
+    fixed_dist: DistributionLike
 
     @property
     def dist(self):
-        return self.dist_cls(**self.params).dist # FixedDistrax -> distrax.Distribution
+        return self.fixed_dist.dist
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self.dist, name)
+        return getattr(self.fixed_dist, name)
