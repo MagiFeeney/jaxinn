@@ -6,13 +6,13 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import CNNEncoderConfig, CNNDecoderConfig
 
 from .base import Encoder, Decoder
 from ..utils import get_activation_fn, get_precision_fn, dx, StaticCallable
+from ..distributions import DistributionLike
 
 
 # Perception
@@ -153,7 +153,7 @@ class CNNDecoder(Decoder):
     def __call__(
             self,
             latent_state: Union[jax.Array, LatentState],
-    ) -> distrax.Distribution:
+    ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         embedding = self.embedding(latent_state)

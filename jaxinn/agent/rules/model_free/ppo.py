@@ -154,6 +154,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             obs_dtype=config.memory.obs_dtype,
             action_shape=config.memory.action_shape,
             action_dtype=config.memory.action_dtype,
+            needs_terminal_obs=config.memory.needs_terminal_obs
         )
 
         return cls(
@@ -173,10 +174,17 @@ class PPOAgent(PPOLossMixIn, Agent):
     def make_batch_fn(self) -> callable:
         transition, terminal_obs = self.memory.transition, self.memory.terminal_observation
 
-        # TODO: fix next-step reset using last_done
         # Get advantages and returns
-        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs[:-1]).mean()
-        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs[1:]).mean() # Recalculate values on actual terminal observation to handle truncation
+        if terminal_obs is None: # Next-step autoreset
+            all_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs).mean()
+            values = all_values[:-1]
+            next_values = all_values[1:]
+            last_dones = transition.terminated | transition.truncated
+            next_values = next_values * (1 - last_dones[:-1])
+        else:                    # current-step autoreset
+            values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs[:-1]).mean()
+            next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs[1:]).mean() # Recalculate values on actual terminal observation to handle truncation
+
         baselines = values
         advantages, returns = compute_adv_and_ret(
             transition.reward[1:],

@@ -64,6 +64,11 @@ class Space(abc.ABC, Generic[T]):
         return cls(*aux_data)
 
 
+class ComplexSpace:
+    """Marker base for composite/container spaces (Dict, Tuple, ...)."""
+    pass
+
+
 # Register the base class (and generic subclasses)
 jax.tree_util.register_pytree_node(Space, Space.tree_flatten, Space.tree_unflatten)
 
@@ -219,7 +224,7 @@ class MultiDiscrete(Space[jax.Array]):
 
 
 @jax.tree_util.register_pytree_node_class
-class Dict(Space[PyDict[str, Any]]):
+class Dict(ComplexSpace, Space[PyDict[str, Any]]):
     """
     A dictionary of spaces.
     """
@@ -262,7 +267,7 @@ class Dict(Space[PyDict[str, Any]]):
 
 
 @jax.tree_util.register_pytree_node_class
-class Tuple(Space[PyTuple[Any, ...]]):
+class Tuple(ComplexSpace, Space[PyTuple[Any, ...]]):
     def __init__(self, spaces: PyTuple[Space, ...]):
         self.spaces = tuple(spaces)
 

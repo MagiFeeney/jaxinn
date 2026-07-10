@@ -1,16 +1,16 @@
-from typing import Union, Dict, Tuple
+from typing import Union, Tuple
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
-import distrax
 
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import RepresentationConfig
 
 from ..utils import make_mlp
 from ..heads import Head
+from ..distributions import DistributionLike
 
 
 # Representation
@@ -50,7 +50,7 @@ class Representation(eqx.Module):
             belief: jax.Array,
             obs: jax.Array,
     ) -> Tuple[
-        Dict[str, jax.Array],
+        DistributionLike,
         jax.Array,
     ]:
         input_tensor = jnp.concatenate([belief, obs], axis=-1)
@@ -60,8 +60,8 @@ class Representation(eqx.Module):
 
     def sample(
             self,
-            dist: distrax.Distribution,
+            dist: DistributionLike,
             key: PRNGKeyArray,
     ) -> jax.Array:
-        state = self.head.sample(dist, key=key)
+        state = dist.sample(seed=key)
         return state

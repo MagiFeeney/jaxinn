@@ -1,11 +1,10 @@
 import math
-from typing import Union, Dict, Tuple, Optional
+from typing import Union, Tuple, Optional
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
-import distrax
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.head import HeadConfig
@@ -14,6 +13,7 @@ from jaxinn.configs.model import TransitionConfig
 from ..utils import get_activation_fn, StaticCallable
 from ..perception import ActionEncoder
 from ..heads import Head
+from ..distributions import DistributionLike
 
 
 # Transition
@@ -73,7 +73,7 @@ class Transition(eqx.Module):
             latent_state: LatentState,
             action: jax.Array,
     ) -> Tuple[
-        Dict[str, jax.Array],
+        DistributionLike,
         jax.Array,
     ]:
         encoded_action = self.action_encoder(action)
@@ -87,8 +87,8 @@ class Transition(eqx.Module):
 
     def sample(
             self,
-            dist: distrax.Distribution,
+            dist: DistributionLike,
             key: PRNGKeyArray,
     ) -> jax.Array:
-        state = self.head.sample(dist, key=key)
+        state = dist.sample(seed=key)
         return state

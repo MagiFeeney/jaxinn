@@ -8,7 +8,8 @@ from jaxtyping import PRNGKeyArray
 from jaxinn.structs import Experience, LatentState
 from jaxinn.agent import Agent
 from jaxinn.envs import Environment, make_env
-from jaxinn.envs.spaces import Discrete, OneHotDiscrete
+from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs
+from jaxinn.envs.spaces import Space, ComplexSpace, Discrete, OneHotDiscrete
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
 
@@ -100,32 +101,34 @@ class Interactor:
             latent_state, action = agent.act(last_latent_state, last_action, obs, key=key_act, eval=eval)
 
             def apply_noise(action, action_space, key):
-                if isinstance(action_space, Discrete):
-                    key_idx, key_cond = jax.random.split(key, 2)
-                    expl_action = jax.random.randint(key_idx, action.shape, 0, action_space.size)
-                    should_explore = jax.random.uniform(key_cond, action.shape) < self.action_noise
-                    action = jnp.where(should_explore, expl_action, action)
-                elif isinstance(action_space, OneHotDiscrete):
+                if isinstance(action_space, OneHotDiscrete):
                     key_idx, key_cond = jax.random.split(key, 2)
                     random_idx = jax.random.randint(key_idx, action.shape[:-1], 0, action_space.size)
                     expl_action = jax.nn.one_hot(random_idx, action_space.size)
 
                     should_explore = jax.random.uniform(key_cond, (*action.shape[:-1], 1)) < self.action_noise
                     action = jnp.where(should_explore, expl_action, action)
+                elif isinstance(action_space, Discrete):
+                    key_idx, key_cond = jax.random.split(key, 2)
+                    expl_action = jax.random.randint(key_idx, action.shape, 0, action_space.size)
+                    should_explore = jax.random.uniform(key_cond, action.shape) < self.action_noise
+                    action = jnp.where(should_explore, expl_action, action)
                 else:
                     noise = jax.random.normal(key, shape=action.shape) * self.action_noise
                     action = jnp.clip(action + noise, -1.0, 1.0)
+                return action
 
             if not eval and self.action_noise > 0:
-                action_space = self.env.get("action_space")
-                if hasattr(action_space, "spaces"):
-                    action_space = action_space.spaces
+                action_leaves, treedef = jax.tree.flatten(action)
+                space_leaves = jax.tree.leaves(
+                    self.env.get("action_space"),
+                    is_leaf=lambda x: isinstance(x, Space) and not isinstance(x, ComplexSpace)
+                )
+                assert len(action_leaves) == len(space_leaves)
 
-                treedef = jax.tree.structure(action)
-                keys = jax.random.split(key_noise, treedef.num_leaves)
-                keys_tree = jax.tree.unflatten(treedef, keys)
-                action = jax.tree.map(apply_noise, action, action_space, keys_tree)
-
+                keys = jax.random.split(key_noise, len(action_leaves))
+                noised = [apply_noise(a, s, k) for a, s, k in zip(action_leaves, space_leaves, keys)]
+                action = jax.tree.unflatten(treedef, noised)
             return latent_state, action
 
         def interact_step_fn(carry, _):
@@ -365,12 +368,14 @@ class Trainer(Interactor, eqx.Module):
 
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     env_wrapper_config = config.env.wrapper.train() if config.env.separated else config.env.wrapper()
+    next_step_autoreset = isinstance(env, NextStepAutoResetTerminalObs)
     ctx = {
         "observation_space":        env.get("observation_space"),
         "action_space":             env.get("action_space"),
         "num_environment_steps":    config.exploration.num_environment_steps,
         "episode_length":           config.exploration.episode_length,
         "num_seeds":                config.num_seeds,
+        "next_step_autoreset":      next_step_autoreset,
         **env_wrapper_config
     }
     return config.agent.resolve(ctx)
