@@ -20,7 +20,7 @@ class Memory(Resolvable, Base):
     obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
     action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
     action_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
-    needs_terminal_obs: bool = field(default=None, init=False)
+    needs_terminal_obs: Optional[bool] = field(default=None, init=False)
 
     def _resolve(self, ctx: dict) -> None:
         self.needs_terminal_obs = True if not ctx.get("next_step_autoreset", False) else False

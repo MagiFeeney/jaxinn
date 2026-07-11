@@ -106,7 +106,7 @@ def make_env(
             env = Batched(env, num_envs=wrapper["num_envs"])
         return env
 
-    if separated:
+    if separated and isinstance(creation, dict) and isinstance(wrapper, dict):
         env = {
             mode: create_single_env(creation[mode], wrapper[mode])
             for mode in creation.keys()
