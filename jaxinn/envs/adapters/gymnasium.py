@@ -177,15 +177,6 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
     def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> PyTuple[Transition, EnvInfo, jax.Array]:
         # VmapMixIn → Jax callback → python env
         next_obs, reward, terminated, truncated = self.v_step(self, key, action)
-        # Gymnasium reset observation is independent of the action
-        action = jax.tree.map(
-            lambda x: jnp.where(
-                env_state.last_done,
-                jnp.zeros_like(x),
-                x
-            ),
-            action
-        )
         transition = Transition(
             action=action,
             next_obs=next_obs,
