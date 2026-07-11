@@ -161,8 +161,6 @@ class CNNDecoder(Decoder):
         out = eqx.filter_checkpoint(self.body)(embedding)
         out = out.astype(jnp.float32)
 
-        out = out.reshape(out.shape[:-3] + self.obs_shape) # TODO: support 4D spatial dims and fix this line
-
         if out.shape[-3:] != self.obs_shape: # TODO: support 4D spatial dims and fix this line
             out = jax.image.resize(out, shape=out.shape[:-3] + self.obs_shape, method="bilinear")
 

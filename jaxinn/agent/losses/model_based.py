@@ -51,7 +51,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
         reward_log_prob = reward_dist.log_prob(data.reward)
         reward_loss = -reward_log_prob.mean()
 
-        observation_dist = jax.vmap(jax.vmap(self.world.perception.decoder))(posterior.latent_state)
+        observation_dist = jax.vmap(jax.vmap(self.world.decoder))(posterior.latent_state)
         observation_log_prob = observation_dist.log_prob(data.next_obs)
         observation_loss = -observation_log_prob.mean()
 

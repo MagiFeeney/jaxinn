@@ -53,7 +53,7 @@ def replenish_terminal_obs(experiences: Experience) -> Tuple[Transition, jax.Arr
     if experiences.terminal_observation is None:
         return experiences.transition, None
 
-    mask = experiences.transition.done
+    mask = experiences.transition.terminated | experiences.transition.truncated
     N = mask.shape[0]
 
     # Indices for step transitions; we replenish ones at done = True with terminal_obs

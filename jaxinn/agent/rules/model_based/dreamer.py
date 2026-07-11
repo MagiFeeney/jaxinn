@@ -88,7 +88,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
 
     def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
         key_perceive, key_action = jax.random.split(key, 2)
-        obs = jax.vmap(self.world.perception.encoder)(transform(obs))
+        obs = jax.vmap(self.world.encoder)(transform(obs))
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
         actor_dist = jax.vmap(self.actor)(posterior.latent_state)
         action = self.actor.sample(actor_dist, key_action, eval)
@@ -126,7 +126,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         key_init, key_scan = jax.random.split(key, 2)
         init_latent_state = self.init_latent_state(key_init, batch_shape=(data.action.shape[1],))
         init_mask = jnp.ones_like(data.terminated[0], dtype=jnp.int32)
-        next_obs = jax.vmap(jax.vmap(self.world.perception.encoder))(data.next_obs) # Launch kernel once
+        next_obs = jax.vmap(jax.vmap(self.world.encoder))(data.next_obs) # Launch kernel once
 
         def reason_step_fn(carry, inputs):
             latent_state, last_mask, key = carry

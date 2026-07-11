@@ -27,9 +27,9 @@ class World(eqx.Module):
             extra["feature_map_shape"] = encoder.feature_map_shape
         decoder = Decoder.create(config.decoder, **extra, key=key_decoder)
 
-        representation = Representation(**config.representation(), key=key_representation)
-        transition = Transition(**config.transition(), key=key_transition)
-        reward = Reward(**config.reward(), key=key_reward)
+        representation = Representation.create(config.representation, key=key_representation)
+        transition = Transition.create(config.transition, key=key_transition)
+        reward = Reward.create(config.reward, key=key_reward)
 
         return cls(
             encoder=encoder,
