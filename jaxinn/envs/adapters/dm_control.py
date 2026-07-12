@@ -7,7 +7,7 @@ from gymnasium import spaces
 from dm_control import suite
 from dm_env import specs
 
-from .adapters.gymnasium import Gymnasium
+from .gymnasium import Gymnasium
 
 
 class DMControl(Gymnasium):

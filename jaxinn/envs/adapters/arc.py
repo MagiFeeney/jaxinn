@@ -8,7 +8,7 @@ from arcengine import GameState
 import arc_agi
 from arc_agi.rendering import frame_to_rgb_array
 
-from jaxinn.envs.adapters.gymnasium import Gymnasium
+from .gymnasium import Gymnasium
 
 
 class ARC(Gymnasium):
