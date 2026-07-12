@@ -91,6 +91,10 @@ class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
         sample = sample + self.probs - jax.lax.stop_gradient(self.probs)
         return sample
 
+    def mode(self) -> jax.Array:
+        mode = super().mode
+        return mode.astype(jnp.float32) # align with sample's dtype
+
 
 class SampleDist(Distribution):
     """Provides sample-based estimates of distribution attributes when closed-form expressions are unavailable.
