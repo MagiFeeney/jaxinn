@@ -49,10 +49,10 @@ brax = ["brax"]
 navix = ["navix"]
 craftax = ["craftax"]
 maniskill = [
-    "torch"
+    "torch",
     "ninja",
-    "mani_skill"
-    "torch2jax @ git+https://github.com/rdyro/torch2jax.git"
+    "mani_skill",
+    "torch2jax @ git+https://github.com/rdyro/torch2jax.git",
 ]
 all = [
     "jaxinn[atari]",
