@@ -31,7 +31,7 @@ dependencies = [
     "tensorboardX",
     "setuptools<82",
 ]
-keywords = ["model-based RL"]
+keywords = ["Model-based RL", "Hierarchical RL"]
 
 [project.optional-dependencies]
 atari = ["envpool", "ale-py"]
@@ -48,6 +48,12 @@ playground = [
 brax = ["brax"]
 navix = ["navix"]
 craftax = ["craftax"]
+maniskill = [
+    "torch"
+    "ninja",
+    "mani_skill"
+    "torch2jax @ git+https://github.com/rdyro/torch2jax.git"
+]
 all = [
     "jaxinn[atari]",
     "jaxinn[dm_control]",
@@ -58,6 +64,7 @@ all = [
     "jaxinn[brax]",
     "jaxinn[navix]",
     "jaxinn[craftax]",
+    "jaxinn[maniskill]",
 ]
 
 [[tool.uv.index]]
