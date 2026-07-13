@@ -14,7 +14,6 @@ class EnvSpec:
     module: str
     cls_name: str
     channel_first: bool = False
-    native_batched: bool = True
     native_autoreset: bool = False
     native_time_limit: bool = True
     next_step_autoreset: bool = False
@@ -32,8 +31,9 @@ _FACTORY_REGISTRY = {
     # Non-JAX envs
     "gymnasium": EnvSpec(".adapters.gymnasium", "Gymnasium", native_autoreset=True, next_step_autoreset=True),
     "dmc":       EnvSpec(".adapters.dm_control", "DMControl", channel_first=True, native_autoreset=True, next_step_autoreset=True),
-    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_batched=True, native_autoreset=True, next_step_autoreset=True),
+    "envpool":   EnvSpec(".adapters.envpool", "EnvPool", channel_first=True, native_autoreset=True, next_step_autoreset=True),
     "arc":       EnvSpec(".adapters.arc", "ARC", channel_first=True, native_autoreset=True, next_step_autoreset=True),
+    "maniskill": EnvSpec(".adapters.maniskill", "ManiSkill", native_autoreset=True),
 }
 
 
@@ -102,8 +102,7 @@ def make_env(
 
         env = UnsqueezeScalar(env)
 
-        if spec.native_batched:
-            env = Batched(env, num_envs=wrapper["num_envs"])
+        env = Batched(env, num_envs=wrapper["num_envs"])
         return env
 
     if separated and isinstance(creation, dict) and isinstance(wrapper, dict):
