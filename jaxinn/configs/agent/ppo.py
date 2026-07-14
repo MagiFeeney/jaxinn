@@ -55,8 +55,7 @@ class ActorCriticOptimizer(Resolvable, OptimizerShared):
     """Optimizer for actor-critic."""
     lr: float = 3e-4
     max_norm: float = 0.5
-
-    use_lr_scheduler: bool = True
+    use_lr_scheduler: bool = field(default=True, metadata={"transient": True})
     lr_scheduler: Optional[LearningRateScheduler] = None
 
     def _resolve(self, ctx: dict) -> None:
