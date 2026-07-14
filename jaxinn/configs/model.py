@@ -1,7 +1,7 @@
 from copy import deepcopy
 from enum import Enum
 from dataclasses import dataclass, field, InitVar
-from typing import Tuple, Optional, Union, ClassVar
+from typing import Tuple, Dict, Optional, Union, ClassVar
 
 from jaxtyping import PyTree
 
@@ -70,6 +70,14 @@ class PerceptionShared(Resolvable, Model):
         embedding_size = getattr(self, "embedding_size", None)
         if "embedding_size" not in ctx:
             ctx["embedding_size"] = embedding_size
+
+
+@dataclass
+class LearningRateScheduler(Base):
+    kwargs: Dict[str, Union[int, float, bool]] = field(default_factory=dict)
+
+    def __call__(self) -> dict:
+        return self.kwargs
 
 
 @dataclass

@@ -142,3 +142,11 @@ def compute_adv_and_ret(
     )
     return_predictions = advantages + baselines
     return advantages, return_predictions
+
+
+def staircase_lr_schedule(init_lr, num_iterations, updates_per_iteration):
+    def schedule(count):
+        current_iteration = count // updates_per_iteration
+        frac = 1.0 - (current_iteration / num_iterations)
+        return init_lr * jnp.maximum(frac, 0.0)
+    return schedule
