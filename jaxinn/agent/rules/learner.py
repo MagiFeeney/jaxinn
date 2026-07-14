@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar, Any
+from typing import Generic, TypeVar, Any, Optional, Callable
 
 import jax
 from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
@@ -22,15 +22,23 @@ class Learner(eqx.Module, Generic[ModelType]):
         self.optimizer_state = self.optimizer.init(self.dynamic_flatten)
 
     @classmethod
-    def create(cls, model_cls, config, *, key: PRNGKeyArray) -> "Learner":
+    def create(cls, model_cls, config, lr_scheduler: Optional[Callable] = None, *, key: PRNGKeyArray) -> "Learner":
         if hasattr(model_cls, "create"): # nested / multiple routes
             model = model_cls.create(config, key=key)
         else:                            # primitive
             model = model_cls(**config(), key=key)
 
+        has_scheduler_fn = lr_scheduler is not None
+        has_scheduler_cfg = config.optimizer.lr_scheduler is not None
+
+        if has_scheduler_fn and has_scheduler_cfg:
+            lr = lr_scheduler(config.optimizer.lr, **config.optimizer.lr_scheduler())
+        else:
+            lr = config.optimizer.lr
+
         optimizer = optax.chain(
             optax.clip_by_global_norm(config.optimizer.max_norm),
-            optax.adam(config.optimizer.lr, eps=config.optimizer.eps)
+            optax.adam(learning_rate=lr, eps=config.optimizer.eps)
         )
 
         return cls(model, optimizer)

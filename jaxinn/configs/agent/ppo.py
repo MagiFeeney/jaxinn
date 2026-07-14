@@ -1,10 +1,11 @@
-from typing import Union
-from dataclasses import dataclass, field
+from typing import Union, Optional
+from dataclasses import dataclass, field, InitVar
 
 from jaxinn.configs.base import Base, Resolvable
 from jaxinn.configs.model import Model, ActorConfig, CriticConfig, EncoderUnion, LinearEncoderConfig, OptimizerShared
 
 from .base import AgentConfig
+from ..model import LearningRateScheduler
 
 
 def _resolve_input_size(ctx: dict, *modules) -> None:
@@ -50,10 +51,22 @@ class PerceptionCriticConfig(Resolvable, Model):
 
 
 @dataclass
-class ActorCriticOptimizer(OptimizerShared):
+class ActorCriticOptimizer(Resolvable, OptimizerShared):
     """Optimizer for actor-critic."""
     lr: float = 3e-4
     max_norm: float = 0.5
+
+    use_lr_scheduler: InitVar[bool] = True
+    lr_scheduler: Optional[LearningRateScheduler] = None
+
+    def _resolve(self, ctx: dict) -> None:
+        if self.use_lr_scheduler:
+            num_iterations = ctx["num_environment_steps"] // ctx["episode_length"]
+            updates_per_iteration = ctx["train_iterations"] * ctx["num_mini_batch"]
+            self.lr_scheduler = LearningRateScheduler({
+                "num_iterations": num_iterations,
+                "updates_per_iteration": updates_per_iteration
+            })
 
 
 @dataclass
@@ -81,16 +94,20 @@ ActorCriticUnion = Union[ActorCriticDecoupledConfig, ActorCriticSharedConfig]
 
 # PPO
 @dataclass
-class PPOOptimization(Base):
+class PPOOptimization(Resolvable, Base):
     clip_param: float = 0.2
     use_clipped_critic_loss: bool = True
     num_mini_batch: int = 8
     discount_factor: float = 0.99
     uae_lambda: float = 0.95
 
+    def _resolve(self, ctx: dict) -> None:
+        if "num_mini_batch" not in ctx:
+            ctx["num_mini_batch"] = self.num_mini_batch
+
 
 @dataclass
 class PPOAgentConfig(AgentConfig):
-    actor_critic: ActorCriticUnion = field(default_factory=ActorCriticDecoupledConfig)
-
     optimization: PPOOptimization = field(default_factory=PPOOptimization)
+
+    actor_critic: ActorCriticUnion = field(default_factory=ActorCriticDecoupledConfig)

@@ -18,7 +18,7 @@ from jaxinn.configs.agent.ppo import (
 from jaxinn.agent.registry import Registrable
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
-from jaxinn.agent.rules.utils import compute_adv_and_ret
+from jaxinn.agent.rules.utils import compute_adv_and_ret, staircase_lr_schedule
 from jaxinn.agent.models import Actor, Critic
 from jaxinn.agent.models.perception import Encoder
 from jaxinn.agent.models.utils import apply_init
@@ -183,7 +183,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             key: PRNGKeyArray,
             memory_id: jax.Array,
     ):
-        actor_critic = Learner.create(ActorCritic, config.actor_critic, key=key)
+        actor_critic = Learner.create(ActorCritic, config.actor_critic, lr_scheduler=staircase_lr_schedule, key=key)
         memory = Experience.initialize(
             capacity=config.memory.capacity,
             obs_shape=config.memory.obs_shape,
