@@ -1,5 +1,5 @@
 from typing import Union, Optional
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base, Resolvable
 from jaxinn.configs.model import Model, ActorConfig, CriticConfig, EncoderUnion, LinearEncoderConfig, OptimizerShared
@@ -56,7 +56,7 @@ class ActorCriticOptimizer(Resolvable, OptimizerShared):
     lr: float = 3e-4
     max_norm: float = 0.5
 
-    use_lr_scheduler: InitVar[bool] = True
+    use_lr_scheduler: bool = True
     lr_scheduler: Optional[LearningRateScheduler] = None
 
     def _resolve(self, ctx: dict) -> None:
