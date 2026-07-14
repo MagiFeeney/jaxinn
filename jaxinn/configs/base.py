@@ -54,7 +54,11 @@ class Base:
         return asdict(self)     # Preserve hierarchy
 
     def __call__(self) -> dict[str, Any]:
-        return {k: v for k, v in vars(self).items() if not is_dataclass(v)} # Sub-node is considered as next phase
+        return {
+            f.name: getattr(self, f.name)
+            for f in fields(self)
+            if not is_dataclass(getattr(self, f.name)) and not f.metadata.get("transient", False)
+        } # Sub-node is considered as next phase and transient variables are not to persist
 
     def update(self, updates: dict[str, Any] = None, **kwargs) -> None:
         """Update or add config attributes. Allows adding new attributes."""

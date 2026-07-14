@@ -1,6 +1,6 @@
 from copy import deepcopy
 from enum import Enum
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field
 from typing import Tuple, Dict, Optional, Union, ClassVar
 
 from jaxtyping import PyTree
@@ -163,7 +163,7 @@ class TransitionConfig(Resolvable, ModelShared):
 class RewardConfig(ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
-    use_action: InitVar[bool] = False # will be discarded after resolve
+    use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 
     head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
@@ -256,7 +256,7 @@ class CriticOptimizer(OptimizerShared):
 class CriticConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
-    use_action: InitVar[bool] = False # will be discarded after resolve
+    use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 
     head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
