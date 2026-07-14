@@ -193,3 +193,23 @@ def make_mlp(
             layers.append(activation)
 
     return eqx.nn.Sequential(layers)
+
+
+def apply_init(model: eqx.Module, init_fn: callable, *, key: PRNGKeyArray) -> eqx.Module:
+    is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
+    get_layers = lambda m: [x for x in jax.tree.leaves(m, is_leaf=is_target) if is_target(x)]
+    get_weights = lambda m: [x.weight for x in get_layers(m)]
+
+    def init_weight(layer, k):
+        w = layer.weight
+        if isinstance(layer, eqx.nn.Conv2d):
+            out_c, in_c, height, width = w.shape
+            hwio = init_fn(k, (height, width, in_c, out_c), w.dtype) # JAX's expected layout: HWIO
+            return jnp.transpose(hwio, (3, 2, 0, 1))                 # Equinox's: OIHW
+        return init_fn(k, w.shape, w.dtype)
+
+    layers = get_layers(model)
+    keys = jax.random.split(key, len(layers))
+    new_weights = [init_weight(l, k) for l, k in zip(layers, keys)]
+
+    return eqx.tree_at(get_weights, model, new_weights)
