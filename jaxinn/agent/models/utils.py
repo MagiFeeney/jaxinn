@@ -195,21 +195,50 @@ def make_mlp(
     return eqx.nn.Sequential(layers)
 
 
-def apply_init(model: eqx.Module, init_fn: callable, *, key: PRNGKeyArray) -> eqx.Module:
+def apply_init(
+        model: eqx.Module,
+        weight_init: Callable,
+        bias_init: Callable = jax.nn.initializers.constant(0.0),
+        output_weight_init: Optional[Callable] = None,
+        output_bias_init: Optional[Callable] = None,
+        *,
+        key: PRNGKeyArray
+) -> eqx.Module:
     is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
     get_layers = lambda m: [x for x in jax.tree.leaves(m, is_leaf=is_target) if is_target(x)]
-    get_weights = lambda m: [x.weight for x in get_layers(m)]
 
-    def init_weight(layer, k):
-        w = layer.weight
+    if output_weight_init is None:
+        output_weight_init = weight_init
+
+    if output_bias_init is None:
+        output_bias_init = bias_init
+
+    def init_layer(layer: eqx.Module, k: PRNGKeyArray, is_output: bool) -> jax.Array:
+        kw, kb = jax.random.split(k)
+
+        w_fn = output_weight_init if is_output else weight_init
+        b_fn = output_bias_init if is_output else bias_init
+
+        # Init weight
+        weight = layer.weight
         if isinstance(layer, eqx.nn.Conv2d):
-            out_c, in_c, height, width = w.shape
-            hwio = init_fn(k, (height, width, in_c, out_c), w.dtype) # JAX's expected layout: HWIO
-            return jnp.transpose(hwio, (3, 2, 0, 1))                 # Equinox's: OIHW
-        return init_fn(k, w.shape, w.dtype)
+            out_c, in_c, height, width = weight.shape
+            hwio = w_fn(kw, (height, width, in_c, out_c), weight.dtype) # JAX's expected layout: HWIO
+            new_w = jnp.transpose(hwio, (3, 2, 0, 1))                   # Equinox's: OIHW
+        else:
+            new_w = w_fn(kw, weight.shape, weight.dtype)
+
+        # Init bias
+        bias = layer.bias
+        new_b = b_fn(kb, bias.shape, bias.dtype)
+
+        return eqx.tree_at(lambda l: (l.weight, l.bias), layer, (new_w, new_b))
 
     layers = get_layers(model)
     keys = jax.random.split(key, len(layers))
-    new_weights = [init_weight(l, k) for l, k in zip(layers, keys)]
+    new_layers = [
+        init_layer(l, k, is_output=(i == len(layers) - 1))
+        for i, (l, k) in enumerate(zip(layers, keys))
+    ]
 
-    return eqx.tree_at(get_weights, model, new_weights)
+    return eqx.tree_at(get_layers, model, new_layers)
