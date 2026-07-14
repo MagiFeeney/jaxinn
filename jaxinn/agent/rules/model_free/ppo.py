@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional, Tuple, ClassVar, Type
 
+import math
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree
@@ -20,6 +21,7 @@ from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret
 from jaxinn.agent.models import Actor, Critic
 from jaxinn.agent.models.perception import Encoder
+from jaxinn.agent.models.utils import apply_init
 from jaxinn.agent.losses import PPOLossMixIn
 
 
@@ -89,8 +91,23 @@ class ActorCriticDecoupled(ActorCritic):
     def create(cls, config: ActorCriticDecoupledConfig, *, key: PRNGKeyArray):
         key_actor, key_critic = jax.random.split(key, 2)
 
-        actor = PerceptionActor.create(config.perception_actor, key=key_actor)
-        critic = PerceptionCritic.create(config.perception_critic, key=key_critic)
+        key_actor_model, key_actor_init = jax.random.split(key_actor, 2)
+        actor = PerceptionActor.create(config.perception_actor, key=key_actor_model)
+        actor = apply_init(
+            actor,
+            weight_init=jax.nn.initializers.orthogonal(scale=math.sqrt(2)),
+            output_weight_init=jax.nn.initializers.orthogonal(scale=0.01),
+            key=key_actor_init
+        )
+
+        key_critic_model, key_critic_init = jax.random.split(key_critic, 2)
+        critic = PerceptionCritic.create(config.perception_critic, key=key_critic_model)
+        critic = apply_init(
+            critic,
+            weight_init=jax.nn.initializers.orthogonal(scale=math.sqrt(2)),
+            output_weight_init=jax.nn.initializers.orthogonal(scale=1.0),
+            key=key_critic_init
+        )
 
         return cls(actor=actor, critic=critic)
 
@@ -112,9 +129,28 @@ class ActorCriticShared(ActorCritic):
     @classmethod
     def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray):
         key_encoder, key_actor, key_critic = jax.random.split(key, 3)
-        encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor.create(config.actor, key=key_actor)
-        critic = Critic.create(config.critic, key=key_critic)
+
+        key_encoder_model, key_encoder_init = jax.random.split(key_encoder, 2)
+        encoder = Encoder.create(config.encoder, key=key_encoder_model)
+        encoder = apply_init(encoder, weight_init=jax.nn.initializers.orthogonal(scale=math.sqrt(2)), key=key_encoder_init)
+
+        key_actor_model, key_actor_init = jax.random.split(key_actor, 2)
+        actor = Actor.create(config.actor, key=key_actor_model)
+        actor = apply_init(
+            actor,
+            weight_init=jax.nn.initializers.orthogonal(scale=math.sqrt(2)),
+            output_weight_init=jax.nn.initializers.orthogonal(scale=0.01),
+            key=key_actor_init
+        )
+
+        key_critic_model, key_critic_init = jax.random.split(key_critic, 2)
+        critic = Critic.create(config.critic, key=key_critic_model)
+        critic = apply_init(
+            critic,
+            weight_init=jax.nn.initializers.orthogonal(scale=math.sqrt(2)),
+            output_weight_init=jax.nn.initializers.orthogonal(scale=1.0),
+            key=key_critic_init
+        )
 
         return cls(encoder=encoder, actor=actor, critic=critic)
 
