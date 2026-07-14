@@ -213,7 +213,7 @@ def apply_init(
     if output_bias_init is None:
         output_bias_init = bias_init
 
-    def init_layer(layer: eqx.Module, k: PRNGKeyArray, is_output: bool) -> jax.Array:
+    def init_layer(layer: eqx.Module, k: PRNGKeyArray, is_output: bool) -> eqx.Module:
         kw, kb = jax.random.split(k)
 
         w_fn = output_weight_init if is_output else weight_init
