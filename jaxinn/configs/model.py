@@ -171,6 +171,8 @@ class RewardConfig(ModelShared):
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
             self.action_shape = ctx["action_space"].shape
+        else:
+            self.action_shape = None
 
 
 @dataclass
@@ -265,3 +267,5 @@ class CriticConfig(Resolvable, ModelShared):
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:
             self.action_shape = ctx["action_space"].shape
+        else:
+            self.action_shape = None
