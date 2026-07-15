@@ -24,6 +24,8 @@ class PPOLossMixIn(Loss, ActorCriticLoss):
         log_probs = actor_dists.log_prob(actions)
 
         ratio = jnp.exp(log_probs - old_log_probs)[..., None]
+        if self.normalize_adv:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         surrogate = ratio * advantages
         clip_ratio = jnp.clip(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
         surrogate_clipped = clip_ratio * advantages

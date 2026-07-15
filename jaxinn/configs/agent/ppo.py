@@ -99,6 +99,7 @@ class PPOOptimization(Resolvable, Base):
     num_mini_batch: int = 8
     discount_factor: float = 0.99
     uae_lambda: float = 0.95
+    normalize_adv: bool = True
 
     def _resolve(self, ctx: dict) -> None:
         if "num_mini_batch" not in ctx:
