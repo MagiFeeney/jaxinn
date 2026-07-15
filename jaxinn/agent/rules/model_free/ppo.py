@@ -174,6 +174,7 @@ class PPOAgent(PPOLossMixIn, Agent):
     num_mini_batch: int = eqx.field(static=True)
     discount_factor: float = eqx.field(static=True)
     uae_lambda: float = eqx.field(static=True)
+    normalize_adv: bool = eqx.field(static=True)
 
     @classmethod
     def create(
