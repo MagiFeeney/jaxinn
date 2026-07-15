@@ -45,8 +45,7 @@ class Resolvable:
 
 @dataclass
 class Base:
-    """
-    Nested configuration management.
+    """Nested configuration management.
 
     If there is sub-config, return the arguments at the current level excluding those from sub-configs.
     """
@@ -54,11 +53,9 @@ class Base:
         return asdict(self)     # Preserve hierarchy
 
     def __call__(self) -> dict[str, Any]:
-        return {
-            f.name: getattr(self, f.name)
-            for f in fields(self)
-            if not is_dataclass(getattr(self, f.name)) and not f.metadata.get("transient", False)
-        } # Sub-node is considered as next phase and transient variables are not to persist
+        transient_fields = {f.name for f in fields(self) if f.metadata.get("transient", False)}
+
+        return {k: v for k, v in vars(self).items() if not is_dataclass(v) and k not in transient_fields} # Sub-node is considered as next phase and transient variables are not to persist
 
     def update(self, updates: dict[str, Any] = None, **kwargs) -> None:
         """Update or add config attributes. Allows adding new attributes."""
