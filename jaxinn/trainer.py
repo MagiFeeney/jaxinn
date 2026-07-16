@@ -7,8 +7,12 @@ from jaxtyping import PRNGKeyArray
 
 from jaxinn.structs import Experience, LatentState
 from jaxinn.agent import Agent
-from jaxinn.envs import Environment, EnvState, make_env
-from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs
+from jaxinn.envs import Environment, make_env
+from jaxinn.envs.wrapper import (
+    NextStepAutoResetTerminalObs,
+    NormalizeObservation,
+    NormalizeReward,
+)
 from jaxinn.envs.spaces import Space, ComplexSpace, Discrete, OneHotDiscrete
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
@@ -54,7 +58,8 @@ class Interactor:
             key: PRNGKeyArray,
             eval: bool = False,
             prefill: bool = False,
-            num_envs: int | None = None
+            num_envs: int | None = None,
+            last_env_state: EnvState | None = None,
     ) -> InteractionState:
         mode = self.resolve_mode(eval, prefill)
         key_reset, key_init = jax.random.split(key, 2)
@@ -66,6 +71,16 @@ class Interactor:
             init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
         init_latent_state = agent.init_latent_state(key_init, batch_shape=(num_envs,), eval=eval)
         init_terminal_obs = info.terminal_observation
+
+        if last_env_state is not None:
+            if self.env.is_wrapped_by(NormalizeObservation, mode=mode):
+                env_state = eqx.tree_at(lambda s: s.obs_rms, env_state, last_env_state.obs_rms)
+            elif self.env.is_wrapped_by(NormalizeReward, mode=mode):
+                env_state = eqx.tree_at(lambda s: s.ret_rms, env_state, last_env_state.ret_rms)
+
+        if hasattr(env_state, "is_training"):
+            env_state = eqx.tree_at(lambda s: s.is_training, env_state, False)
+
         interaction_state = InteractionState(
             experience = Experience(
                 transition=init_transition,
@@ -226,7 +241,7 @@ class Trainer(Interactor, eqx.Module):
         # Train and evaluate
         def interleaved_step_fn(carry, iteration): # Evaluation truck with unit being Training truck
             agent, interaction_state, key = carry
-            key, key_train, key_evaluate = jax.random.split(key, 3)
+            key, key_train, key_eval = jax.random.split(key, 3)
 
             # Training
             (agent, interaction_state, _), train_metrics = jax.lax.scan(
@@ -245,7 +260,9 @@ class Trainer(Interactor, eqx.Module):
                 )
 
             # Evaluation
-            episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, jax.random.split(key_evaluate, self.num_eval_episodes)) # Parallel evaluation
+            keys_eval = jax.random.split(key_eval, self.num_eval_episodes)
+            last_env_state = interaction_state.env_state # Useful for cross-env data sharing
+            episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, keys_eval, last_env_state=last_env_state) # Parallel evaluation
             evaluation = jnp.mean(episodic_returns)
 
             eval_metrics = {"eval/mean": evaluation}
@@ -343,9 +360,9 @@ class Trainer(Interactor, eqx.Module):
         agent, metrics = self.learn(agent, key_learn)
         return (agent, interaction_state, key), metrics
 
-    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1) -> jax.Array:
+    def evaluate(self, agent: Agent, key: PRNGKeyArray, num_envs: int = 1, last_env_state: EnvState | None = None) -> jax.Array:
         key_init, key_interact = jax.random.split(key, 2)
-        interaction_state = self.init_interaction_state(agent, key_init, eval=True, num_envs=num_envs)
+        interaction_state = self.init_interaction_state(agent, key_init, eval=True, num_envs=num_envs, last_env_state=last_env_state)
         _, experiences = self.interact(agent, interaction_state, key_interact, eval=True, num_envs=num_envs)
         done = experiences.transition.terminated | experiences.transition.truncated
         masks = 1 - jnp.maximum.accumulate(done, axis=0)
