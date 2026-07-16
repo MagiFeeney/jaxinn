@@ -16,6 +16,7 @@ from .wrapper import (
     ResizeImage,
     NormalizeObservation,
     NormalizeReward,
+    Phase,
     Branched,
 )
 from .environment import Environment
@@ -117,10 +118,16 @@ def make_env(
 
         env = Batched(env, num_envs=wrapper["num_envs"])
 
-        if wrapper.get("normalize_obs", False):
+        normalize_obs = wrapper.get("normalize_obs", False)
+        normalize_reward = wrapper.get("normalize_reward", False)
+
+        if normalize_obs or normalize_reward:
+            env = Phase(env)
+
+        if normalize_obs:
             env = NormalizeObservation(env)
 
-        if wrapper.get("normalize_reward", False):
+        if normalize_reward:
             env = NormalizeReward(env)
 
         return env
