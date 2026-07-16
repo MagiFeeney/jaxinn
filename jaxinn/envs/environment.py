@@ -23,8 +23,12 @@ class EnvInfo(eqx.Module):
 
         # Look inside info otherwise
         inner = self.data.get(self._lookup_key)
-        if inner is not None and isinstance(inner, dict) and item in inner:
-            return inner[item]
+
+        if inner is not None:
+            if isinstance(inner, dict) and item in inner:
+                return inner[item]
+            elif hasattr(inner, item):
+                return getattr(inner, item)
 
         raise AttributeError(f"'{type(self).__name__}' has no attribute '{item}'")
 
