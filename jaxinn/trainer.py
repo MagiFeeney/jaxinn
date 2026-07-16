@@ -8,11 +8,7 @@ from jaxtyping import PRNGKeyArray
 from jaxinn.structs import Experience, LatentState
 from jaxinn.agent import Agent
 from jaxinn.envs import Environment, make_env
-from jaxinn.envs.wrapper import (
-    NextStepAutoResetTerminalObs,
-    NormalizeObservation,
-    NormalizeReward,
-)
+from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs, NormalizeObservation
 from jaxinn.envs.spaces import Space, ComplexSpace, Discrete, OneHotDiscrete
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
@@ -75,10 +71,8 @@ class Interactor:
         if last_env_state is not None:
             if self.env.is_wrapped_by(NormalizeObservation, mode=mode):
                 env_state = eqx.tree_at(lambda s: s.obs_rms, env_state, last_env_state.obs_rms)
-            elif self.env.is_wrapped_by(NormalizeReward, mode=mode):
-                env_state = eqx.tree_at(lambda s: s.ret_rms, env_state, last_env_state.ret_rms)
 
-        if hasattr(env_state, "is_training"):
+        if hasattr(env_state, "is_training") and eval:
             env_state = eqx.tree_at(lambda s: s.is_training, env_state, False)
 
         interaction_state = InteractionState(
@@ -262,7 +256,7 @@ class Trainer(Interactor, eqx.Module):
             # Evaluation
             keys_eval = jax.random.split(key_eval, self.num_eval_episodes)
             last_env_state = interaction_state.env_state # Useful for cross-env data sharing
-            episodic_returns = jax.vmap(self.evaluate, in_axes=(None, 0))(agent, keys_eval, last_env_state=last_env_state) # Parallel evaluation
+            episodic_returns = jax.vmap(lambda k: self.evaluate(agent, k, last_env_state=last_env_state))(keys_eval) # Parallel evaluation
             evaluation = jnp.mean(episodic_returns)
 
             eval_metrics = {"eval/mean": evaluation}
