@@ -8,7 +8,7 @@ from jaxtyping import PRNGKeyArray
 from jaxinn.structs import Experience, LatentState
 from jaxinn.agent import Agent
 from jaxinn.envs import Environment, make_env
-from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs
+from jaxinn.envs.wrapper import is_wrapped, NextStepAutoResetTerminalObs
 from jaxinn.envs.spaces import Space, ComplexSpace, Discrete, OneHotDiscrete
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
@@ -368,7 +368,7 @@ class Trainer(Interactor, eqx.Module):
 
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     env_wrapper_config = config.env.wrapper.train() if config.env.separated else config.env.wrapper()
-    next_step_autoreset = isinstance(env, NextStepAutoResetTerminalObs)
+    next_step_autoreset = is_wrapped(env, NextStepAutoResetTerminalObs)
     ctx = {       # TODO: perhaps pass the whole exploration for future compatibility
         "observation_space":        env.get("observation_space"),
         "action_space":             env.get("action_space"),
