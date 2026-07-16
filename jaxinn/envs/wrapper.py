@@ -41,6 +41,16 @@ class Wrapper(Environment):
         return getattr(self.env, name)
 
 
+def is_wrapped(env: Environment, wrapper_cls: type) -> bool:
+    """Check if a specific wrapper is in the environment stack."""
+
+    while isinstance(env, Wrapper):
+        if isinstance(env, wrapper_cls):
+            return True
+        env = env.env
+    return isinstance(env, wrapper_cls)
+
+
 class Batched(Wrapper):
     num_envs: int = eqx.field(static=True)
     vmap_reset: Callable = eqx.field(static=True)
