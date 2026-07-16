@@ -40,15 +40,11 @@ class Wrapper(Environment):
             raise AttributeError
         return getattr(self.env, name)
 
-
-def is_wrapped(env: Environment, wrapper_cls: type) -> bool:
-    """Check if a specific wrapper is in the environment stack."""
-
-    while isinstance(env, Wrapper):
-        if isinstance(env, wrapper_cls):
+    def is_wrapped_by(self, wrapper_cls: type) -> bool:
+        """Recursively check if a specific wrapper is in the environment stack."""
+        if isinstance(self, wrapper_cls):
             return True
-        env = env.env
-    return isinstance(env, wrapper_cls)
+        return isinstance(self.env, Wrapper) and self.env.is_wrapped_by(wrapper_cls)
 
 
 class Batched(Wrapper):
@@ -403,3 +399,10 @@ class Branched:
             raise AttributeError
         target_env = self.env[mode] if self.separated else self.env
         return getattr(target_env, name)
+
+    def is_wrapped_by(self, wrapper_cls: type, mode: str = "train") -> bool:
+        """Recursively check if a specific wrapper is in the stack of the selected environment."""
+        if isinstance(self, wrapper_cls):
+            return True
+        target_env = self.env[mode] if self.separated else self.env
+        return isinstance(target_env, Wrapper) and target_env.is_wrapped_by(wrapper_class)
