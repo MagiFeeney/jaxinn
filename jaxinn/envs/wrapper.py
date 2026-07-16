@@ -377,6 +377,174 @@ class ResizeImage(Wrapper):
         )
 
 
+class RunningMeanStdState(eqx.Module):
+    mean: jax.Array
+    var: jax.Array
+    count: jax.Array
+
+
+def update_rms(rms: RunningMeanStdState, x: Any) -> RunningMeanStdState:
+    """Welford's algorithm for calculating running mean and variance."""
+
+    batch_size = jnp.asarray(jax.tree.leaves(x)[0].shape[0], dtype=jnp.float32)
+
+    batch_mean = jax.tree.map(lambda arr: jnp.mean(arr, axis=0), x)
+    batch_var = jax.tree.map(lambda arr: jnp.var(arr, axis=0), x)
+
+    total_count = rms.count + batch_size
+    delta = jax.tree.map(jnp.subtract, batch_mean, rms.mean)
+
+    def _update_mean(rms_mean, delta):
+        return rms_mean + delta * batch_size / total_count
+
+    def _update_var(rms_var, var, delta):
+        m_a = rms_var * rms.count
+        m_b = var * batch_size
+        m_2 = m_a + m_b + jnp.square(delta) * rms.count * batch_size / total_count
+        return m_2 / total_count
+
+    new_mean = jax.tree.map(_update_mean, rms.mean, delta)
+    new_var = jax.tree.map(_update_var, rms.var, batch_var, delta)
+
+    return RunningMeanStdState(mean=new_mean, var=new_var, count=total_count)
+
+
+class NormalizeObservation(Wrapper):
+    """Normalize observation with runnning mean and std of raw obs."""
+
+    clip_obs: float = eqx.field(static=True)
+    eps: float = eqx.field(static=True)
+
+    def __init__(self, env: Environment, clip_obs: float = 10.0, eps: float = 1e-8):
+        super().__init__(env)
+        self.clip_obs = clip_obs
+        self.eps = eps
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+        obs_mean = jax.tree.map(jnp.zeros_like, self.observation_space.shape)
+        obs_var = jax.tree.map(jnp.ones_like, self.observation_space.shape)
+        obs_rms = RunningMeanStdState(
+            mean=obs_mean,
+            var=obs_var,
+            count=jnp.array(1e-4, dtype=jnp.float32)
+        )
+        new_obs_rms = update_rms(obs_rms, transition.next_obs)
+        env_state = EnvState(
+            state=env_state,
+            obs_rms=new_obs_rms,
+            is_training=True,
+        )
+        normalized_obs = self._normalize_obs(new_obs_rms, transition.next_obs)
+        new_transition = eqx.tree_at(
+            lambda t: t.next_obs,
+            transition,
+            normalized_obs
+        )
+        return new_transition, env_info, env_state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, next_env_state = self.env.step(key, env_state, action)
+        new_obs_rms = jax.lax.cond(
+            next_env_state.is_training,
+            lambda: update_rms(next_env_state.obs_rms, transition.next_obs),
+            lambda: next_env_state.obs_rms
+        )
+        normalized_obs = self._normalize_obs(new_obs_rms, transition.next_obs)
+        new_transition = eqx.tree_at(
+            lambda t: t.next_obs,
+            transition,
+            normalized_obs
+        )
+        next_env_state = EnvState(
+            state=next_env_state,
+            obs_rms=new_obs_rms,
+        )
+        if hasattr(env_info, "terminal_observation"):
+            env_info["terminal_observation"] = self._normalize_obs(new_obs_rms, env_info["terminal_observation"])
+        return new_transition, env_info, next_env_state
+
+    def _normalize_obs(self, obs_rms: RunningMeanStdState, obs: Any) -> Any:
+        return jax.tree.map(
+            lambda o, m, v: jnp.clip(
+                (o - m) / jnp.sqrt(v + self.epsilon),
+                -self.clip_obs,
+                self.clip_reward
+            ),
+            obs, obs_rms.mean, obs_rms.var
+        )
+
+    def unnormalize_obs(self, env_state: EnvState, obs: Any) -> Any:
+        return jax.tree.map(
+            lambda o, m, v: (o * jnp.sqrt(v + self.epsilon)) + m,
+            obs, env_state.obs_rms.mean, env_state.obs_rms.var
+        )
+
+
+class NormalizeReward(Wrapper):
+    """Normalize reward with runnning mean and std of backward discounted return."""
+
+    clip_reward: float = eqx.field(static=True)
+    eps: float = eqx.field(static=True)
+    gamma: float = eqx.field(static=True)
+
+    def __init__(self, env: Environment, clip_reward: float = 10.0, eps: float = 1e-8, gamma: float = 0.99):
+        super().__init__(env)
+        self.clip_reward = clip_reward
+        self.eps = eps
+        self.gamma = gamma
+
+    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, env_state = self.env.reset(key)
+        unbatched_reward = transition.reward[0]
+        ret_rms = RunningMeanStdState(
+            mean=jnp.zeros_like(unbatched_reward, dtype=jnp.float32),
+            var=jnp.ones_like(unbatched_reward, dtype=jnp.float32),
+            count=jnp.array(1e-4, dtype=jnp.float32)
+        )
+        returns = jnp.zeros_like(transition.reward)
+        env_state = EnvState(
+            state=env_state,
+            ret_rms=ret_rms,
+            returns=returns,
+            is_training=True,
+        )
+        return transition, env_info, env_state
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, next_env_state = self.env.step(key, env_state, action)
+
+        new_returns = next_env_state.returns * self.gamma * (1.0 - transition.done) + transition.reward
+        new_ret_rms = jax.lax.cond(
+            next_env_state.is_training,
+            lambda: update_rms(next_env_state.ret_rms, new_returns),
+            lambda: next_env_state.ret_rms
+        )
+
+        normalized_reward = self._normalize_reward(new_ret_rms, transition.reward)
+        new_transition = eqx.tree_at(
+            lambda t: t.reward,
+            transition,
+            normalized_reward
+        )
+        next_env_state = EnvState(
+            state=next_env_state,
+            ret_rms=new_ret_rms,
+            returns=new_returns,
+        )
+        return new_transition, env_info, next_env_state
+
+    def _normalize_reward(self, ret_rms: RunningMeanStdState, reward: jax.Array) -> jax.Array:
+        return jnp.clip(
+            reward / jnp.sqrt(ret_rms.var + self.epsilon),
+            -self.clip_reward,
+            self.clip_reward
+        )
+
+    def unnormalize_reward(self, env_state: EnvState, reward: jax.Array) -> jax.Array:
+        return reward * jnp.sqrt(env_state.ret_rms.var + self.epsilon)
+
+
 class Branched:
     def __init__(self, env: Environment, separated: bool):
         self.env = env
@@ -405,4 +573,4 @@ class Branched:
         if isinstance(self, wrapper_cls):
             return True
         target_env = self.env[mode] if self.separated else self.env
-        return isinstance(target_env, Wrapper) and target_env.is_wrapped_by(wrapper_class)
+        return isinstance(target_env, Wrapper) and target_env.is_wrapped_by(wrapper_cls)

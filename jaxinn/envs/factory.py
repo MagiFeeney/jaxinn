@@ -4,7 +4,20 @@ from typing import Dict, Any
 import re
 import importlib
 
-from .wrapper import Batched, TimeLimit, AutoReset, ActionRepeat, ChannelFirst, UnsqueezeScalar, OneHotAction, NextStepAutoResetTerminalObs, ResizeImage, Branched
+from .wrapper import (
+    Batched,
+    TimeLimit,
+    AutoReset,
+    ActionRepeat,
+    ChannelFirst,
+    UnsqueezeScalar,
+    OneHotAction,
+    NextStepAutoResetTerminalObs,
+    ResizeImage,
+    NormalizeObservation,
+    NormalizeReward,
+    Branched,
+)
 from .environment import Environment
 from .spaces import Discrete
 
@@ -103,6 +116,13 @@ def make_env(
         env = UnsqueezeScalar(env)
 
         env = Batched(env, num_envs=wrapper["num_envs"])
+
+        if wrapper.get("normalize_obs", False):
+            env = NormalizeObservation(env)
+
+        if wrapper.get("normalize_reward", False):
+            env = NormalizeReward(env)
+
         return env
 
     if separated and isinstance(creation, dict) and isinstance(wrapper, dict):
