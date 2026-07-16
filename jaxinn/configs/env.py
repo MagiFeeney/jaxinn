@@ -11,6 +11,8 @@ class Wrapper(Base):
     action_repeat: int = 2
     use_one_hot_action: bool = False
     target_shape: Optional[Tuple[int, int]] = None
+    normalize_obs: bool = False
+    normalize_reward: bool = False
 
 
 @dataclass
