@@ -1,5 +1,5 @@
 import math
-from typing import Any, Callable, Dict, Union, Optional
+from typing import Any, Callable, Dict, Union, Optional, Literal
 
 import jax
 import jax.nn as jnn
@@ -167,6 +167,7 @@ def make_mlp(
         output_size: int,
         activation: Union[str, Callable, StaticCallable],
         num_layers: Optional[int] = None,
+        layer_norm: Optional[Literal['all', 'input', 'output', 'first', 'last']] = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -178,6 +179,18 @@ def make_mlp(
         hidden_size = [hidden_size] * num_layers
 
     sizes = [input_size] + hidden_size + [output_size]
+    layer_norms = [False] * len(sizes)
+
+    if layer_norm == "all":
+        layer_norms[1:-1] = [True] * (len(sizes) - 2)
+    elif layer_norm == "input":
+        layer_norms[0] = True
+    elif layer_norm == "output":
+        layer_norms[-1] = True
+    elif layer_norm == "first":
+        layer_norms[1] = True
+    elif layer_norm == "last":
+        layer_norms[-2] = True
 
     layers = []
     keys = jax.random.split(key, len(sizes) - 1)
@@ -187,8 +200,15 @@ def make_mlp(
     if not isinstance(activation, StaticCallable):
         activation = StaticCallable(activation)
 
+    if layer_norms[0]:          # Pre-norm
+        layers.append(eqx.nn.LayerNorm(sizes[0]))
+
     for i in range(len(sizes) - 1):
         layers.append(eqx.nn.Linear(sizes[i], sizes[i+1], key=keys[i]))
+
+        if layer_norms[i+1]:    # Pre-activation norm
+            layers.append(eqx.nn.LayerNorm(sizes[i+1]))
+
         if i < len(sizes) - 2:
             layers.append(activation)
 
