@@ -66,10 +66,23 @@ class PerceptionShared(Resolvable, Model):
 
         self.obs_shape = obs_shape
 
+
+@dataclass
+class EncoderConfig(PerceptionShared):
+    embedding_size: Optional[int] = None
+
+    def _resolve(self, ctx: dict) -> None:
+        super()._resolve(ctx)
+
         # Propagate downstream for representation to consume
         embedding_size = getattr(self, "embedding_size", None)
         if "embedding_size" not in ctx:
             ctx["embedding_size"] = embedding_size
+
+
+@dataclass
+class DecoderConfig(PerceptionShared, ModelShared):
+    pass
 
 
 @dataclass
@@ -91,28 +104,28 @@ class OptimizerShared(Base):
 # World Model
 ## For pixel-based tasks
 @dataclass
-class CNNEncoderConfig(PerceptionShared):
+class CNNEncoderConfig(EncoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     embedding_size: int = 1024
     dtype: str = "bfloat16"
 
 
 @dataclass
-class CNNDecoderConfig(PerceptionShared, ModelShared):
+class CNNDecoderConfig(DecoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     dtype: str = "bfloat16"
 
 
 ## For state-based tasks
 @dataclass
-class LinearEncoderConfig(PerceptionShared):
+class LinearEncoderConfig(EncoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: Optional[list[int]] = None
     embedding_size: Optional[int] = None
 
 
 @dataclass
-class LinearDecoderConfig(PerceptionShared, ModelShared):
+class LinearDecoderConfig(DecoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.STATE
     hidden_size: list[int] = field(default_factory=lambda: [300, 300])
 
