@@ -7,11 +7,8 @@ import equinox as eqx
 
 from jaxinn.structs import LatentState
 from jaxinn.configs.model import ActorConfig
-from jaxinn.configs.head import (
-    HeadConfig,
-    ComplexHeadConfig,
-    HierarchicalHeadConfig
-)
+from jaxinn.configs.base import ComplexConfig, HierarchicalConfig
+from jaxinn.configs.head import HeadConfig
 
 from .utils import make_mlp
 from .heads import Head, TreeHead, HierarchicalHead
@@ -37,9 +34,9 @@ class Actor(eqx.Module):
         *,
         key: PRNGKeyArray,
     ):
-        if not isinstance(head_config, ComplexHeadConfig):
+        if not isinstance(head_config, ComplexConfig):
             self.head = Head.create(head_config, event_size=action_size)
-        elif isinstance(head_config, HierarchicalHeadConfig):
+        elif isinstance(head_config, HierarchicalConfig):
             self.head = HierarchicalHead.create(head_config, event_size=action_size)
         else:
             self.head = TreeHead.create(head_config, event_size=action_size)

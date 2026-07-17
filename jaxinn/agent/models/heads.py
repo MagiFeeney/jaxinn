@@ -10,9 +10,9 @@ import equinox as eqx
 from equinox._module import Static
 
 from jaxinn.agent.registry import Registrable
+from jaxinn.configs.base import ComplexConfig
 from jaxinn.configs.head import (
     HeadConfig,
-    ComplexHeadConfig,
     NormalHeadConfig,
     IsotropicNormalHeadConfig,
     ExpNormalHeadConfig,
@@ -238,7 +238,7 @@ class TreeHead(Head):
 
         heads = jax.tree.map(
             lambda config, size: Head.create(config, event_size=size),
-            head_config() if isinstance(head_config, ComplexHeadConfig) else head_config,
+            head_config() if isinstance(head_config, ComplexConfig) else head_config,
             event_size
         )
 

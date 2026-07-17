@@ -12,50 +12,6 @@ class HeadConfig(Base):
 
 
 @dataclass
-class ComplexHeadConfig(HeadConfig):
-    data: Any
-
-    def __call__(self) -> Any:
-        return self.data
-
-
-@dataclass
-class DictHeadConfig(ComplexHeadConfig):
-    data: Dict[str, HeadConfig]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.data, dict):
-            raise TypeError(f"Expected dict for DictHeadConfig, got {type(self.data)}.")
-
-
-@dataclass
-class TupleHeadConfig(ComplexHeadConfig):
-    data: Tuple[HeadConfig, ...]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.data, tuple):
-            raise TypeError(f"Expected tuple for TupleHeadConfig, got {type(self.data)}.")
-
-
-@dataclass
-class HierarchicalHeadConfig(DictHeadConfig):
-    data: Dict[HeadConfig, ...]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.data, dict):
-            raise TypeError(f"Expected dict for HierarchicalHeadConfig, got {type(self.data)}.")
-
-        if "option" not in self.data or "actions" not in self.data:
-            raise ValueError("HierarchicalHeadConfig must exactly contain 'option' and 'actions' keys.")
-
-        if not isinstance(self.data["option"], CategoricalHeadConfig):
-            raise TypeError(f"The 'option' head config must be a CategoricalHeadConfig but got {type(self.data['option'])}.")
-
-        if not isinstance(self.data["actions"], dict):
-            raise TypeError(f"The 'actions' head config must be a dict but got {type(self.data['actions'])}.")
-
-
-@dataclass
 class NormalHeadConfig(HeadConfig):
     state_dependent_std: bool = True
     constant_std: bool = False

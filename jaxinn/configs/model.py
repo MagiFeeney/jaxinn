@@ -7,13 +7,18 @@ from jaxtyping import PyTree
 
 import jaxinn.envs.spaces as jaxinn_spaces
 
-from .base import Base, Resolvable, StaticShared, ConfigNamespace
+from .base import (
+    Base,
+    Resolvable,
+    StaticShared,
+    ConfigNamespace,
+    DictConfig,
+    TupleConfig,
+    HierarchicalConfig,
+)
 from .head import (
     HeadUnion,
     ContinuousHeadUnion,
-    DictHeadConfig,
-    TupleHeadConfig,
-    HierarchicalHeadConfig,
     IsotropicNormalHeadConfig,
     TanhNormalHeadConfig,
     NormalHeadConfig,
@@ -145,19 +150,7 @@ class RepresentationConfig(Resolvable, ModelShared):
     def _resolve(self, ctx: dict) -> None:
         if "embedding_size" not in ctx:
             return
-
-        obs_shape = ctx["observation_space"].shape
-        embedding_size = ctx["embedding_size"]
-
-        if embedding_size is not None:
-            self.embedding_size = embedding_size
-        elif len(obs_shape) == 1:
-            self.embedding_size = obs_shape[0]
-        else:
-            raise ValueError(
-                f"Cannot infer embedding_size for 2D+ obs_shape {obs_shape} "
-                "without an explicit size provided by the encoder."
-            )
+        self.embedding_size = ctx["embedding_size"]
 
 
 @dataclass
@@ -197,12 +190,49 @@ class WorldOptimizer(OptimizerShared):
 
 @dataclass
 class WorldConfig(Resolvable, Model):
-    encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
-    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
+    encoder: Optional[PyTree[EncoderUnion]] = field(default=None, init=False)
+    decoder: Optional[PyTree[DecoderUnion]] = field(default=None, init=False)
     representation: RepresentationConfig = field(default_factory=RepresentationConfig)
     transition: TransitionConfig = field(default_factory=TransitionConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
     optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
+
+    pixel_encoder: PixelEncoderUnion = field(default_factory=CNNEncoderConfig)
+    pixel_decoder: PixelEncoderUnion = field(default_factory=CNNDecoderConfig)
+    decoder_free: bool = field(default=False, metadata={"transient": True})
+
+    def _resolve(self, ctx: dict) -> None:
+        observation_space = ctx["observation_space"]
+
+        def _resolve_encoder_decoder(space):
+            if isinstance(space, jaxinn_spaces.Dict):
+                return {k: _resolve_encoder_decoder(s) for k, s in space.spaces.items()}
+            elif isinstance(space, jaxinn_spaces.Tuple):
+                return tuple(_resolve_encoder_decoder(s) for s in space.spaces)
+            else:
+                if len(space.shape) > 1:
+                    return (deepcopy(self.pixel_encoder), deepcopy(self.pixel_decoder))
+                else:
+                    return (LinearEncoderConfig(), LinearDecoderConfig())
+
+        resolved_encoder, resolved_decoder = _resolve_encoder_decoder(observation_space)
+
+        if isinstance(resolved_encoder, dict):
+            if isinstance(observation_space, jaxinn_spaces.Hierarchical):
+                self.encoder = HierarchicalConfig(resolved_encoder)
+                self.decoder = HierarchicalConfig(resolved_decoder)
+            else:
+                self.encoder = DictConfig(resolved_encoder)
+                self.decoder = DictConfig(resolved_decoder)
+        elif isinstance(resolved_encoder, tuple):
+            self.encoder = TupleConfig(resolved_encoder)
+            self.decoder = TupleConfig(resolved_decoder)
+        else:
+            self.encoder = resolved_encoder
+            self.decoder = resolved_decoder
+
+        if self.decoder_free:
+            resolved_decoder = None
 
 
 # Actor
@@ -250,11 +280,11 @@ class ActorConfig(Resolvable, ModelShared):
         resolved_head = _resolve_head(action_space)
         if isinstance(resolved_head, dict):
             if isinstance(action_space, jaxinn_spaces.Hierarchical):
-                self.head = HierarchicalHeadConfig(resolved_head)
+                self.head = HierarchicalConfig(resolved_head)
             else:
-                self.head = DictHeadConfig(resolved_head)
+                self.head = DictConfig(resolved_head)
         elif isinstance(resolved_head, tuple):
-            self.head = TupleHeadConfig(resolved_head)
+            self.head = TupleConfig(resolved_head)
         else:
             self.head = resolved_head
 

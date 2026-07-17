@@ -86,9 +86,10 @@ class DreamerAgent(DreamerLossMixIn, Agent):
     def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, False if eval else self.random_init, batch_shape, key=key)
 
-    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
+    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: PyTree[jax.array], *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
         key_perceive, key_action = jax.random.split(key, 2)
-        obs = jax.vmap(self.world.encoder)(transform(obs))
+        obs = jax.tree.map(transform, obs)
+        obs = jax.vmap(self.world.encoder)(obs)
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
         actor_dist = jax.vmap(self.actor)(posterior.latent_state)
         action = self.actor.sample(actor_dist, key_action, eval)
@@ -201,7 +202,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             data = eqx.tree_at(
                 lambda d: d.next_obs,
                 data,
-                replace_fn=transform
+                replace_fn=lambda x: jax.tree.map(transform, x)
             )
             return data
         return step_fn

@@ -132,3 +132,47 @@ def _sync_statics(root_node: any) -> None:
 class StaticShared:
     """Marker: Fields in subclasses will sync globally across all instances."""
     pass
+
+
+@dataclass
+class ComplexConfig(Base):
+    data: Any
+
+    def __call__(self) -> Any:
+        return self.data
+
+
+@dataclass
+class DictConfig(ComplexConfig):
+    data: Dict[str, Config]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.data, dict):
+            raise TypeError(f"Expected dict for DictConfig, got {type(self.data)}.")
+
+
+@dataclass
+class TupleConfig(ComplexConfig):
+    data: Tuple[Config, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.data, tuple):
+            raise TypeError(f"Expected tuple for TupleConfig, got {type(self.data)}.")
+
+
+@dataclass
+class HierarchicalConfig(DictConfig):
+    data: Dict[str, Config]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.data, dict):
+            raise TypeError(f"Expected dict for HierarchicalConfig, got {type(self.data)}.")
+
+        if "option" not in self.data or "primitive" not in self.data:
+            raise ValueError("HierarchicalConfig must exactly contain 'option' and 'primitive' keys.")
+
+        if not isinstance(self.data["option"], CategoricalConfig):
+            raise TypeError(f"The 'option' must be a categorical config but got {type(self.data['option'])}.")
+
+        if not isinstance(self.data["primitive"], dict):
+            raise TypeError(f"The 'primitive' must be a dict but got {type(self.data['primitive'])}.")

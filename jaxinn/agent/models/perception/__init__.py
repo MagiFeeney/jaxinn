@@ -7,12 +7,13 @@ from .linear import (
     LinearEncoder,
     LinearDecoder,
 )
-from .action_encoder import ActionEncoder
+from .tree import TreeEncoder, TreeDecoder
 
 __all__ = [
-    "ActionEncoder",
     "Encoder",
     "Decoder",
+    "TreeEncoder",
+    "TreeDecoder",
     "CNNEncoder",
     "CNNDecoder",
     "LinearEncoder",

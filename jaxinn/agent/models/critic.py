@@ -10,7 +10,7 @@ from jaxinn.structs import LatentState
 from jaxinn.configs.model import CriticConfig
 from jaxinn.configs.head import HeadConfig
 
-from .perception import ActionEncoder
+from .perception import TreeEncoder
 from .utils import make_mlp
 from .heads import Head
 from .distributions import DistributionLike
@@ -19,7 +19,7 @@ from .distributions import DistributionLike
 class Critic(eqx.Module):
     net: eqx.Module
     head: Head
-    action_encoder: Optional[ActionEncoder]
+    action_encoder: Optional[TreeEncoder]
 
     @classmethod
     def create(cls, config: CriticConfig, *, key: PRNGKeyArray):
@@ -44,8 +44,8 @@ class Critic(eqx.Module):
 
         if action_shape is not None:
             key, key_encoder = jax.random.split(key, 2)
-            self.action_encoder = ActionEncoder(action_shape, action_embedding_size, key=key_encoder)
-            encoded_action_size = self.action_encoder.output_size
+            self.action_encoder = TreeEncoder.build_flat(action_shape, action_embedding_size, key=key_encoder)
+            encoded_action_size = self.action_encoder.embedding_size
         else:
             self.action_encoder = None
             encoded_action_size = 0

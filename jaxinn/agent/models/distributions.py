@@ -247,7 +247,7 @@ class TreeJointDistribution(JointDistribution):
 class HierarchicalJointDistribution(TreeJointDistribution):
     """A hierarchical distribution with exactly one active branch at a time.
 
-    Expects a PyTree dictionary containing the keys 'option' and 'actions'.
+    Expects a PyTree dictionary containing the keys 'option' and 'primitive'.
     """
 
     def _mask_branches(self, option: jax.Array, branch_tree: Dict[str, Any], reduce_to_scalar: bool) -> Any:
@@ -256,7 +256,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
         If reduce_to_scalar is True, sums the active branch leaves and returns a scalar.
         If False, zeroes the inactive leaves and returns the full PyTree dictionary.
         """
-        sorted_keys = sorted(self.dists["actions"].keys())
+        sorted_keys = sorted(self.dists["primitive"].keys())
 
         if reduce_to_scalar:
             masked_scalars = []
@@ -284,19 +284,19 @@ class HierarchicalJointDistribution(TreeJointDistribution):
 
         zero_tree = jax.tree.map(
             lambda d: jnp.zeros(d.event_shape, dtype=d.dtype),
-            self.dists["actions"],
+            self.dists["primitive"],
             is_leaf=self.is_leaf
         )
 
         def _sample_single_branch(key, selector):
-            active_sample = self.dists["actions"][selector].sample(seed=key)
+            active_sample = self.dists["primitive"][selector].sample(seed=key)
             return {**zero_tree, selector: active_sample}
 
-        sorted_keys = sorted(self.dists["actions"].keys())
+        sorted_keys = sorted(self.dists["primitive"].keys())
         branch_fns = [partial(_sample_single_branch, selector=k) for k in sorted_keys]
 
         if sample_shape == ():
-            actions = jax.lax.switch(
+            primitive = jax.lax.switch(
                 option,
                 branch_fns,
                 key_branch
@@ -304,20 +304,20 @@ class HierarchicalJointDistribution(TreeJointDistribution):
         else:
             keys_branch = jax.random.split(key_branch, math.prod(sample_shape))
             flat_option = option.reshape(-1)
-            flat_actions = jax.vmap(jax.lax.switch, in_axes=(0, None, 0))(
+            flat_primitive = jax.vmap(jax.lax.switch, in_axes=(0, None, 0))(
                 flat_option,
                 branch_fns,
                 keys_branch
             )
 
-            actions = jax.tree.map(
+            primitive = jax.tree.map(
                 lambda x: x.reshape(sample_shape + x.shape[1:]),
-                flat_actions
+                flat_primitive
             )
 
         return {
             "option": option,
-            "actions": actions
+            "primitive": primitive
         }
 
     def log_prob(self, x: Dict[str, jax.Array]) -> jax.Array:
@@ -326,8 +326,8 @@ class HierarchicalJointDistribution(TreeJointDistribution):
 
         branch_log_probs = jax.tree.map(
             lambda d, v: d.log_prob(v),
-            self.dists["actions"],
-            x["actions"],
+            self.dists["primitive"],
+            x["primitive"],
             is_leaf=self.is_leaf
         )
 
@@ -339,7 +339,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
 
         branch_entropies = jax.tree.map(
             lambda d: d.entropy(),
-            self.dists["actions"],
+            self.dists["primitive"],
             is_leaf=self.is_leaf
         )
 
@@ -349,11 +349,11 @@ class HierarchicalJointDistribution(TreeJointDistribution):
         option_mode = self.dists["option"].mode()
         branch_modes = jax.tree.map(
             lambda d: d.mode(),
-            self.dists["actions"],
+            self.dists["primitive"],
             is_leaf=self.is_leaf
         )
 
         return {
             "option": option_mode,
-            "actions": self._mask_branches(option_mode, branch_modes, reduce_to_scalar=False)
+            "primitive": self._mask_branches(option_mode, branch_modes, reduce_to_scalar=False)
         }

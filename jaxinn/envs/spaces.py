@@ -11,8 +11,8 @@ T = TypeVar("T")
 
 
 class Space(abc.ABC, Generic[T]):
-    """
-    Abstract base class for JAX-based spaces.
+    """Abstract base class for JAX-based spaces.
+
     Registered as a PyTree to allow passing into JIT-compiled functions.
     """
 
@@ -75,9 +75,8 @@ jax.tree_util.register_pytree_node(Space, Space.tree_flatten, Space.tree_unflatt
 
 @jax.tree_util.register_pytree_node_class
 class Discrete(Space[jax.Array]):
-    """
-    A discrete space in {0, ..., n-1}.
-    """
+    """A discrete space in {0, ..., n-1}."""
+
     def __init__(self, n: int, dtype=jnp.int32):
         super().__init__(shape=(), dtype=dtype)
         self.n = n
@@ -104,9 +103,8 @@ class Discrete(Space[jax.Array]):
 
 @jax.tree_util.register_pytree_node_class
 class OneHotDiscrete(Discrete):
-    """
-    A space representing a one-hot encoded discrete action.
-    """
+    """Discrete space with one-hot encoded."""
+
     def __init__(self, n: int, dtype=jnp.int32):
         super().__init__(n=n, dtype=dtype)
         self.shape = (n,)
@@ -123,9 +121,8 @@ class OneHotDiscrete(Discrete):
 
 @jax.tree_util.register_pytree_node_class
 class Box(Space[jax.Array]):
-    """
-    A continuous space in [low, high].
-    """
+    """A continuous space in [low, high]."""
+
     def __init__(self, low: Union[float, jax.Array], high: Union[float, jax.Array], shape: PyTuple[int, ...], dtype=jnp.float32):
         super().__init__(shape, dtype)
         self.low = jnp.broadcast_to(jnp.asarray(low, dtype=dtype), shape)
@@ -194,9 +191,8 @@ class Box(Space[jax.Array]):
 
 @jax.tree_util.register_pytree_node_class
 class MultiDiscrete(Space[jax.Array]):
-    """
-    Multiple discrete spaces with different number of categories per dimension.
-    """
+    """Multiple discrete spaces with different number of categories per dimension."""
+
     def __init__(self, nvec: Sequence[int], dtype=jnp.int32):
         self.nvec = jnp.asarray(nvec, dtype=dtype)
         super().__init__(shape=self.nvec.shape, dtype=dtype)
@@ -225,9 +221,8 @@ class MultiDiscrete(Space[jax.Array]):
 
 @jax.tree_util.register_pytree_node_class
 class Dict(ComplexSpace, Space[PyDict[str, Any]]):
-    """
-    A dictionary of spaces.
-    """
+    """A dictionary of spaces."""
+
     def __init__(self, spaces: PyDict[str, Space]):
         self.spaces = spaces
 
@@ -301,9 +296,7 @@ class Tuple(ComplexSpace, Space[PyTuple[Any, ...]]):
 
 @jax.tree_util.register_pytree_node_class
 class Hierarchical(Dict):
-    """
-    A hierarchical action space with a flat dictionary of low-level actions and a high-level option that selects the route.
-    """
+    """A hierarchical space with a flat dictionary of low-level primitives and a high-level option that selects the route."""
 
     def __init__(self, spaces: PyDict[str, Space]):
         if not self._valid_structure(spaces):
@@ -311,25 +304,25 @@ class Hierarchical(Dict):
         super().__init__(spaces)
 
     def sample(self, key: PRNGKeyArray) -> PyDict[str, Any]: # TODO: only sample for a specific branch
-        key_option, key_actions = jax.random.split(key)
+        key_option, key_primitive = jax.random.split(key)
         option = self.spaces["option"].sample(key_option)
-        actions = self.spaces["actions"].sample(key_actions)
+        primitive = self.spaces["primitive"].sample(key_primitive)
         return {
             "option": option,
-            "actions": actions
+            "primitive": primitive
         }
 
     @staticmethod
     def _valid_structure(spaces: PyDict[str, Space]) -> bool:
-        if "option" not in spaces or "actions" not in spaces:
+        if "option" not in spaces or "primitive" not in spaces:
             return False
 
-        if not isinstance(spaces["option"], Discrete) or (not isinstance(spaces["actions"], Dict)):
+        if not isinstance(spaces["option"], Discrete) or (not isinstance(spaces["primitive"], Dict)):
             return False
 
         num_options = spaces["option"].n
-        num_actions = len(spaces["actions"].spaces)
-        if num_options != num_actions:
+        num_primitives = len(spaces["primitive"].spaces)
+        if num_options != num_primitives:
             return False
 
         return True
@@ -351,12 +344,12 @@ class Hierarchical(Dict):
 
             return flat_spaces
 
-        flat_actions = _flatten_spaces(spaces)
+        flat_primitives = _flatten_spaces(spaces)
 
-        actions_space = Dict(flat_actions)
-        option_space = Discrete(len(flat_actions))
+        primitive_space = Dict(flat_primitives)
+        option_space = Discrete(len(flat_primitives))
 
         return {
             "option": option_space,
-            "actions": actions_space
+            "primitive": primitive_space
         }

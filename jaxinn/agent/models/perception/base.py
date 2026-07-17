@@ -11,6 +11,8 @@ from ..distributions import DistributionLike
 
 
 class Encoder(Registrable, eqx.Module):
+    embedding_size: int = eqx.field(static=True)
+
     @abc.abstractmethod
     def __call__(self, obs: jax.Array) -> jax.Array:
         pass

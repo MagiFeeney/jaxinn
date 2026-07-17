@@ -11,7 +11,7 @@ from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import TransitionConfig
 
 from ..utils import get_activation_fn, StaticCallable
-from ..perception import ActionEncoder
+from ..perception import TreeEncoder
 from ..heads import Head
 from ..distributions import DistributionLike
 
@@ -22,7 +22,7 @@ class Transition(eqx.Module):
     core: eqx.nn.GRUCell
     body: eqx.Module
     head: Head
-    action_encoder: ActionEncoder
+    action_encoder: TreeEncoder
 
     @classmethod
     def create(cls, config: TransitionConfig, *, key: PRNGKeyArray):
@@ -41,8 +41,8 @@ class Transition(eqx.Module):
             key: PRNGKeyArray,
     ):
         key, key_encoder = jax.random.split(key, 2)
-        self.action_encoder = ActionEncoder(action_shape, action_embedding_size, key=key_encoder)
-        encoded_action_size = self.action_encoder.output_size
+        self.action_encoder = TreeEncoder.build_flat(action_shape, action_embedding_size, key=key_encoder)
+        encoded_action_size = self.action_encoder.embedding_size
 
         self.head = Head.create(head_config, event_size=state_size)
 

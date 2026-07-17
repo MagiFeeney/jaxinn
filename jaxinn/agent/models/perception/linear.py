@@ -19,6 +19,7 @@ class LinearEncoder(Encoder):
     config_cls: ClassVar[Type] = LinearEncoderConfig
 
     net: eqx.Module
+    embedding_size: int = eqx.field(static=True)
 
     def __init__(
             self,
@@ -34,18 +35,21 @@ class LinearEncoder(Encoder):
             f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
         activation = get_activation_fn(activation_function)
+        input_size = math.prod(obs_shape)
 
         if hidden_size is not None and \
            embedding_size is not None:
             self.net = make_mlp(
-                input_size = math.prod(obs_shape),
+                input_size = input_size,
                 hidden_size = hidden_size,
                 output_size = embedding_size,
                 activation = StaticCallable(activation),
                 key = key
             )
+            self.embedding_size = embedding_size
         else:
             self.net = eqx.nn.Identity()
+            self.embedding_size = input_size
 
     def __call__(
             self,

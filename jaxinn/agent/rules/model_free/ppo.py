@@ -20,20 +20,21 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret, staircase_lr_schedule
 from jaxinn.agent.models import Actor, Critic
-from jaxinn.agent.models.perception import Encoder
+from jaxinn.agent.models.perception import TreeEncoder
 from jaxinn.agent.models.utils import apply_init
 from jaxinn.agent.losses import PPOLossMixIn
 
 
 class PerceptionActor(eqx.Module):
-    encoder: Encoder
+    encoder: TreeEncoder
     actor: Actor
 
     @classmethod
     def create(cls, config: PerceptionActorConfig, *, key: PRNGKeyArray):
         key_encoder, key_actor = jax.random.split(key)
 
-        encoder = Encoder.create(config.encoder, key=key_encoder)
+        encoder = TreeEncoder.create(config.encoder, key=key_encoder)
+        config.actor.state_size = encoder.embedding_size
         actor = Actor.create(
             config.actor,
             key=key_actor
@@ -41,7 +42,7 @@ class PerceptionActor(eqx.Module):
 
         return cls(encoder=encoder, actor=actor)
 
-    def __call__(self, obs: jax.Array):
+    def __call__(self, obs: PyTree[jax.array]):
         feature = self.encoder(obs)
         return self.actor(feature)
 
@@ -55,14 +56,15 @@ class PerceptionActor(eqx.Module):
 
 
 class PerceptionCritic(eqx.Module):
-    encoder: Encoder
+    encoder: TreeEncoder
     critic: Critic
 
     @classmethod
     def create(cls, config: PerceptionCriticConfig, *, key: PRNGKeyArray):
         key_encoder, key_critic = jax.random.split(key)
 
-        encoder = Encoder.create(config.encoder, key=key_encoder)
+        encoder = TreeEncoder.create(config.encoder, key=key_encoder)
+        config.critic.state_size = encoder.embedding_size
         critic = Critic.create(
             config.critic,
             key=key_critic
@@ -70,7 +72,7 @@ class PerceptionCritic(eqx.Module):
 
         return cls(encoder=encoder, critic=critic)
 
-    def __call__(self, obs: jax.Array, action: Optional[jax.Array] = None) -> distrax.Distribution:
+    def __call__(self, obs: PyTree[jax.array], action: Optional[jax.Array] = None) -> distrax.Distribution:
         feature = self.encoder(obs)
         return self.critic(feature, action)
 
@@ -111,10 +113,10 @@ class ActorCriticDecoupled(ActorCritic):
 
         return cls(actor=actor, critic=critic)
 
-    def get_actor_dist(self, obs: jax.Array) -> distrax.Distribution:
+    def get_actor_dist(self, obs: PyTree[jax.array]) -> distrax.Distribution:
         return self.actor(obs)
 
-    def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
+    def get_critic_dist(self, obs: PyTree[jax.array]) -> distrax.Distribution:
         return self.critic(obs)
 
 
@@ -122,7 +124,7 @@ class ActorCriticDecoupled(ActorCritic):
 class ActorCriticShared(ActorCritic):
     config_cls: ClassVar[Type] = ActorCriticSharedConfig
 
-    encoder: Encoder
+    encoder: TreeEncoder
     actor: Actor
     critic: Critic
 
@@ -131,10 +133,11 @@ class ActorCriticShared(ActorCritic):
         key_encoder, key_actor, key_critic = jax.random.split(key, 3)
 
         key_encoder_model, key_encoder_init = jax.random.split(key_encoder, 2)
-        encoder = Encoder.create(config.encoder, key=key_encoder_model)
+        encoder = TreeEncoder.create(config.encoder, key=key_encoder_model)
         encoder = apply_init(encoder, weight_init=jax.nn.initializers.orthogonal(scale=math.sqrt(2)), key=key_encoder_init)
 
         key_actor_model, key_actor_init = jax.random.split(key_actor, 2)
+        config.actor.state_size = encoder.embedding_size
         actor = Actor.create(config.actor, key=key_actor_model)
         actor = apply_init(
             actor,
@@ -144,6 +147,7 @@ class ActorCriticShared(ActorCritic):
         )
 
         key_critic_model, key_critic_init = jax.random.split(key_critic, 2)
+        config.critic.state_size = encoder.embedding_size
         critic = Critic.create(config.critic, key=key_critic_model)
         critic = apply_init(
             critic,
@@ -154,11 +158,11 @@ class ActorCriticShared(ActorCritic):
 
         return cls(encoder=encoder, actor=actor, critic=critic)
 
-    def get_actor_dist(self, obs: jax.Array) -> distrax.Distribution:
+    def get_actor_dist(self, obs: PyTree[jax.array]) -> distrax.Distribution:
         feature = self.encoder(obs)
         return self.actor(feature)
 
-    def get_critic_dist(self, obs: jax.Array) -> distrax.Distribution:
+    def get_critic_dist(self, obs: PyTree[jax.array]) -> distrax.Distribution:
         feature = self.encoder(obs)
         return self.critic(feature)
 
@@ -203,7 +207,7 @@ class PPOAgent(PPOLossMixIn, Agent):
     def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
         return None
 
-    def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
+    def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: PyTree[jax.array], *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
         action = self.actor_critic.actor.sample(actor_dist, key, eval)
         return None, action
