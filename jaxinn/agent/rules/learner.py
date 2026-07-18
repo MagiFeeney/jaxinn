@@ -29,7 +29,7 @@ class Learner(eqx.Module, Generic[ModelType]):
             model = model_cls(**config(), key=key)
 
         has_scheduler_fn = lr_scheduler is not None
-        has_scheduler_cfg = config.optimizer.lr_scheduler is not None
+        has_scheduler_cfg = getattr(config.optimizer, "lr_scheduler", None) is not None
 
         if has_scheduler_fn and has_scheduler_cfg:
             lr = lr_scheduler(config.optimizer.lr, **config.optimizer.lr_scheduler())

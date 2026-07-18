@@ -1,13 +1,12 @@
 from typing import Tuple, Optional
 
 import jax
-import jax.numpy as jnp
 import equinox as eqx
 
 from jaxinn.structs import Transition
 
 
-def reconstruct_rl_tuple(transition: Transition, terminal_obs: Optional[jax.Array] = None) -> Tuple[jnp.Array, jnp.Array, jnp.Array, jnp.Array, jnp.Array, jnp.Array]:
+def reconstruct_rl_tuple(transition: Transition, terminal_obs: Optional[jax.Array] = None) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
     return (
         transition.next_obs[:-1],
         transition.action[1:],

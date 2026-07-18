@@ -8,12 +8,12 @@ from ..model import ActorOptimizer, CriticOptimizer
 
 @dataclass
 class SACPerceptionActorConfig(PerceptionActorConfig):
-    optimizer: ActorOptimizer = field(default_factory=ActorOptimizer(max_norm=None))
+    optimizer: ActorOptimizer = field(default_factory=lambda: ActorOptimizer(max_norm=None))
 
 
 @dataclass
 class SACPerceptionCriticConfig(PerceptionCriticConfig):
-    optimizer: CriticOptimizer = field(default_factory=CriticOptimizer(max_norm=None))
+    optimizer: CriticOptimizer = field(default_factory=lambda: CriticOptimizer(max_norm=None))
 
 
 # SAC
@@ -21,6 +21,7 @@ class SACPerceptionCriticConfig(PerceptionCriticConfig):
 class SACOptimization(Base):
     discount_factor: float = 0.99
     alpha: float = 0.2
+    batch_size: int = 256
     tau: float = 0.005
     target_update_interval: int = 2
 

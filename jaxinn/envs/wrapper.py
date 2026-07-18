@@ -70,11 +70,11 @@ class Batched(Wrapper):
 
 
 class TimeLimit(Wrapper):
-    max_episode_length: int = eqx.field(static=True)
+    _max_episode_length: int = eqx.field(static=True)
 
     def __init__(self, env: Environment, max_episode_length: int):
         super().__init__(env)
-        self.max_episode_length = max_episode_length
+        self._max_episode_length = max_episode_length
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
@@ -95,6 +95,10 @@ class TimeLimit(Wrapper):
             time=time,
         )
         return new_transition, env_info, state_with_time
+
+    @property
+    def max_episode_length(self) -> int:
+        return self._max_episode_length
 
 
 class AutoReset(Wrapper):

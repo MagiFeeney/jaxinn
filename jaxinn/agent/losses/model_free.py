@@ -60,10 +60,11 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
         actor_dist = jax.vmap(self.actor)(obs)
-        actions = actor_dist.sample(key)
+        actions = actor_dist.sample(seed=key)
         log_probs = actor_dist.log_prob(actions)
-        q1, q2 = jax.vmap(self.critic)(obs, actions)
-        min_q = jnp.minimum(q1, q2)
+        q_dists = jax.vmap(self.critic)(obs, actions)
+        qs = q_dists.mean()
+        min_q = jnp.min(qs, axis=1)
 
         actor_loss = ((self.alpha * log_probs) - min_q).mean()
 
@@ -84,18 +85,18 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
         actor_dist = jax.vmap(self.actor)(next_obs)
-        next_actions = actor_dist.sample(key)
-        next_log_probs = actor_dist.log_prob(next_actions)
-        next_q1, next_q2 = jax.vmap(self.critic_target)(next_obs, next_actions)
-        next_min_q = jnp.minimum(next_q1, next_q2)
+        next_actions = actor_dist.sample(seed=key)
+        next_log_probs = actor_dist.log_prob(next_actions)[..., None]
+        next_q_dists = jax.vmap(self.critic_target)(next_obs, next_actions)
+        next_qs = next_q_dists.mean() # B x E x 1
+        next_min_q = jnp.min(next_qs, axis=1) # B x 1
         bootstrapped_q = next_min_q - self.alpha * next_log_probs
         td_target = rewards + (1 - terminated) * self.discount_factor * bootstrapped_q
+        td_target = jnp.expand_dims(td_target, axis=1)
 
-        q1, q2 = jax.vmap(self.critic)(obs, actions)
-        q1_loss = ((q1 - td_target)**2).mean()
-        q2_loss = ((q2 - td_target)**2).mean()
-
-        critic_loss = q1_loss + q2_loss
+        q_dists = jax.vmap(self.critic)(obs, actions)
+        qs = q_dists.mean()
+        critic_loss = ((qs - td_target)**2).mean(axis=0).sum()
 
         metrics = {
             "ac/critic": critic_loss,

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from jaxinn.configs.base import Base, Resolvable
 
 from .base import AgentConfig
-from ..actor_critic import ActorCriticOptimizer, ActorCriticDecoupledConfig, ActorCriticSharedConfig
+from .actor_critic import ActorCriticOptimizer, ActorCriticDecoupledConfig, ActorCriticSharedConfig
 from ..model import LearningRateScheduler
 
 

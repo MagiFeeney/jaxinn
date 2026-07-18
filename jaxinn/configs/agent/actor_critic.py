@@ -53,7 +53,7 @@ class PerceptionCriticConfig(Resolvable, Model):
 class ActorCriticOptimizer(Resolvable, OptimizerShared):
     """Optimizer for actor-critic."""
     lr: float = 3e-4
-    max_norm: float = 0.5
+    max_norm: Optional[float] = 0.5
     use_lr_scheduler: bool = field(default=True, metadata={"transient": True})
     lr_scheduler: Optional[LearningRateScheduler] = None
 

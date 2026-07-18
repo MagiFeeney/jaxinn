@@ -14,7 +14,7 @@ from jaxinn.agent.rules.utils import transform
 from jaxinn.agent.losses import SACLossMixIn
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
 
-from .actor_critic import PerceptionActor, PerceptionCritic, Ensemble
+from .actor_critic import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
 from .utils import reconstruct_rl_tuple, soft_update
 
 
@@ -28,6 +28,7 @@ class SACAgent(SACLossMixIn, Agent):
 
     discount_factor: float = eqx.field(static=True)
     alpha: float = eqx.field(static=True)
+    batch_size: int = eqx.field(static=True)
     tau: float = eqx.field(static=True)
     target_update_interval: int = eqx.field(static=True)
 
@@ -44,10 +45,10 @@ class SACAgent(SACLossMixIn, Agent):
         key_actor, key_critic = jax.random.split(key, 2)
 
         actor = Learner.create(PerceptionActor, config.actor, key=key_actor)
-        DoubleCritic = partial(Ensemble, PerceptionCritic, num_ensembles=2)
+        DoubleCritic = make_ensemble_cls(PerceptionCritic, num_ensembles=2)
         critic = Learner.create(DoubleCritic, config.critic, key=key_critic)
 
-        critic_target = critic.model
+        critic_target = jax.tree.map(lambda x: jnp.copy(x) if eqx.is_inexact_array(x) else x, critic.model)
 
         if config.memory.type.lower() == "uniform":
             memory_cls = Uniform
@@ -76,8 +77,8 @@ class SACAgent(SACLossMixIn, Agent):
         return None
 
     def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
-        actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
-        action = self.actor_critic.actor.sample(actor_dist, key, eval)
+        actor_dist = jax.vmap(self.actor)(obs)
+        action = self.actor.sample(actor_dist, key, eval)
         return None, action
 
     def make_batch_fn(self) -> callable:
@@ -114,7 +115,7 @@ class SACAgent(SACLossMixIn, Agent):
         do_update = (self.num_updates % self.target_update_interval == 0)
         new_critic_target = jax.lax.cond(
             do_update,
-            lambda: soft_update(self.critic_target, new_critic, self.tau),
+            lambda: soft_update(self.critic_target, new_critic.model, self.tau),
             lambda: self.critic_target
         )
         agent = eqx.tree_at(

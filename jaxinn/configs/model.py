@@ -192,7 +192,7 @@ class RewardConfig(ModelShared):
 class WorldOptimizer(OptimizerShared):
     """Optimizer for world model."""
     lr: float = 6e-4
-    max_norm: float = 100
+    max_norm: Optional[float] = 100
 
 
 @dataclass
@@ -210,7 +210,7 @@ class WorldConfig(Resolvable, Model):
 class ActorOptimizer(OptimizerShared):
     """Optimizer for actor."""
     lr: float = 8e-5
-    max_norm: int = 100
+    max_norm: Optional[float] = 100
 
 
 @dataclass
@@ -264,7 +264,7 @@ class ActorConfig(Resolvable, ModelShared):
 class CriticOptimizer(OptimizerShared):
     """Optimizer for critic."""
     lr: float = 8e-5
-    max_norm: int = 100
+    max_norm: Optional[float] = 100
 
 
 @dataclass

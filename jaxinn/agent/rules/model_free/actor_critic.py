@@ -1,20 +1,25 @@
-from typing import Any, Optional, ClassVar, Type, Generic, TypeVar
+from typing import Any, Optional, ClassVar, Type, Generic, TypeVar, Tuple
 
 import math
 import jax
-from jaxtyping import PRNGKeyArray
+from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 import distrax
 
-from jaxinn.configs.agent.ppo import (
+from jaxinn.configs.agent.actor_critic import (
     ActorCriticSharedConfig,
     ActorCriticDecoupledConfig,
     PerceptionActorConfig,
     PerceptionCriticConfig
 )
+from jaxinn.configs.agent.ppo import (
+    PPOActorCriticSharedConfig,
+    PPOActorCriticDecoupledConfig,
+)
 from jaxinn.agent.registry import Registrable
 from jaxinn.agent.models import Actor, Critic
 from jaxinn.agent.models.perception import Encoder
+from jaxinn.agent.models.distributions import DistributionLike
 from jaxinn.agent.models.utils import apply_init
 
 
@@ -37,6 +42,9 @@ class PerceptionActor(eqx.Module):
     def __call__(self, obs: jax.Array):
         feature = self.encoder(obs)
         return self.actor(feature)
+
+    def sample(self, dist: DistributionLike, key: PRNGKeyArray, det: bool = False) -> PyTree[jax.Array]:
+        return self.actor.sample(dist, key, det)
 
 
 class PerceptionCritic(eqx.Module):
@@ -66,20 +74,46 @@ T = TypeVar("T", bound=eqx.Module)
 class Ensemble(eqx.Module, Generic[T]):
     nets: T
 
-    def __init__(self, model_cls: type[T], num_ensembles: int, config: Any, *, key: PRNGKeyArray):
+    @classmethod
+    def create(cls, model_cls: type[T], num_ensembles: int, config: Any, *, key: PRNGKeyArray):
         keys = jax.random.split(key, num_ensembles)
 
         def make_model(k):
-            return model_cls(config, key=k)
+            if hasattr(model_cls, "create"): # nested / multiple routes
+                return model_cls.create(config, key=k)
+            else:                            # primitive
+                return model_cls(**config(), key=k)
 
-        self.nets = eqx.filter_vmap(make_model)(keys)
+        nets = eqx.filter_vmap(make_model)(keys)
+        return cls(
+            nets=nets,
+        )
 
     def __call__(self, *args, **kwargs) -> Any:
-        @eqx.filter_vmap(in_axes=(0, None, None))
+        net_axes = jax.tree.map(
+            lambda x: 0 if eqx.is_array(x) and x.ndim > 0 else None,
+            self.nets
+        )
+        @eqx.filter_vmap(in_axes=(net_axes, None, None))
         def forward(net, a, kw):
             return net(*a, **kw)
 
         return forward(self.nets, args, kwargs)
+
+
+def make_ensemble_cls(model_cls: type[T], num_ensembles: int) -> type[Ensemble[T]]:
+    class BoundedEnsemble(Ensemble[model_cls]):
+        @classmethod
+        def create(cls, config: Any, *, key: PRNGKeyArray):
+            return super().create(
+                model_cls=model_cls,
+                num_ensembles=num_ensembles,
+                config=config,
+                key=key
+            )
+
+    BoundedEnsemble.__name__ = f"{model_cls.__name__}Ensemble{num_ensembles}"
+    return BoundedEnsemble
 
 
 # Base class for registration
@@ -89,7 +123,10 @@ class ActorCritic(Registrable, eqx.Module):
 
 # Independent encoders
 class ActorCriticDecoupled(ActorCritic):
-    config_cls: ClassVar[Type] = ActorCriticDecoupledConfig
+    config_cls: ClassVar[Tuple[Type, ...]] = (
+        ActorCriticDecoupledConfig,
+        PPOActorCriticDecoupledConfig,
+    )
 
     actor: PerceptionActor
     critic: PerceptionCritic
@@ -128,6 +165,10 @@ class ActorCriticDecoupled(ActorCritic):
 # Shared encoder
 class ActorCriticShared(ActorCritic):
     config_cls: ClassVar[Type] = ActorCriticSharedConfig
+    config_cls: ClassVar[Tuple[Type, ...]] = (
+        ActorCriticSharedConfig,
+        PPOActorCriticSharedConfig,
+    )
 
     encoder: Encoder
     actor: Actor
