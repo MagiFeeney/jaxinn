@@ -214,19 +214,19 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         # Update world model
         (loss, (aux, posterior)), grads = self.world_loss_fn(data, key_world)
         new_world = self.world.update(grads.world)
-        agent = eqx.tree_at(lambda x: x.world, self, new_world)
+        agent = eqx.tree_at(lambda a: a.world, self, new_world)
         metrics.update(**aux)
 
         # Update actor
         (loss, (aux, (imagined_latent_states, return_predictions))), grads = agent.actor_loss_fn(posterior, key_actor)
         new_actor = agent.actor.update(grads.actor)
-        agent = eqx.tree_at(lambda x: x.actor, agent, new_actor)
+        agent = eqx.tree_at(lambda a: a.actor, agent, new_actor)
         metrics.update(**aux)
 
         # Update critic
         (loss, aux), grads = agent.critic_loss_fn(imagined_latent_states, return_predictions, key_critic)
         new_critic = agent.critic.update(grads.critic)
-        agent = eqx.tree_at(lambda x: x.critic, agent, new_critic)
+        agent = eqx.tree_at(lambda a: a.critic, agent, new_critic)
         metrics.update(**aux)
 
         return agent, metrics

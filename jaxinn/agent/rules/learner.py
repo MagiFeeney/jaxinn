@@ -36,10 +36,12 @@ class Learner(eqx.Module, Generic[ModelType]):
         else:
             lr = config.optimizer.lr
 
-        optimizer = optax.chain(
-            optax.clip_by_global_norm(config.optimizer.max_norm),
-            optax.adam(learning_rate=lr, eps=config.optimizer.eps)
-        )
+        transforms = []
+        max_norm = getattr(config.optimizer, "max_norm", None)
+        if max_norm is not None:
+            transforms.append(optax.clip_by_global_norm(max_norm))
+        transforms.append(optax.adam(learning_rate=lr, eps=getattr(config.optimizer, "eps", 1e-8)))
+        optimizer = optax.chain(*transforms)
 
         return cls(model, optimizer)
 

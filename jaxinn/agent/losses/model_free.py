@@ -4,9 +4,9 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
-from .utils import differentiable
 
 from .base import Loss, ActorLoss, CriticLoss, ActorCriticLoss
+from .utils import differentiable
 
 
 class PPOLossMixIn(Loss, ActorCriticLoss):
@@ -52,4 +52,52 @@ class PPOLossMixIn(Loss, ActorCriticLoss):
 
 
 class SACLossMixIn(Loss, ActorLoss, CriticLoss):
-    pass
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['actor'])
+    def actor_loss_fn(
+            self,
+            obs: jax.Array,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+        actor_dist = jax.vmap(self.actor)(obs)
+        actions = actor_dist.sample(key)
+        log_probs = actor_dist.log_prob(actions)
+        q1, q2 = jax.vmap(self.critic)(obs, actions)
+        min_q = jnp.minimum(q1, q2)
+
+        actor_loss = ((self.alpha * log_probs) - min_q).mean()
+
+        metrics = {
+            "ac/actor": actor_loss,
+        }
+        return actor_loss, metrics
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['critic'])
+    def critic_loss_fn(
+            self,
+            obs: jax.Array,
+            actions: jax.Array,
+            rewards: jax.Array,
+            next_obs: jax.Array,
+            terminated: jax.Array,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+        actor_dist = jax.vmap(self.actor)(next_obs)
+        next_actions = actor_dist.sample(key)
+        next_log_probs = actor_dist.log_prob(next_actions)
+        next_q1, next_q2 = jax.vmap(self.critic_target)(next_obs, next_actions)
+        next_min_q = jnp.minimum(next_q1, next_q2)
+        bootstrapped_q = next_min_q - self.alpha * next_log_probs
+        td_target = rewards + (1 - terminated) * self.discount_factor * bootstrapped_q
+
+        q1, q2 = jax.vmap(self.critic)(obs, actions)
+        q1_loss = ((q1 - td_target)**2).mean()
+        q2_loss = ((q2 - td_target)**2).mean()
+
+        critic_loss = q1_loss + q2_loss
+
+        metrics = {
+            "ac/critic": critic_loss,
+        }
+        return critic_loss, metrics
