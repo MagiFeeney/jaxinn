@@ -24,6 +24,7 @@ class PPOAgent(PPOLossMixIn, Agent):
 
     clip_param: float = eqx.field(static=True)
     use_clipped_critic_loss: bool = eqx.field(static=True)
+    entropy_coef: float = eqx.field(static=True)
     num_mini_batch: int = eqx.field(static=True)
     discount_factor: float = eqx.field(static=True)
     uae_lambda: float = eqx.field(static=True)

@@ -43,11 +43,14 @@ class PPOLossMixIn(Loss, ActorCriticLoss):
         else:
             critic_loss = ((returns - values) ** 2).mean()
 
+        entropy_loss = -self.entropy_coef * actor_dists.entropy().mean()
+
         metrics = {
             "ac/actor": actor_loss,
             "ac/critic": critic_loss,
+            "ac/entropy": entropy_loss,
         }
-        total_loss = actor_loss + critic_loss
+        total_loss = actor_loss + critic_loss + entropy_loss
         return total_loss, metrics
 
 

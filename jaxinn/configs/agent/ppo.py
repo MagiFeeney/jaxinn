@@ -28,6 +28,7 @@ class PPOActorCriticOptimizer(Optimizer):
 class PPOOptimization(Resolvable, Base):
     clip_param: float = 0.2
     use_clipped_critic_loss: bool = True
+    entropy_coef: float = 0.0
     num_mini_batch: int = 8
     discount_factor: float = 0.99
     uae_lambda: float = 0.95
