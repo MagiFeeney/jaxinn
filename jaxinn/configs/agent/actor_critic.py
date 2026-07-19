@@ -1,10 +1,8 @@
-from typing import Union, Optional
+from typing import Union
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Resolvable
-from jaxinn.configs.model import Model, ActorConfig, CriticConfig, EncoderUnion, LinearEncoderConfig, OptimizerShared
-
-from ..model import LearningRateScheduler
+from jaxinn.configs.model import Model, ActorConfig, CriticConfig, EncoderUnion, LinearEncoderConfig
 
 
 def _resolve_input_size(ctx: dict, *modules) -> None:
@@ -50,20 +48,9 @@ class PerceptionCriticConfig(Resolvable, Model):
 
 
 @dataclass
-class ActorCriticOptimizer(Resolvable, OptimizerShared):
-    """Optimizer for actor-critic."""
-    lr: float = 3e-4
-    max_norm: Optional[float] = 0.5
-    use_lr_scheduler: bool = field(default=True, metadata={"transient": True})
-    lr_scheduler: Optional[LearningRateScheduler] = None
-
-
-@dataclass
 class ActorCriticDecoupledConfig(Resolvable, Model):
     perception_actor: PerceptionActorConfig = field(default_factory=PerceptionActorConfig)
     perception_critic: PerceptionCriticConfig = field(default_factory=PerceptionCriticConfig)
-
-    optimizer: ActorCriticOptimizer = field(default_factory=ActorCriticOptimizer)
 
 
 @dataclass
@@ -71,8 +58,6 @@ class ActorCriticSharedConfig(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=LinearEncoderConfig)
     actor: ActorConfig = field(default_factory=ActorConfig)
     critic: CriticConfig = field(default_factory=CriticConfig)
-
-    optimizer: ActorCriticOptimizer = field(default_factory=ActorCriticOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
         _resolve_input_size(ctx, self.actor, self.critic)

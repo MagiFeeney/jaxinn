@@ -1,7 +1,7 @@
 from copy import deepcopy
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Tuple, Dict, Optional, Union, ClassVar
+from typing import Tuple, Dict, Optional, Union, ClassVar, Generic, TypeVar
 
 from jaxtyping import PyTree
 
@@ -94,11 +94,23 @@ class LearningRateScheduler(Base):
 
 
 @dataclass
-class OptimizerShared(Base):
-    """Shared parameters across optimizers."""
+class Optimizer(Base):          # TODO: safeguard on lr_scheduler
     b1: float = 0.9
     b2: float = 0.999
-    eps: float = 1e-7
+    eps: float = 1e-8
+    lr: float = 3e-4
+    max_norm: Optional[float] = None
+    use_lr_scheduler: bool = field(default=False, metadata={"transient": True})
+    lr_scheduler: Optional[LearningRateScheduler] = None
+
+
+T = TypeVar('T')
+
+
+@dataclass
+class LearnerConfig(Generic[T]):
+    model: T
+    optimizer: Optimizer
 
 
 # World Model
@@ -189,28 +201,12 @@ class RewardConfig(ModelShared):
 
 
 @dataclass
-class WorldOptimizer(OptimizerShared):
-    """Optimizer for world model."""
-    lr: float = 6e-4
-    max_norm: Optional[float] = 100
-
-
-@dataclass
 class WorldConfig(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
     decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
     representation: RepresentationConfig = field(default_factory=RepresentationConfig)
     transition: TransitionConfig = field(default_factory=TransitionConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
-    optimizer: WorldOptimizer = field(default_factory=WorldOptimizer)
-
-
-# Actor
-@dataclass
-class ActorOptimizer(OptimizerShared):
-    """Optimizer for actor."""
-    lr: float = 8e-5
-    max_norm: Optional[float] = 100
 
 
 @dataclass
@@ -220,7 +216,6 @@ class ActorConfig(Resolvable, ModelShared):
     action_size: Optional[PyTree[int]] = field(default=None, init=False) # Pass from the env params
 
     head: Optional[PyTree[HeadUnion]] = field(default=None, init=False) # TODO: add head_overrides
-    optimizer: ActorOptimizer = field(default_factory=ActorOptimizer)
 
     # For building head; discard after use
     continuous_head: ContinuousHeadUnion = field(default_factory=TanhNormalHeadConfig)
@@ -259,14 +254,6 @@ class ActorConfig(Resolvable, ModelShared):
             self.head = resolved_head
 
 
-# Critic
-@dataclass
-class CriticOptimizer(OptimizerShared):
-    """Optimizer for critic."""
-    lr: float = 8e-5
-    max_norm: Optional[float] = 100
-
-
 @dataclass
 class CriticConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
@@ -275,7 +262,6 @@ class CriticConfig(Resolvable, ModelShared):
     activation_function: str = "elu"
 
     head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
-    optimizer: CriticOptimizer = field(default_factory=CriticOptimizer)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:

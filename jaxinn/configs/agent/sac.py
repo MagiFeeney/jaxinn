@@ -3,17 +3,7 @@ from dataclasses import dataclass, field
 from jaxinn.configs.base import Base
 from .base import AgentConfig
 from .actor_critic import PerceptionActorConfig, PerceptionCriticConfig
-from ..model import ActorOptimizer, CriticOptimizer
-
-
-@dataclass
-class SACPerceptionActorConfig(PerceptionActorConfig):
-    optimizer: ActorOptimizer = field(default_factory=lambda: ActorOptimizer(lr=3e-4, max_norm=None, eps=1e-8))
-
-
-@dataclass
-class SACPerceptionCriticConfig(PerceptionCriticConfig):
-    optimizer: CriticOptimizer = field(default_factory=lambda: CriticOptimizer(lr=3e-4, max_norm=None, eps=1e-8))
+from ..model import Optimizer, LearnerConfig
 
 
 # SAC
@@ -30,5 +20,15 @@ class SACOptimization(Base):
 class SACAgentConfig(AgentConfig):
     optimization: SACOptimization = field(default_factory=SACOptimization)
 
-    actor: SACPerceptionActorConfig = field(default_factory=SACPerceptionActorConfig)
-    critic: SACPerceptionCriticConfig = field(default_factory=SACPerceptionCriticConfig)
+    actor: LearnerConfig[PerceptionActorConfig] = field(
+        default_factory=lambda: LearnerConfig(
+            model=PerceptionActorConfig(),
+            optimizer=Optimizer()
+        )
+    )
+    critic: LearnerConfig[PerceptionCriticConfig] = field(
+        default_factory=lambda: LearnerConfig(
+            model=PerceptionCriticConfig(),
+            optimizer=Optimizer()
+        )
+    )

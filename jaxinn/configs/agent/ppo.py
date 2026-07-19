@@ -1,15 +1,18 @@
-from typing import Union
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base, Resolvable
 
 from .base import AgentConfig
-from .actor_critic import ActorCriticOptimizer, ActorCriticDecoupledConfig, ActorCriticSharedConfig
-from ..model import LearningRateScheduler
+from .actor_critic import ActorCriticUnion, ActorCriticSharedConfig
+from ..model import LearningRateScheduler, Optimizer, LearnerConfig
 
 
 @dataclass
-class PPOActorCriticOptimizer(ActorCriticOptimizer):
+class PPOActorCriticOptimizer(Optimizer):
+    lr: float = 3e-4
+    max_norm: float = 0.5
+    use_lr_scheduler: bool = field(default=True, metadata={"transient": True})
+
     def _resolve(self, ctx: dict) -> None:
         if self.use_lr_scheduler:
             num_iterations = ctx["num_environment_steps"] // ctx["episode_length"]
@@ -18,18 +21,6 @@ class PPOActorCriticOptimizer(ActorCriticOptimizer):
                 "num_iterations": num_iterations,
                 "updates_per_iteration": updates_per_iteration
             })
-
-@dataclass
-class PPOActorCriticDecoupledConfig(ActorCriticDecoupledConfig):
-    optimizer: PPOActorCriticOptimizer = field(default_factory=PPOActorCriticOptimizer)
-
-
-@dataclass
-class PPOActorCriticSharedConfig(ActorCriticSharedConfig):
-    optimizer: PPOActorCriticOptimizer = field(default_factory=PPOActorCriticOptimizer)
-
-
-PPOActorCriticUnion = Union[PPOActorCriticDecoupledConfig, PPOActorCriticSharedConfig]
 
 
 # PPO
@@ -51,4 +42,9 @@ class PPOOptimization(Resolvable, Base):
 class PPOAgentConfig(AgentConfig):
     optimization: PPOOptimization = field(default_factory=PPOOptimization)
 
-    actor_critic: PPOActorCriticUnion = field(default_factory=PPOActorCriticDecoupledConfig)
+    actor_critic: LearnerConfig[ActorCriticUnion] = field(
+        default_factory=lambda: LearnerConfig(
+            model=ActorCriticSharedConfig(),
+            optimizer=PPOActorCriticOptimizer()
+        )
+    )
