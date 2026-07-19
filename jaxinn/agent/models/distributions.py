@@ -48,8 +48,13 @@ class TanhNormal(distrax.Transformed):
         super().__init__(_distribution, transform)
 
     # Approximate mean after Tanh transformation as tanh(mean)
-    def mean(self) -> jnp.ndarray:
+    def mean(self) -> jax.Array:
         return jnp.tanh(self.distribution.mean())
+
+    def log_prob(self, value: jax.Array) -> jax.Array:
+        # Clip value to avoid NaNs at the boundaries of tanh (-1 and 1) during inverse of it by arctanh(x)
+        safe_value = jnp.clip(value, -1.0 + 1e-7, 1.0 - 1e-7)
+        return super().log_prob(safe_value)
 
 
 class PatchedBeta(distrax.Beta):
@@ -64,16 +69,16 @@ class AffineBeta(distrax.Transformed):
     """Beta distribution with an affine transformation: X ↦ loc + scale · X.
 
     Attributes:
-        loc (jnp.ndarray): Location parameter.
-        scale (jnp.ndarray): Scale parameter.
+        loc (jax.Array): Location parameter.
+        scale (jax.Array): Scale parameter.
     """
 
     def __init__(
             self,
-            alpha: jnp.ndarray,
-            beta: jnp.ndarray,
-            loc: jnp.ndarray = 0.0,
-            scale: jnp.ndarray = 1.0,
+            alpha: jax.Array,
+            beta: jax.Array,
+            loc: jax.Array = 0.0,
+            scale: jax.Array = 1.0,
     ):
         _distribution = PatchedBeta(alpha=alpha, beta=beta)
 

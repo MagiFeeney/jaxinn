@@ -60,8 +60,8 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
         actor_dist = jax.vmap(self.actor)(obs)
-        actions = actor_dist.sample(seed=key)
-        log_probs = actor_dist.log_prob(actions)
+        actions, log_probs = actor_dist.sample_and_log_prob(seed=key)
+        log_probs = log_probs[..., None]
         q_dists = jax.vmap(self.critic)(obs, actions)
         qs = q_dists.mean()
         min_q = jnp.min(qs, axis=1)
@@ -85,8 +85,8 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
         actor_dist = jax.vmap(self.actor)(next_obs)
-        next_actions = actor_dist.sample(seed=key)
-        next_log_probs = actor_dist.log_prob(next_actions)[..., None]
+        next_actions, next_log_probs = actor_dist.sample_and_log_prob(seed=key)
+        next_log_probs = next_log_probs[..., None]
         next_q_dists = jax.vmap(self.critic_target)(next_obs, next_actions)
         next_qs = next_q_dists.mean() # B x E x 1
         next_min_q = jnp.min(next_qs, axis=1) # B x 1
