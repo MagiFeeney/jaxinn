@@ -1,4 +1,4 @@
-from typing import Any, Optional, ClassVar, Type, Generic, TypeVar, Tuple
+from typing import Any, Optional, ClassVar, Type, Generic, TypeVar
 
 import math
 import jax
@@ -11,10 +11,6 @@ from jaxinn.configs.agent.actor_critic import (
     ActorCriticDecoupledConfig,
     PerceptionActorConfig,
     PerceptionCriticConfig
-)
-from jaxinn.configs.agent.ppo import (
-    PPOActorCriticSharedConfig,
-    PPOActorCriticDecoupledConfig,
 )
 from jaxinn.agent.registry import Registrable
 from jaxinn.agent.models import Actor, Critic
@@ -123,10 +119,7 @@ class ActorCritic(Registrable, eqx.Module):
 
 # Independent encoders
 class ActorCriticDecoupled(ActorCritic):
-    config_cls: ClassVar[Tuple[Type, ...]] = (
-        ActorCriticDecoupledConfig,
-        PPOActorCriticDecoupledConfig,
-    )
+    config_cls: ClassVar[Type] = ActorCriticDecoupledConfig
 
     actor: PerceptionActor
     critic: PerceptionCritic
@@ -165,10 +158,6 @@ class ActorCriticDecoupled(ActorCritic):
 # Shared encoder
 class ActorCriticShared(ActorCritic):
     config_cls: ClassVar[Type] = ActorCriticSharedConfig
-    config_cls: ClassVar[Tuple[Type, ...]] = (
-        ActorCriticSharedConfig,
-        PPOActorCriticSharedConfig,
-    )
 
     encoder: Encoder
     actor: Actor

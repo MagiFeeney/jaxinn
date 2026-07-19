@@ -24,9 +24,9 @@ class Learner(eqx.Module, Generic[ModelType]):
     @classmethod
     def create(cls, model_cls, config, lr_scheduler: Optional[Callable] = None, *, key: PRNGKeyArray) -> "Learner":
         if hasattr(model_cls, "create"): # nested / multiple routes
-            model = model_cls.create(config, key=key)
+            model = model_cls.create(config.model, key=key)
         else:                            # primitive
-            model = model_cls(**config(), key=key)
+            model = model_cls(**config.model(), key=key)
 
         has_scheduler_fn = lr_scheduler is not None
         has_scheduler_cfg = getattr(config.optimizer, "lr_scheduler", None) is not None
