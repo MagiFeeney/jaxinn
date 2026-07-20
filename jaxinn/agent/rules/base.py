@@ -1,7 +1,8 @@
 import abc
-from typing import Any, Tuple, Dict
+from typing import Any, Tuple, Dict, Optional
 
 import jax
+import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
@@ -30,7 +31,13 @@ class Agent(Registrable, eqx.Module):
     def make_batch_fn(self) -> callable:
         pass
 
-    def add_experience(self, experiences: Experience, source: int = 1) -> "Agent":
+    def add_experience(
+            self,
+            experiences: Experience,
+            last_experience: Optional[Experience] = None,
+            source: int = 1,
+            is_serial: bool = True,
+    ) -> "Agent":
         if self.memory is None:
             return self
 
@@ -41,16 +48,33 @@ class Agent(Registrable, eqx.Module):
         else:
             raise NotImplementedError
 
-        target_dim = 1 if isinstance(capacity, int) else len(capacity)
+        target_ndim = 1 if isinstance(capacity, int) else len(capacity)
         experiences_flatten = jax.tree.map(
-            lambda x: flatten_time_major(x, source, target_dim),
+            lambda x: flatten_time_major(x, source, target_ndim, collapse=is_serial),
             experiences
         )
 
-        if target_dim == 1:
+        if target_ndim == 1:
             transitions_flatten, valid_length = replenish_terminal_obs(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
             new_memory = self.memory.add(transitions_flatten, valid_length)
         else:
+            if last_experience is not None:
+                _source = 1 if is_serial else source
+                last_experience_flatten = jax.tree.map(
+                    lambda x: flatten_time_major(
+                        jnp.expand_dims(x, axis=_source - 1),
+                        _source,
+                        target_ndim,
+                        collapse=False
+                    ),
+                    last_experience
+                )
+                experiences_flatten = jax.tree.map(
+                    lambda x, y: jnp.concatenate([x, y], axis=0),
+                    experiences_flatten,
+                    last_experience_flatten
+                )
+
             new_memory = experiences_flatten
 
         return eqx.tree_at(

@@ -323,16 +323,23 @@ class Trainer(Interactor, eqx.Module):
             interaction_state, experiences = self.interact(agent, interaction_state, key_interact, prefill=True)
             return interaction_state, experiences
 
-        if self.prefill_mode == "batched":
+        if self.prefill_mode not in ("serial", "batched"):
+            raise ValueError(f"Unknown prefill_mode: {self.prefill_mode}. Expected 'batched' or 'serial'.")
+
+        is_serial = (self.prefill_mode == "serial")
+
+        if is_serial:
+            interaction_state, experiences = prefill_fn(key_interact)
+        else:
             keys = jax.random.split(key_interact, self.num_prefill_episodes)
             interaction_state, experiences = jax.vmap(prefill_fn)(keys)
-            source = 2
-        elif self.prefill_mode == "serial":
-            interaction_state, experiences = prefill_fn(key_interact)
-            source = 1
-        else:
-            raise ValueError(f"Unknown prefill_mode: {self.prefill_mode}. Expected 'batched' or 'serial'.")
-        agent = agent.add_experience(experiences, source=source)
+
+        agent = agent.add_experience(
+            experiences,
+            last_experience=interaction_state.experience,
+            source=1 if is_serial else 2,
+            is_serial=is_serial
+        )
 
         agent, metrics = self.learn(agent, key_learn, prefill=True)
         return agent, interaction_state, metrics
@@ -348,7 +355,12 @@ class Trainer(Interactor, eqx.Module):
         interaction_state, experiences = jax.lax.scan(lambda s, k: self.interact(agent, s, k), interaction_state, keys_interact)
 
         # Store them
-        agent = agent.add_experience(experiences, source=2)
+        agent = agent.add_experience(
+            experiences,
+            last_experience=interaction_state.experience,
+            source=2,
+            is_serial=True
+        )
 
         # Update
         agent, metrics = self.learn(agent, key_learn)

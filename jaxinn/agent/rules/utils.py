@@ -13,19 +13,30 @@ def transform(obs: jax.Array) -> jax.Array:
     return obs
 
 
-def flatten_time_major(x: jax.Array, source: int, target_dim: int = 1) -> jax.Array:
+def flatten_time_major(
+        x: jax.Array,
+        source: int,
+        target_ndim: int = 1,
+        collapse: bool = False
+) -> jax.Array:
     """
-    Swaps the `source` axis with the preceding axis to ensure correct layout of trajectories, then flattens all leading dimensions according to `target_dim`, with additional checks on RGB inputs for memory efficiency. Finally, rearranges the retained dimensions into a time-major ordering.
+    Swaps the `source` axis with the preceding axis to ensure correct layout of trajectories, then flattens all leading dimensions according to `target_ndim`, with additional checks on RGB inputs for memory efficiency. Finally, rearranges the retained dimensions into a time-major ordering.
+
+    If `collapse` is True, flattens the sequence/batch dims into a single time axis.
     """
+    if collapse:
+        x = x.reshape(-1, *x.shape[source:])
+        source = 1
+
     num_leading_dims = source + 1
 
-    if num_leading_dims < target_dim:
+    if num_leading_dims < target_ndim:
         raise ValueError(
-            f"Cannot flatten to {target_dim} dims: source index {source} "
+            f"Cannot flatten to {target_ndim} dims: source index {source} "
             f"(representing {num_leading_dims} dims) is too small."
         )
 
-    end_dim = num_leading_dims - target_dim + 1
+    end_dim = num_leading_dims - target_ndim + 1
 
     # Swap the source axis with the preceding axis
     # e.g., (T, E, ...) -> (E, T, ...) or (N, T, E, ...) -> (N, E, T, ...)
