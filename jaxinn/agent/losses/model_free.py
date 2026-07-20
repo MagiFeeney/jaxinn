@@ -62,8 +62,8 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             obs: jax.Array,
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
-        actor_dist = jax.vmap(self.actor)(obs)
-        actions, log_probs = actor_dist.sample_and_log_prob(seed=key)
+        actor_dists = jax.vmap(self.actor)(obs)
+        actions, log_probs = actor_dists.sample_and_log_prob(seed=key)
         log_probs = log_probs[..., None]
         q_dists = jax.vmap(self.critic)(obs, actions)
         qs = q_dists.mean()
@@ -87,8 +87,8 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             terminated: jax.Array,
             key: PRNGKeyArray,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
-        actor_dist = jax.vmap(self.actor)(next_obs)
-        next_actions, next_log_probs = actor_dist.sample_and_log_prob(seed=key)
+        actor_dists = jax.vmap(self.actor)(next_obs)
+        next_actions, next_log_probs = actor_dists.sample_and_log_prob(seed=key)
         next_log_probs = next_log_probs[..., None]
         next_q_dists = jax.vmap(self.critic_target)(next_obs, next_actions)
         next_qs = next_q_dists.mean() # B x E x 1
