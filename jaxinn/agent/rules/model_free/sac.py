@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Any, Dict, Optional, Tuple, ClassVar, Type
 
 import jax
@@ -15,7 +14,7 @@ from jaxinn.agent.losses import SACLossMixIn
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
 
 from .actor_critic import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
-from .utils import reconstruct_rl_tuple, soft_update
+from .utils import soft_update
 
 
 class SACAgent(SACLossMixIn, Agent):
@@ -83,15 +82,22 @@ class SACAgent(SACLossMixIn, Agent):
 
     def make_batch_fn(self) -> callable:
         def step_fn(key: PRNGKeyArray):
-            data = self.memory.sample((self.batch_size + 1, 1), key) # 1 x (B + 1)
-            data = jax.tree.map(lambda x: jnp.squeeze(x, axis=0), data) # (B + 1)
+            data = self.memory.sample((self.batch_size, 2), key) # 2 x B
             data = eqx.tree_at(
                 lambda d: d.next_obs,
                 data,
                 replace_fn=transform
             )
-            rl_tuple, _ = reconstruct_rl_tuple(data) # (B, *)
-            return rl_tuple
+
+            # Map a 2-step temporal sequence into a single (s, a, r, s') causal transition
+            return (
+                data.next_obs[0],
+                data.action[1],
+                data.reward[1],
+                data.next_obs[1],
+                data.terminated[1],
+                data.truncated[1]
+            )
         return step_fn
 
     def learn(self, data: Transition, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
