@@ -49,7 +49,7 @@ class Memory(Resolvable, Base):
 
         if self.type == "batched":
             if not is_tuple or len(self.capacity) != 2 or self.capacity[1] != num_envs:
-                actual_episode_length = (episode_length // num_envs // action_repeat) + 1
+                actual_episode_length = (episode_length // num_envs // action_repeat)
                 self.capacity = (actual_episode_length, num_envs)
                 is_tuple = True
         elif is_tuple:
