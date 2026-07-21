@@ -95,7 +95,8 @@ class FreeStdNormalHeadConfig(HeadConfig):
 class TanhNormalHeadConfig(HeadConfig):
     min_std: float = 1e-4
     init_std: float = 5.0
-    mean_scale: float = 5.0
+    mean_scale: Optional[float] = 5.0
+    log_std_range: Optional[Tuple[int, int]] = None
 
 
 @dataclass

@@ -108,6 +108,7 @@ class TanhNormalHead(Head):
     min_std: float = eqx.field(static=True)
     mean_scale: float = eqx.field(static=True)
     raw_init_std: float = eqx.field(static=True)
+    log_std_range: Optional[Tuple[int, int]] = eqx.field(static=True)
 
     def __init__(
         self,
@@ -122,6 +123,7 @@ class TanhNormalHead(Head):
         self.min_std = min_std
         self.mean_scale = mean_scale
         self.raw_init_std = math.log(math.exp(init_std) - 1)
+        self.log_std_range = log_std_range
 
     def __call__(self, x: jax.Array) -> FixedDistrax:
         mean, log_std = jnp.split(x, 2, axis=-1)
