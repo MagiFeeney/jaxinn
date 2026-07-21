@@ -123,7 +123,7 @@ class ManiSkill(GymnasiumVmapMixIn, Environment):
             terminated=jnp.zeros((), dtype=bool),
             truncated=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(terminal_observation=jax.tree.map(jnp.zeros_like, obs))
+        env_info = EnvInfo(boundary_observation=jax.tree.map(jnp.zeros_like, obs))
         env_state = EnvState()
         return transition, env_info, env_state
 
@@ -137,7 +137,7 @@ class ManiSkill(GymnasiumVmapMixIn, Environment):
             terminated=terminated,
             truncated=truncated,
         )
-        env_info = EnvInfo(terminal_observation=final_obs)
+        env_info = EnvInfo(boundary_observation=final_obs)
         next_env_state = EnvState()
         return transition, env_info, next_env_state
 

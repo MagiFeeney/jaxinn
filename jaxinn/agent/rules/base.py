@@ -10,7 +10,7 @@ from jaxinn.structs import Experience
 from jaxinn.agent.memory import Memory
 from jaxinn.agent.registry import Registrable
 
-from .utils import flatten_time_major, replenish_terminal_obs
+from .utils import flatten_time_major, replenish_boundary_obs
 
 
 class Agent(Registrable, eqx.Module):
@@ -55,7 +55,7 @@ class Agent(Registrable, eqx.Module):
         )
 
         if target_ndim == 1:
-            transitions_flatten, valid_length = replenish_terminal_obs(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
+            transitions_flatten, valid_length = replenish_boundary_obs(experiences_flatten) # handle terminal obs; critical for world modeling e.g. predict reward
             new_memory = self.memory.add(transitions_flatten, valid_length)
         else:
             if last_experience is not None:

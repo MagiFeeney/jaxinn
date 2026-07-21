@@ -289,7 +289,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
         env_info = EnvInfo(
             info=env_state.info,
             metrics=env_state.metrics,
-            terminal_observation=jnp.zeros_like(transition.next_obs), # dummy
+            boundary_observation=jnp.zeros_like(transition.next_obs), # dummy
         )
         return transition, env_info, env_state
 

@@ -45,7 +45,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             obs_dtype=config.memory.obs_dtype,
             action_shape=config.memory.action_shape,
             action_dtype=config.memory.action_dtype,
-            needs_terminal_obs=config.memory.needs_terminal_obs
+            needs_boundary_obs=config.memory.needs_boundary_obs
         )
 
         return cls(
@@ -63,12 +63,12 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None, action
 
     def make_batch_fn(self) -> callable:
-        transition, terminal_obs = self.memory.transition, self.memory.terminal_observation
-        (obs, actions, rewards, next_obs, terminated, truncated), terminal_obs = reconstruct_rl_tuple(transition, terminal_obs)
+        transition, boundary_obs = self.memory.transition, self.memory.boundary_observation
+        obs, actions, rewards, next_obs, terminated, truncated = reconstruct_rl_tuple(transition, boundary_obs)
 
         # Get advantages and returns
         values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs).mean()
-        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs).mean() # Recalculate values on actual terminal observation to handle truncation
+        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(next_obs).mean() # Recalculate values on actual terminal observation to handle truncation
 
         baselines = values
         advantages, returns = compute_adv_and_ret(

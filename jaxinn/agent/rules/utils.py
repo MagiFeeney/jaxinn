@@ -60,14 +60,14 @@ def flatten_time_major(
     return time_major_x
 
 
-def replenish_terminal_obs(experiences: Experience) -> Tuple[Transition, jax.Array]:
-    if experiences.terminal_observation is None:
+def replenish_boundary_obs(experiences: Experience) -> Tuple[Transition, jax.Array]:
+    if experiences.boundary_observation is None:
         return experiences.transition, None
 
     mask = experiences.transition.terminated | experiences.transition.truncated
     N = mask.shape[0]
 
-    # Indices for step transitions; we replenish ones at done = True with terminal_obs
+    # Indices for step transitions; we replenish ones at done = True with boundary_obs
     shifts = jnp.concatenate([
         jnp.zeros((1,) + mask.shape[1:], dtype=bool),
         mask[:-1]
@@ -85,11 +85,11 @@ def replenish_terminal_obs(experiences: Experience) -> Tuple[Transition, jax.Arr
         experiences.transition.next_obs
     )
 
-    # Replenish terminal_obs
-    mask_expanded = mask.reshape((N,) + (1,) * (experiences.terminal_observation.ndim - 1))
+    # Replenish boundary_obs
+    mask_expanded = mask.reshape((N,) + (1,) * (experiences.boundary_observation.ndim - 1))
     new_next_obs = jnp.where(
         mask_expanded,
-        experiences.terminal_observation,
+        experiences.boundary_observation,
         experiences.transition.next_obs
     )
     step_transitions = eqx.tree_at(
