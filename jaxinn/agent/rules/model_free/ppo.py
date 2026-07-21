@@ -67,15 +67,8 @@ class PPOAgent(PPOLossMixIn, Agent):
         (obs, actions, rewards, next_obs, terminated, truncated), terminal_obs = reconstruct_rl_tuple(transition, terminal_obs)
 
         # Get advantages and returns
-        if terminal_obs is None: # Next-step autoreset
-            all_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(transition.next_obs).mean()
-            values = all_values[:-1]
-            next_values = all_values[1:]
-            last_dones = transition.terminated | transition.truncated
-            next_values = next_values * (1 - last_dones[:-1])
-        else:                    # current-step autoreset
-            values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs).mean()
-            next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs).mean() # Recalculate values on actual terminal observation to handle truncation
+        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs).mean()
+        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(terminal_obs).mean() # Recalculate values on actual terminal observation to handle truncation
 
         baselines = values
         advantages, returns = compute_adv_and_ret(

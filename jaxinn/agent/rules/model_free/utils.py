@@ -14,7 +14,7 @@ def reconstruct_rl_tuple(transition: Transition, terminal_obs: Optional[jax.Arra
         transition.next_obs[1:],
         transition.terminated[1:],
         transition.truncated[1:],
-    ), terminal_obs[1:] if terminal_obs is not None else None
+    ), terminal_obs[1:] if terminal_obs is not None else transition.next_obs[1:]
 
 
 def soft_update(target_net: eqx.Module, source_net: eqx.Module, tau: float) -> eqx.Module:
