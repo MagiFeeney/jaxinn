@@ -114,7 +114,8 @@ class TanhNormalHead(Head):
         event_size: int,
         min_std: float = 1e-4,
         init_std: float = 5.0,
-        mean_scale: float = 5.0
+        mean_scale: Optional[float] = 5.0,
+        log_std_range: Optional[Tuple[int, int]] = None,
     ):
         self.param_size = 2 * event_size
 
@@ -124,8 +125,15 @@ class TanhNormalHead(Head):
 
     def __call__(self, x: jax.Array) -> FixedDistrax:
         mean, log_std = jnp.split(x, 2, axis=-1)
-        mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
-        std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
+
+        if self.mean_scale is not None:
+            mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
+
+        if self.log_std_range is not None:
+            log_std = jnp.clip(log_std, *self.log_std_range)
+            std = jnp.exp(log_std)
+        else:
+            std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
 
         return dx.Independent(dx(TanhNormal)(mean=mean, std=std), reinterpreted_batch_ndims=Static(1))
 
