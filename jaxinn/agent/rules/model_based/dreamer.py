@@ -69,8 +69,8 @@ class DreamerAgent(DreamerLossMixIn, Agent):
 
         # For initialization of LatentState
         random_init = config.random_init
-        belief_size = config.world.transition.belief_size
-        state_size = config.world.transition.state_size
+        belief_size = config.world.model.transition.belief_size
+        state_size = config.world.model.transition.state_size
 
         return cls(
             world=world,
