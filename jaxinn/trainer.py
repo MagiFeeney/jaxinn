@@ -398,6 +398,7 @@ def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
         "num_environment_steps":    config.exploration.num_environment_steps,
         "episode_length":           config.exploration.episode_length,
         "train_iterations":         config.exploration.train_iterations,
+        "train_interval":           config.exploration.train_interval,
         "num_seeds":                config.num_seeds,
         "next_step_autoreset":      next_step_autoreset,
         **env_wrapper_config

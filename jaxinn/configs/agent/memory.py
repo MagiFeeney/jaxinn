@@ -43,13 +43,15 @@ class Memory(Resolvable, Base):
         num_envs = ctx.get("num_envs", 1)
         action_repeat = ctx.get("action_repeat", 1)
         episode_length = ctx.get("episode_length", 0)
+        train_interval = ctx.get("train_interval", 0)
         num_environment_steps = ctx.get("num_environment_steps", 0)
 
         is_tuple = isinstance(self.capacity, tuple)
 
         if self.type == "batched":
             if not is_tuple or len(self.capacity) != 2 or self.capacity[1] != num_envs:
-                actual_episode_length = (episode_length // num_envs // action_repeat) + 1
+                num_episodes_per_learn = train_interval // episode_length
+                actual_episode_length = num_episodes_per_learn * (episode_length // num_envs // action_repeat) + 1
                 self.capacity = (actual_episode_length, num_envs)
                 is_tuple = True
         elif is_tuple:
