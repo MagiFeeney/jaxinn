@@ -65,7 +65,7 @@ class TerminalObservationWrapper:
         obs = jax.lax.select(done, obs_re, obs_st)
 
         # Get terminal obs
-        info['boundary_observation'] = obs_st
+        info['boundary_obs'] = obs_st
         return obs, state, reward, done, info
 
     def __getattr__(self, name):
@@ -95,7 +95,7 @@ class Gymnax(Environment):
             terminated=jnp.zeros((), dtype=bool),
             truncated=jnp.zeros((), dtype=bool),
         )
-        env_info = EnvInfo(boundary_observation=jnp.zeros_like(obs)) # dummy
+        env_info = EnvInfo(boundary_obs=jnp.zeros_like(obs)) # dummy
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> PyTuple[Transition, EnvInfo, GymnaxEnvState]:

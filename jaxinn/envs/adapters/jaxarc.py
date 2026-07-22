@@ -92,7 +92,7 @@ class JaxARC(Environment):
         )
         env_info = EnvInfo(
             info=timestep.extras,
-            boundary_observation=jnp.zeros_like(transition.next_obs), # dummy
+            boundary_obs=jnp.zeros_like(transition.next_obs), # dummy
         )
         return transition, env_info, env_state
 

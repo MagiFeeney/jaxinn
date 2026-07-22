@@ -66,7 +66,7 @@ class Interactor:
         else:
             init_transition, info, env_state = self.env.reset(key_reset, num_envs=num_envs, mode=mode)
         init_latent_state = agent.init_latent_state(key_init, batch_shape=(num_envs,), eval=eval)
-        init_boundary_obs = info.boundary_observation
+        init_boundary_obs = info.boundary_obs
 
         if last_env_state is not None:
             if self.env.is_wrapped_by(NormalizeObservation, mode=mode):
@@ -78,7 +78,7 @@ class Interactor:
         interaction_state = InteractionState(
             experience = Experience(
                 transition=init_transition,
-                boundary_observation=init_boundary_obs
+                boundary_obs=init_boundary_obs
             ),
             latent_state=init_latent_state,
             env_state=env_state
@@ -179,7 +179,7 @@ class Interactor:
             new_interaction_state = InteractionState(
                 experience = Experience(
                     transition=transition,
-                    boundary_observation=info.boundary_observation
+                    boundary_obs=info.boundary_obs
                 ),
                 latent_state=latent_state,
                 env_state=next_env_state

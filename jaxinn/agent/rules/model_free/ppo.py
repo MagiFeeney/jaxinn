@@ -63,7 +63,7 @@ class PPOAgent(PPOLossMixIn, Agent):
         return None, action
 
     def make_batch_fn(self) -> callable:
-        transition, boundary_obs = self.memory.transition, self.memory.boundary_observation
+        transition, boundary_obs = self.memory.transition, self.memory.boundary_obs
         obs, actions, rewards, next_obs, terminated, truncated = reconstruct_rl_tuple(transition, boundary_obs)
 
         # Get advantages and returns

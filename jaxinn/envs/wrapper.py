@@ -135,7 +135,7 @@ class AutoReset(Wrapper):
             step_transition.next_obs
         )
         final_transition = eqx.tree_at(lambda t: t.next_obs, step_transition, _next_obs)
-        final_info = EnvInfo(**step_env_info.data, boundary_observation=step_transition.next_obs)
+        final_info = EnvInfo(**step_env_info.data, boundary_obs=step_transition.next_obs)
         return final_transition, final_info, final_env_state
 
 
@@ -182,7 +182,7 @@ class ActionRepeat(Wrapper):
         return transition, env_info, next_env_state
 
 
-def walk_and_apply(node, transform_fn, target_key="boundary_observation"):
+def walk_and_apply(node, transform_fn, target_key="boundary_obs"):
     """
     Recursively walks a dictionary and applies transform_fn to the value
     of any key matching target_key.
@@ -318,7 +318,7 @@ class NextStepAutoResetTerminalObs(Wrapper):
 
     def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
-        env_info = EnvInfo(**env_info.data, boundary_observation=None)
+        env_info = EnvInfo(**env_info.data, boundary_obs=None)
         env_state = EnvState(
             state=env_state,
             last_done=jnp.zeros((), dtype=bool)
@@ -335,7 +335,7 @@ class NextStepAutoResetTerminalObs(Wrapper):
             action
         )
         transition, env_info, next_env_state = self.env.step(key, env_state, action)
-        env_info = EnvInfo(**env_info.data, boundary_observation=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
+        env_info = EnvInfo(**env_info.data, boundary_obs=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
         next_env_state = EnvState(
             state=next_env_state,
             last_done=transition.terminated | transition.truncated
@@ -473,8 +473,8 @@ class NormalizeObservation(Wrapper):
             state=next_env_state,
             obs_rms=new_obs_rms,
         )
-        if hasattr(env_info, "boundary_observation"):
-            env_info = eqx.tree_at(lambda i: i.boundary_observation, env_info, self._normalize_obs(new_obs_rms, env_info.boundary_observation))
+        if hasattr(env_info, "boundary_obs"):
+            env_info = eqx.tree_at(lambda i: i.boundary_obs, env_info, self._normalize_obs(new_obs_rms, env_info.boundary_obs))
         return new_transition, env_info, next_env_state
 
     def _normalize_obs(self, obs_rms: RunningMeanStdState, obs: Any) -> Any:

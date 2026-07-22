@@ -83,7 +83,7 @@ class Transition(eqx.Module, ArrayLikeOps):
 
 class Experience(eqx.Module):
     transition: Transition
-    boundary_observation: jax.Array
+    boundary_obs: jax.Array
 
     @classmethod
     def initialize(
@@ -96,8 +96,8 @@ class Experience(eqx.Module):
             needs_boundary_obs: bool,
     ):
         transition = Transition.initialize(capacity, obs_shape, obs_dtype, action_shape, action_dtype)
-        boundary_observation = jnp.zeros_like(transition.next_obs) if needs_boundary_obs else None
-        return cls(transition=transition, boundary_observation=boundary_observation)
+        boundary_obs = jnp.zeros_like(transition.next_obs) if needs_boundary_obs else None
+        return cls(transition=transition, boundary_obs=boundary_obs)
 
 
 class LatentState(eqx.Module, ArrayLikeOps):

@@ -37,7 +37,7 @@ class Navix(Environment):
         )
         env_info = EnvInfo(
             info=env_state.info,
-            boundary_observation=jnp.zeros_like(transition.next_obs), # dummy
+            boundary_obs=jnp.zeros_like(transition.next_obs), # dummy
         )
         return transition, env_info, env_state
 
