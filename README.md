@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-black.png" alt="logo"></img>
+<img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-black.png" width="600"  alt="logo"></img>
 </div>
 
 
