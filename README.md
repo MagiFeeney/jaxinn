@@ -1,6 +1,7 @@
 <div align="center">
-<img src="https://raw.githubusercontent.com/MagiFeeney/jaxinn/main/images/jaxinn-black.png" alt="logo"></img>
+<img src="https://raw.githubusercontent.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-black.png" alt="logo"></img>
 </div>
+
 
 # Jaxinn: A Modular, Vectorized, and Extensible JAX Reinforcement Learning Framework
 
