@@ -174,6 +174,12 @@ class CustomAgent(CustomLossMixIn, Agent):
         pass
 ```
 
+## Benchmark
+- Run PPO with massively parallel envs and seeds:
+<div align="center">
+<img src="https://raw.githubusercontent.com/MagiFeeney/jaxinn/pre-release/images/benchmark/ppo-gymnax-CartPole.png" width="500"  alt="ppo-cartpole"></img>
+</div>
+
 ## Code Structure
 <details>
 <summary>Show details</summary>
