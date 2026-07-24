@@ -12,11 +12,25 @@ Jaxinn is a high-performance, pure JAX Reinforcement Learning (RL) framework wit
 <img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-overview.png" width="800"  alt="overview"></img>
 </div>
 
-- Point 1
-- Point 2
-- Point 3
+- 🛡️ Strongly-typed Configuration: A modular, object-oriented config system that routes components directly at the command line.
+- ⚡ Vectorize Everywhere: Parallelize environments, episodes, and agents effortlessly by adjusting just a few simple parameters.
+- 🔄 Unified Interface: A single, universal trainer loop runs all agents seamlessly within a self-sufficient environment ecosystem.
+- 🌍 Diverse Environments: JAX-native? Good to go. `jit` or `vmap` breaks? No problem.
+- 📊 Built-in Logging: Out-of-the-box multi-seed experiment tracking with TensorBoard.
+- 🧩 Highly Modular: Grab a loss, a set of models, and a rule is all you need to create an agent.
 
 ## Get Started
+
+## Algorithms
+### Model-based RL
+- [X] Dreamer
+- [X] DreamerV2
+- [ ] TD-MPC
+
+### Model-based RL
+- [X] PPO
+- [X] SAC
+- [ ] TD3
 
 ## Adapters
 ### JAX Native Environments
