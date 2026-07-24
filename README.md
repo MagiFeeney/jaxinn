@@ -87,6 +87,8 @@ final_agent, (metrics, evaluation) = trainer(agent, key_train)
 
 - Create multiple agents and train them simultaneously:
 ``` python
+import equinox as eqx
+
 @eqx.filter_jit
 @eqx.filter_vmap
 def make_train(agent, key):
@@ -131,12 +133,6 @@ def train_one_episode(key, local_num_envs=None):
     return transitions, env_states
 
 
-@eqx.filter_vmap
-def train_multiple_seeds(key, num_episodes, local_num_envs=None):
-    keys = jax.random.split(key, num_episodes)
-    return train_one_episode(keys, local_num_envs)
-
-
 env = Gymnax.create(env_name, **creation)
 env = UnsqueezeScalar(env)
 env = Batched(env, num_envs=wrapper["num_envs"])
@@ -151,15 +147,10 @@ if normalize_reward:
 
 
 key = jax.random.PRNGKey(42)
-key_seed, key_episode = jax.random.split(key, 2)
-keys_seed = jax.random.split(key_seed, num_seeds)
-keys_episode = jax.random.split(key_episode, num_episodes)
+keys = jax.random.split(key, num_episodes)
 
 print(" Running multiple episodes ... ")
-transitions, env_states = train_one_episode(keys_episode)
-
-print(" Running multiple seeds ... ")
-transitions, env_states = train_multiple_seeds(keys_seed, num_episodes)
+transitions, env_states = train_one_episode(keys)
 ```
 
 - Create a custom agent:
@@ -180,7 +171,8 @@ from jaxinn.configs.agent import CustomAgentConfig
 
 
 class CustomAgent(CustomLossMixIn, Agent):
-    config_cls: ClassVar[Type] = CustomAgentConfig # Bind your agent to the config so that we can directly route it from cli.
+    # Bind your agent to the config so that we can directly route it from cli.
+    config_cls: ClassVar[Type] = CustomAgentConfig
 
     actor_critic: Learner[ActorCritic]
     memory: UniformMemory
