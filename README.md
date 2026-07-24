@@ -4,8 +4,41 @@
 
 
 # Jaxinn: A Modular, Vectorized, and Extensible JAX Reinforcement Learning Framework
+- Point 1
+- Point 2
+- Point 3
+
+<div align="center">
+<img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-overview.png" width="600"  alt="overview"></img>
+</div>
+
+## Why Jaxinn?
+
+## Get Started
+
+## Adapters
+### JAX Native Environments
+- [X] Brax
+- [X] Craftax
+- [X] Gymnax
+- [X] MuJoCo Playground
+- [X] Navix
+- [X] JaxARC
+- [ ] Jumanji
+- [ ] JaxGCRL
+
+### Non-JAX Environments
+- [X] EnvPool
+- [X] Gymnasium
+- [X] DeepMind Control Suite
+- [X] ARC-AGI-3
+- [ ] MineRL
+
+## Examples
 
 ## Code Structure
+<details>
+<summary>Show details</summary>
 
 ```
 Jaxinn/
@@ -95,30 +128,6 @@ Jaxinn/
 │  │  ├─ vmap.py
 └─ └─ └─ wrapper.py
 ```
-
-## Why Jaxinn?
-
-## Get Started
-
-## Adapters
-### JAX Native Environments
-- [X] Brax
-- [X] Craftax
-- [X] Gymnax
-- [X] MuJoCo Playground
-- [X] Navix
-- [X] JaxARC
-- [ ] Jumanji
-- [ ] JaxGCRL
-
-### Non-JAX Environments
-- [X] EnvPool
-- [X] Gymnasium
-- [X] DeepMind Control Suite
-- [X] ARC-AGI-3
-- [ ] MineRL
-
-## Examples
 
 ## Contributing
 
