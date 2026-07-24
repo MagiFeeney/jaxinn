@@ -9,7 +9,7 @@
 - Point 3
 
 <div align="center">
-<img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-overview.png" width="600"  alt="overview"></img>
+<img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-overview.png" width="800"  alt="overview"></img>
 </div>
 
 ## Why Jaxinn?
