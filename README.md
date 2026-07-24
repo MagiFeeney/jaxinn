@@ -7,11 +7,10 @@
 
 Jaxinn is a high-performance, pure JAX Reinforcement Learning (RL) framework with a clean, intuitive, object-oriented API. It empowers researchers to train massively parallel agents in seconds on GPUs, unlocking significantly higher throughput for both model-based and model-free RL. Jaxinn provides a unified interface for a diverse suite of environments—all of which are fully JIT-compatible, even if they aren't natively written in JAX. With its modular architecture, you can easily build custom agents by plugging together existing components, allowing you to focus on your algorithm rather than rewriting training boilerplate.
 
+## Why Jaxinn?
 <div align="center">
 <img src="https://github.com/MagiFeeney/jaxinn/blob/main/images/jaxinn-overview.png" width="800"  alt="overview"></img>
 </div>
-
-## Why Jaxinn?
 
 - Point 1
 - Point 2
