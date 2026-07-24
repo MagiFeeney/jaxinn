@@ -68,9 +68,21 @@ uv pip install -e .[all] # Install all environments
 - [ ] MineRL
 
 ## Examples
-
+- Create single agent and train it
 ``` python
-hello world
+from jaxinn.trainer import Trainer, resolve_agent_config
+from jaxinn.agent import Agent
+from jaxinn.configs import Config
+
+key = jax.random.PRNGKey(42)
+key_agent, key_train = jax.random.split(key, 2)
+
+config = Config()
+trainer = Trainer.create(config)
+
+agent_config = resolve_agent_config(config, trainer.env)
+agent = Agent.create(agent_config, key=key_agent, memory_id=memory_id)
+final_agent, (metrics, evaluation) = trainer(agent, key_train)
 ```
 
 ## Code Structure
