@@ -69,6 +69,10 @@ uv pip install -e .[all] # Install all environments
 
 ## Examples
 
+``` python
+hello world
+```
+
 ## Code Structure
 <details>
 <summary>Show details</summary>
@@ -161,9 +165,21 @@ Jaxinn/
 │  │  ├─ vmap.py
 └─ └─ └─ wrapper.py
 ```
+</details>
 
 ## Contributing
+Issues and PRs are welcome, but please be specific, considerate, and communicate your problem or goal clearly.
 
 ## License
+Jaxinn is licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE) for greater accessibility.
 
 ## Citation
+Should you find this work useful for your research, please consider citing:
+``` bibtex
+@software{jaxinn2026,
+  title={{Jaxinn}: A Modular, Vectorized, and Extensible JAX Reinforcement Learning Framework},
+  author={Jianfei Ma and Wee Sun Lee},
+  url={https://github.com/MagiFeeney/jaxinn}
+  year={2026},
+}
+```
