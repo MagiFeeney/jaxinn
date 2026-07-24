@@ -68,7 +68,7 @@ uv pip install -e .[all] # Install all environments
 - [ ] MineRL
 
 ## Examples
-- Create single agent and train it
+- Create single agent and train it:
 ``` python
 from jaxinn.trainer import Trainer, resolve_agent_config
 from jaxinn.agent import Agent
@@ -83,6 +83,111 @@ trainer = Trainer.create(config)
 agent_config = resolve_agent_config(config, trainer.env)
 agent = Agent.create(agent_config, key=key_agent, memory_id=memory_id)
 final_agent, (metrics, evaluation) = trainer(agent, key_train)
+```
+
+- Create multiple agents and train them simultaneously:
+``` python
+@eqx.filter_jit
+@eqx.filter_vmap
+def make_train(agent, key):
+    return trainer(agent, key)
+
+def make_agent(key, memory_id):
+    return Agent.create(agent_config, key=key, memory_id=memory_id)
+
+agents = jax.vmap(make_agent)(keys_agent, memory_id)
+final_agent, (metrics, evaluation) = make_train(agents, keys_train)
+```
+
+- Create an env and use it separately:
+``` python
+import jax
+import jax.numpy as jnp
+import equinox as eqx
+
+from jaxinn.envs.adapters.gymnax import Gymnax
+from jaxinn.envs.wrapper import UnsqueezeScalar, Batched
+
+
+@eqx.filter_vmap
+def train_one_episode(key, local_num_envs=None):
+    local_num_envs = num_envs if local_num_envs is None else local_num_envs
+    key_reset, key_scan = jax.random.split(key, 2)
+    transition, env_info, env_state = env.reset(key_reset, local_num_envs)
+
+    def make_episode_fn(carry, _):
+        key, transition, env_state = carry
+        key, key_step, key_action = jax.random.split(key, 3)
+        action = jax.random.randint(key_action, (local_num_envs,), 0, env.action_space.n)
+        transition, env_info, next_env_state = env.step(key_step, env_state, action)
+        return (key, transition, next_env_state), (transition, env_state)
+
+    _, (transitions, env_states) = jax.lax.scan(
+        make_episode_fn,
+        (key_scan, transition, env_state),
+        None,
+        num_steps_per_episode
+    )
+    return transitions, env_states
+
+
+@eqx.filter_vmap
+def train_multiple_seeds(key, num_episodes, local_num_envs=None):
+    keys = jax.random.split(key, num_episodes)
+    return train_one_episode(keys, local_num_envs)
+
+
+env = Gymnax.create(env_name, **creation)
+env = UnsqueezeScalar(env)
+env = Batched(env, num_envs=wrapper["num_envs"])
+normalize_obs = wrapper.get("normalize_obs", False)
+normalize_reward = wrapper.get("normalize_reward", False)
+if normalize_obs or normalize_reward:
+    env = Phase(env)
+if normalize_obs:
+    env = NormalizeObservation(env)
+if normalize_reward:
+    env = NormalizeReward(env)
+
+
+key = jax.random.PRNGKey(42)
+key_seed, key_episode = jax.random.split(key, 2)
+keys_seed = jax.random.split(key_seed, num_seeds)
+keys_episode = jax.random.split(key_episode, num_episodes)
+
+print(" Running multiple episodes ... ")
+transitions, env_states = train_one_episode(keys_episode)
+
+print(" Running multiple seeds ... ")
+transitions, env_states = train_multiple_seeds(keys_seed, num_episodes)
+```
+
+- Create a custom agent:
+``` python
+from typing import Any, Tuple, Dict
+
+import jax
+import jax.numpy as jnp
+from jaxtyping import PRNGKeyArray
+import equinox as eqx
+
+from jaxinn.agent.rules import Agent, Learner
+from jaxinn.agent.losses import CustomLossMixIn
+from jaxinn.agent.models import ActorCritic
+from jaxinn.agent.memory import Uniform as UniformMemory
+
+from jaxinn.configs.agent import CustomAgentConfig
+
+
+class CustomAgent(CustomLossMixIn, Agent):
+    config_cls: ClassVar[Type] = CustomAgentConfig # Bind your agent to the config so that we can directly route it from cli.
+
+    actor_critic: Learner[ActorCritic]
+    memory: UniformMemory
+
+    # Define your update rule and all set!
+    def learn(self, data: Any, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
+        pass
 ```
 
 ## Code Structure
