@@ -16,10 +16,27 @@ Jaxinn is a high-performance, pure JAX Reinforcement Learning (RL) framework wit
 - ⚡ Vectorize Everywhere: Parallelize environments, episodes, and agents effortlessly by adjusting just a few simple parameters.
 - 🔄 Unified Interface: A single, universal trainer loop runs all agents seamlessly within a self-sufficient environment ecosystem.
 - 🌍 Diverse Environments: JAX-native? Good to go. `jit` or `vmap` breaks? No problem.
-- 📊 Built-in Logging: Out-of-the-box multi-seed experiment tracking with TensorBoard.
-- 🧩 Highly Modular: Grab a loss, a set of models, and a rule is all you need to create an agent.
+- 📊 Built-in Logger: Out-of-the-box multi-seed experiment tracking with TensorBoard.
+- 🧩 Highly Modular: Grab a loss, a set of models, and a rule to build a custom agent.
 
 ## Get Started
+You can use Jaxinn by cloning the repository and use `uv` to manage dependency:
+
+``` bash
+git clone https://github.com/MagiFeeney/jaxinn.git
+cd jaxinn
+pip install uv
+```
+
+`uv` allows us to select the environment we want to use:
+
+``` bash
+uv pip install -e .[gymnax] # Install Gymnax
+
+uv pip install -e .[envpool] # Install EnvPool
+
+uv pip install -e .[all] # Install all environments
+```
 
 ## Algorithms
 ### Model-based RL
