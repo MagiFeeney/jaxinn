@@ -136,14 +136,6 @@ def train_one_episode(key, local_num_envs=None):
 env = Gymnax.create(env_name, **creation)
 env = UnsqueezeScalar(env)
 env = Batched(env, num_envs=wrapper["num_envs"])
-normalize_obs = wrapper.get("normalize_obs", False)
-normalize_reward = wrapper.get("normalize_reward", False)
-if normalize_obs or normalize_reward:
-    env = Phase(env)
-if normalize_obs:
-    env = NormalizeObservation(env)
-if normalize_reward:
-    env = NormalizeReward(env)
 
 
 key = jax.random.PRNGKey(42)
