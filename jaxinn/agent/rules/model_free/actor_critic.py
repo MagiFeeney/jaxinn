@@ -89,6 +89,27 @@ class Ensemble(eqx.Module, Generic[T]):
         return eqx.filter_vmap(lambda net: net(*args, **kwargs))(self.nets)
 
 
+# class Ensemble(eqx.Module, Generic[T]):
+#     nets: tuple[T, ...] # Must be a tuple to allow Python iteration
+
+#     @classmethod
+#     def create(cls, model_cls: type[T], num_ensembles: int, config: Any, *, key: jax.Array):
+#         keys = jax.random.split(key, num_ensembles)
+
+#         def make_model(k):
+#             if hasattr(model_cls, "create"):
+#                 return model_cls.create(config, key=k)
+#             else:
+#                 return model_cls(**config(), key=k)
+
+#         nets = tuple(make_model(k) for k in keys)
+#         return cls(nets=nets)
+
+#     def __call__(self, *args, **kwargs) -> Any:
+#         results = tuple(net(*args, **kwargs) for net in self.nets)
+#         return results
+
+
 def make_ensemble_cls(model_cls: type[T], num_ensembles: int) -> type[Ensemble[T]]:
     class BoundedEnsemble(Ensemble[model_cls]):
         @classmethod
