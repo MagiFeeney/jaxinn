@@ -60,6 +60,7 @@ class NormalHead(Head):
     constant_std: bool = eqx.field(static=True)
     softplus_std: bool = eqx.field(static=True)
     min_std: float = eqx.field(static=True)
+    init_log_std: float = eqx.field(static=True)
 
     def __init__(
         self,
@@ -76,7 +77,7 @@ class NormalHead(Head):
         else:
             self.param_size = event_size
             if constant_std:
-                self.log_std = init_log_std
+                self.log_std = None
             else:
                 self.log_std = jnp.full((event_size,), init_log_std)
 
@@ -84,13 +85,18 @@ class NormalHead(Head):
         self.constant_std = constant_std
         self.softplus_std = softplus_std
         self.min_std = min_std
+        self.init_log_std = init_log_std
 
     def __call__(self, x: jax.Array) -> FixedDistrax:
         if self.state_dependent_std:
             mean, log_std = jnp.split(x, 2, axis=-1)
         else:
             mean = x
-            log_std = jnp.broadcast_to(self.log_std, mean.shape)
+
+            if self.constant_std:
+                log_std = jnp.full_like(mean, self.init_log_std)
+            else:
+                log_std = jnp.broadcast_to(self.log_std, mean.shape)
 
         if self.softplus_std:
             std = jax.nn.softplus(log_std) + self.min_std
