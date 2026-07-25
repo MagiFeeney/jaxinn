@@ -65,9 +65,10 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
         actor_dists = jax.vmap(self.actor)(obs)
         actions, log_probs = actor_dists.sample_and_log_prob(seed=key)
         log_probs = log_probs[..., None]
-        q_dists = jax.vmap(self.critic)(obs, actions)
-        qs = q_dists.mean()
-        min_q = jnp.min(qs, axis=1)
+
+        q_dists = eqx.filter_vmap(lambda net: jax.vmap(net)(obs, actions))(self.critic.nets)
+        qs = q_dists.mean()         # E x B x 1
+        min_q = jnp.min(qs, axis=0) # B x 1
 
         actor_loss = ((self.alpha * log_probs) - min_q).mean()
 
@@ -90,16 +91,73 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
         actor_dists = jax.vmap(self.actor)(next_obs)
         next_actions, next_log_probs = actor_dists.sample_and_log_prob(seed=key)
         next_log_probs = next_log_probs[..., None]
-        next_q_dists = jax.vmap(self.critic_target)(next_obs, next_actions)
-        next_qs = next_q_dists.mean() # B x E x 1
-        next_min_q = jnp.min(next_qs, axis=1) # B x 1
+
+        next_q_dists = eqx.filter_vmap(lambda net: jax.vmap(net)(next_obs, next_actions))(self.critic_target.nets)
+        next_qs = next_q_dists.mean()         # E x B x 1
+        next_min_q = jnp.min(next_qs, axis=0) # B x 1
+
         bootstrapped_q = next_min_q - self.alpha * next_log_probs
         td_target = rewards + (1 - terminated) * self.discount_factor * bootstrapped_q
-        td_target = jnp.expand_dims(td_target, axis=1)
+
+        q_dists = eqx.filter_vmap(lambda net: jax.vmap(net)(obs, actions))(self.critic.nets)
+        qs = q_dists.mean()         # E x B x 1
+
+        critic_loss = ((qs - td_target)**2).sum(axis=0).mean()
+
+        metrics = {
+            "ac/critic": critic_loss,
+        }
+        return critic_loss, metrics
+
+
+class SACTupleLossMixIn(Loss, ActorLoss, CriticLoss):
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['actor'])
+    def actor_loss_fn(
+            self,
+            obs: jax.Array,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+        actor_dists = jax.vmap(self.actor)(obs)
+        actions, log_probs = actor_dists.sample_and_log_prob(seed=key)
+        log_probs = log_probs[..., None]
+        q_dists = jax.vmap(self.critic)(obs, actions)
+        qs = tuple(d.mean() for d in q_dists)
+        min_q = jnp.minimum(*qs)
+
+        actor_loss = ((self.alpha * log_probs) - min_q).mean()
+
+        metrics = {
+            "ac/actor": actor_loss,
+        }
+        return actor_loss, metrics
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['critic'])
+    def critic_loss_fn(
+            self,
+            obs: jax.Array,
+            actions: jax.Array,
+            rewards: jax.Array,
+            next_obs: jax.Array,
+            terminated: jax.Array,
+            key: PRNGKeyArray,
+    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+        actor_dists = jax.vmap(self.actor)(next_obs)
+        next_actions, next_log_probs = actor_dists.sample_and_log_prob(seed=key)
+        next_log_probs = next_log_probs[..., None]
+
+        next_q_dists = jax.vmap(self.critic_target)(next_obs, next_actions)
+        next_qs = tuple(d.mean() for d in next_q_dists)
+        next_min_q = jnp.minimum(*next_qs)
+
+        bootstrapped_q = next_min_q - self.alpha * next_log_probs
+        td_target = rewards + (1 - terminated) * self.discount_factor * bootstrapped_q
 
         q_dists = jax.vmap(self.critic)(obs, actions)
-        qs = q_dists.mean()
-        critic_loss = ((qs - td_target)**2).mean(axis=0).sum()
+        qs = jnp.asarray(tuple(d.mean() for d in q_dists))
+
+        critic_loss = ((qs - td_target)**2).sum(axis=0).mean()
 
         metrics = {
             "ac/critic": critic_loss,

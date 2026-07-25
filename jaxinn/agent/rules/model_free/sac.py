@@ -10,7 +10,7 @@ from jaxinn.configs.agent.sac import SACAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import transform
-from jaxinn.agent.losses import SACLossMixIn
+from jaxinn.agent.losses import SACLossMixIn, SACTupleLossMixIn
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
 
 from .actor_critic import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
@@ -18,6 +18,7 @@ from .utils import soft_update
 
 
 class SACAgent(SACLossMixIn, Agent):
+# class SACAgent(SACTupleLossMixIn, Agent):
     config_cls: ClassVar[Type] = SACAgentConfig
 
     actor: Learner[PerceptionActor]
