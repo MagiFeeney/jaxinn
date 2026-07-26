@@ -85,16 +85,8 @@ class Ensemble(eqx.Module, Generic[T]):
             nets=nets,
         )
 
-    def __call__(self, *args, **kwargs) -> Any:
-        net_axes = jax.tree.map(
-            lambda x: 0 if eqx.is_array(x) and x.ndim > 0 else None,
-            self.nets
-        )
-        @eqx.filter_vmap(in_axes=(net_axes, None, None))
-        def forward(net, a, kw):
-            return net(*a, **kw)
-
-        return forward(self.nets, args, kwargs)
+    def __call__(self, *args, **kwargs) -> Any: # Unbatched call
+        return eqx.filter_vmap(lambda net: net(*args, **kwargs))(self.nets)
 
 
 def make_ensemble_cls(model_cls: type[T], num_ensembles: int) -> type[Ensemble[T]]:
