@@ -22,23 +22,23 @@ class LinearEncoder(Encoder):
 
     def __init__(
             self,
-            obs_shape: Tuple[int, ...],
+            shape: Tuple[int, ...],
             hidden_size: Optional[list[int]] = None,
             embedding_size: Optional[int] = None,
             activation_function: Union[str, Callable] = "elu",
             *,
             key: PRNGKeyArray
     ):
-        assert len(obs_shape) <= 1, (
+        assert len(shape) <= 1, (
             f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
-            f"but got {obs_shape} with {len(obs_shape)} dimensions."
+            f"but got {shape} with {len(shape)} dimensions."
         )
         activation = get_activation_fn(activation_function)
 
         if hidden_size is not None and \
            embedding_size is not None:
             self.net = make_mlp(
-                input_size = math.prod(obs_shape),
+                input_size = math.prod(shape),
                 hidden_size = hidden_size,
                 output_size = embedding_size,
                 activation = StaticCallable(activation),
@@ -58,11 +58,11 @@ class LinearDecoder(Decoder):
     config_cls: ClassVar[Type] = LinearDecoderConfig
 
     net: eqx.Module
-    obs_shape: Tuple[int, ...] = eqx.field(static=True)
+    shape: Tuple[int, ...] = eqx.field(static=True)
 
     def __init__(
             self,
-            obs_shape: Tuple[int, ...],
+            shape: Tuple[int, ...],
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
             hidden_size: list[int],
@@ -70,11 +70,11 @@ class LinearDecoder(Decoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(obs_shape) <= 1, (
+        assert len(shape) <= 1, (
             f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
-            f"but got {obs_shape} with {len(obs_shape)} dimensions."
+            f"but got {shape} with {len(shape)} dimensions."
         )
-        self.obs_shape = obs_shape
+        self.shape = shape
         activation = get_activation_fn(activation_function)
 
         if isinstance(state_size, tuple):
@@ -83,7 +83,7 @@ class LinearDecoder(Decoder):
         self.net = make_mlp(
             input_size = belief_size + state_size,
             hidden_size = hidden_size,
-            output_size = math.prod(obs_shape),
+            output_size = math.prod(shape),
             activation = StaticCallable(activation),
             key = key
         )
@@ -95,6 +95,6 @@ class LinearDecoder(Decoder):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         out = self.net(latent_state)
-        out = out.reshape(out.shape[:-1] + self.obs_shape)
+        out = out.reshape(out.shape[:-1] + self.shape)
         dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.obs_shape)))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
