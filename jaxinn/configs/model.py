@@ -1,7 +1,7 @@
 from copy import deepcopy
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Tuple, Dict, Optional, Union, ClassVar, Generic, TypeVar
+from typing import Tuple, Dict, Optional, Union, Sequence, ClassVar, Generic, TypeVar
 
 from jaxtyping import PyTree
 
@@ -119,12 +119,20 @@ class LearnerConfig(Resolvable, Model, Generic[T]):
 class CNNEncoderConfig(EncoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     embedding_size: int = 1024
+    num_layers: int | None = 4
+    kernel_size: int | Sequence[int] = 4
+    depth: int | Sequence[int] = 32
+    stride: int | Sequence[int] = 2
     dtype: str = "bfloat16"
 
 
 @dataclass
 class CNNDecoderConfig(DecoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
+    num_layers: int | None = 4
+    kernel_size: int | Sequence[int] = 4
+    depth: int | Sequence[int] = 32
+    stride: int | Sequence[int] = 2
     dtype: str = "bfloat16"
 
 

@@ -1,5 +1,5 @@
 import math
-from typing import Callable, Union, Tuple, ClassVar, Type
+from typing import Callable, Union, Tuple, ClassVar, Type, Sequence
 
 import jax
 import jax.numpy as jnp
@@ -11,7 +11,7 @@ from jaxinn.structs import LatentState
 from jaxinn.configs.model import CNNEncoderConfig, CNNDecoderConfig
 
 from .base import Encoder, Decoder
-from ..utils import get_activation_fn, get_precision_fn, dx, StaticCallable
+from ..utils import get_activation_fn, get_precision_fn, dx, StaticCallable, make_cnn, make_cnn_transposed
 from ..distributions import DistributionLike
 
 
@@ -21,22 +21,19 @@ class CNNEncoder(Encoder):
 
     body: eqx.nn.Sequential
     head: Union[eqx.nn.Linear, eqx.nn.Identity]
-    shape: Tuple[int, int, ...] = eqx.field(static=True)
-    kernel_size: int = eqx.field(static=True)
-    depth: int = eqx.field(static=True)
-    stride: int = eqx.field(static=True)
     embedding_size: int = eqx.field(static=True)
     dtype: str = eqx.field(static=True)
 
     feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
 
-    def __init__(               # TODO: add num_layers
+    def __init__(
             self,
             shape: Tuple[int, int, ...],
             embedding_size: int,
-            kernel_size: int = 4,
-            depth: int = 32,
-            stride: int = 2,
+            num_layers: int | None = 4,
+            kernel_size: int | Sequence[int] = 4,
+            depth: int | Sequence[int] = 32,
+            stride: int | Sequence[int] = 2,
             activation_function: Union[str, Callable] = "elu",
             dtype: str = "float32",
             *,
@@ -46,31 +43,28 @@ class CNNEncoder(Encoder):
             f"Expected a 2D+ observation shape in {self.__class__.__name__}, "
             f"but got {shape} with {len(shape)} dimensions."
         )
-        activation = get_activation_fn(activation_function)
         self.dtype = get_precision_fn(dtype)
 
-        keys = jax.random.split(key, 5)
+        key_body, key_head = jax.random.split(key, 2)
 
-        self.body = eqx.nn.Sequential([
-            eqx.nn.Conv2d(shape[0], 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[0], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.Conv2d(1 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[1], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.Conv2d(2 * depth, 4 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[2], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.Conv2d(4 * depth, 8 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[3], dtype=self.dtype),
-            StaticCallable(activation),
-            StaticCallable(jnp.ravel),
-        ])
+        self.body = make_cnn(
+            in_channels=shape[0],
+            num_spatial_dims=len(shape) - 1,
+            activation=activation_function,
+            kernel_size=kernel_size,
+            depth=depth,
+            depth_factor=2,
+            stride=stride,
+            padding="SAME",
+            dtype=self.dtype,
+            num_layers=num_layers,
+            key=key_body
+        )
 
         self.feature_map_shape = self.get_feature_map_shape(shape)
         feature_map_size = math.prod(self.feature_map_shape)
-        self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=keys[4])
+        self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=key_head)
 
-        self.shape = shape
-        self.kernel_size = kernel_size
-        self.depth = depth
-        self.stride = stride
         self.embedding_size = embedding_size
 
     def __call__(
@@ -93,12 +87,10 @@ class CNNEncoder(Encoder):
 class CNNDecoder(Decoder):
     config_cls: ClassVar[Type] = CNNDecoderConfig
 
-    embedding: eqx.nn.Linear
+    embedding: eqx.nn.Sequential
     body: eqx.nn.Sequential
     shape: Tuple[int, int, ...] = eqx.field(static=True)
-    kernel_size: int = eqx.field(static=True)
-    depth: int = eqx.field(static=True)
-    stride: int = eqx.field(static=True)
+    event_ndim: int = eqx.field(static=True)
     dtype: str = eqx.field(static=True)
 
     feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
@@ -108,10 +100,11 @@ class CNNDecoder(Decoder):
             belief_size: int,
             state_size: Union[int, Tuple[int, ...]],
             shape: Tuple[int, int, ...],
-            feature_map_shape: Tuple[int, int, int],
-            kernel_size: int = 4,
-            depth: int = 32,
-            stride: int = 2,
+            feature_map_shape: Tuple[int, ...],
+            num_layers: int | None = 4,
+            kernel_size: int | Sequence[int] = 4,
+            depth: int | Sequence[int] = 32,
+            stride: int | Sequence[int] = 2,
             activation_function: Union[str, Callable] = "elu",
             dtype: str = "float32",
             *,
@@ -126,29 +119,33 @@ class CNNDecoder(Decoder):
         self.feature_map_shape = feature_map_shape
         feature_map_size = math.prod(feature_map_shape)
 
-        keys = jax.random.split(key, 5)
+        key_embedding, key_body = jax.random.split(key, 2)
 
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)
 
-        out_channels = shape[0] if len(shape) > 2 else 1
-
-        self.embedding = eqx.nn.Linear(belief_size + state_size, feature_map_size, key=keys[0])
-        self.body = eqx.nn.Sequential([ # TODO: support 4D spatial dims and fix this line
+        self.embedding = eqx.nn.Sequential([
+            eqx.nn.Linear(belief_size + state_size, feature_map_size, key=key_embedding),
             StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(feature_map_shape[0], 4 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[1], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(4 * depth, 2 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[2], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(2 * depth, 1 * depth, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[3], dtype=self.dtype),
-            StaticCallable(activation),
-            eqx.nn.ConvTranspose2d(1 * depth, out_channels, kernel_size=kernel_size, stride=stride, padding="SAME", key=keys[4], dtype=self.dtype),
         ])
 
+        self.body = make_cnn_transposed(
+            in_channels=feature_map_shape[0],
+            out_channels=shape[0],
+            num_spatial_dims=len(shape) - 1,
+            activation=activation,
+            kernel_size=kernel_size,
+            depth=depth,
+            depth_factor=2,
+            stride=stride,
+            padding="SAME",
+            dtype=self.dtype,
+            num_layers=num_layers,
+            key=key_body
+        )
+
         self.shape = shape
-        self.kernel_size = kernel_size
-        self.depth = depth
-        self.stride = stride
+        self.event_ndim = len(shape)
 
     def __call__(
             self,
@@ -161,8 +158,8 @@ class CNNDecoder(Decoder):
         out = eqx.filter_checkpoint(self.body)(embedding)
         out = out.astype(jnp.float32)
 
-        if out.shape[-3:] != self.shape: # TODO: support 4D spatial dims and fix this line
-            out = jax.image.resize(out, shape=out.shape[:-3] + self.shape, method="bilinear")
+        if out.shape[-self.event_ndim:] != self.shape:
+            out = jax.image.resize(out, shape=out.shape[:-self.event_ndim] + self.shape, method="bilinear")
 
         dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(self.event_ndim))

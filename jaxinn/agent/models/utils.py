@@ -1,5 +1,5 @@
 import math
-from typing import Any, Callable, Dict, Union, Optional, Literal
+from typing import Any, Callable, Dict, Union, Optional, Literal, Sequence
 
 import jax
 import jax.nn as jnn
@@ -208,6 +208,199 @@ def make_mlp(
 
         if layer_norms[i+1]:    # Pre-activation norm
             layers.append(eqx.nn.LayerNorm(sizes[i+1]))
+
+        if i < len(sizes) - 2:
+            layers.append(activation)
+
+    return eqx.nn.Sequential(layers)
+
+
+def make_cnn(
+        in_channels: int,
+        num_spatial_dims: int,
+        activation: str | Callable | StaticCallable,
+        kernel_size: int | Sequence[int] = 4,
+        depth: int | Sequence[int] = 32,
+        depth_factor: int | None = 2,
+        stride: int | Sequence[int] = 2,
+        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "SAME",
+        dilation: int | Sequence[int] = 1,
+        groups: int = 1,
+        use_bias: bool = True,
+        padding_mode: str = 'ZEROS',
+        dtype: str = "float32",
+        num_layers: Optional[int] = None,
+        *,
+        key: PRNGKeyArray
+) -> eqx.nn.Sequential:
+    potential_sequences = [
+        ("kernel_size", kernel_size),
+        ("depth", depth),
+        ("stride", stride),
+        ("padding", padding),
+        ("dilation", dilation)
+    ]
+
+    sequence_args = {name: val for name, val in potential_sequences if isinstance(val, (list, tuple))}
+
+    if sequence_args:
+        seq_lengths = {name: len(val) for name, val in sequence_args.items()}
+        unique_lengths = set(seq_lengths.values())
+
+        if len(unique_lengths) > 1:
+            raise ValueError(
+                f"Conflicting sequence lengths provided! Your sequences imply "
+                f"different numbers of layers: {seq_lengths}"
+            )
+
+        num_layers = unique_lengths.pop()
+    else:
+        if num_layers is None:
+            raise ValueError(
+                "`num_layers` must be specified when kernel_size, depth, stride, "
+                "etc., are all scalar values."
+            )
+
+    assert num_layers >= 0, "`num_layers` must be non-negative."
+
+    kernel_size = [kernel_size] * num_layers if isinstance(kernel_size, int) else kernel_size
+    stride = [stride] * num_layers if isinstance(stride, int) else stride
+    dilation = [dilation] * num_layers if isinstance(dilation, int) else dilation
+    padding = [padding] * num_layers if isinstance(padding, (str, int)) else padding
+
+    if isinstance(depth, int):
+       if depth_factor is None:
+           raise ValueError("When `depth` is an integer, the `depth_factor` cannot be None")
+       depth = [depth * depth_factor**i for i in range(num_layers)]
+
+    sizes = [in_channels] + depth
+
+    if isinstance(activation, str):
+        activation = get_activation_fn(activation)
+    if not isinstance(activation, StaticCallable):
+        activation = StaticCallable(activation)
+
+    layers = []
+
+    # Conv layers
+    keys = jax.random.split(key, len(sizes) - 1)
+    for i in range(len(sizes) - 1):
+        layers.append(
+            eqx.nn.Conv(
+                num_spatial_dims,
+                in_channels=sizes[i],
+                out_channels=sizes[i+1],
+                kernel_size=kernel_size[i],
+                stride=stride[i],
+                padding=padding[i],
+                dilation=dilation[i],
+                groups=groups,
+                use_bias=use_bias,
+                padding_mode=padding_mode,
+                dtype=dtype,
+                key=keys[i]
+            )
+        )
+
+        layers.append(activation)
+
+    # Flatten it
+    layers.append(StaticCallable(jnp.ravel))
+
+    return eqx.nn.Sequential(layers)
+
+
+def make_cnn_transposed(
+        in_channels: int,
+        out_channels: int,
+        num_spatial_dims: int,
+        activation: str | Callable | StaticCallable,
+        kernel_size: int | Sequence[int] = 4,
+        depth: int | Sequence[int] = 32,
+        depth_factor: int | None = 2,
+        stride: int | Sequence[int] = 2,
+        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "SAME",
+        output_padding: int | Sequence[int] = 0,
+        dilation: int | Sequence[int] = 1,
+        groups: int = 1,
+        use_bias: bool = True,
+        padding_mode: str = 'ZEROS',
+        dtype: str = "float32",
+        num_layers: Optional[int] = None,
+        *,
+        key: PRNGKeyArray
+) -> eqx.nn.Sequential:
+    potential_sequences = [
+        ("kernel_size", kernel_size),
+        ("depth", depth),
+        ("stride", stride),
+        ("padding", padding),
+        ("output_padding", output_padding),
+        ("dilation", dilation)
+    ]
+
+    sequence_args = {name: val for name, val in potential_sequences if isinstance(val, (list, tuple))}
+
+    if sequence_args:
+        seq_lengths = {name: len(val) for name, val in sequence_args.items()}
+        unique_lengths = set(seq_lengths.values())
+
+        if len(unique_lengths) > 1:
+            raise ValueError(
+                f"Conflicting sequence lengths provided! Your sequences imply "
+                f"different numbers of layers: {seq_lengths}"
+            )
+
+        num_layers = unique_lengths.pop()
+    else:
+        if num_layers is None:
+            raise ValueError(
+                "`num_layers` must be specified when kernel_size, depth, stride, "
+                "etc., are all scalar values."
+            )
+
+    assert num_layers >= 0, "`num_layers` must be non-negative."
+
+    kernel_size = [kernel_size] * num_layers if isinstance(kernel_size, int) else kernel_size
+    stride = [stride] * num_layers if isinstance(stride, int) else stride
+    dilation = [dilation] * num_layers if isinstance(dilation, int) else dilation
+    padding = [padding] * num_layers if isinstance(padding, (str, int)) else padding
+    output_padding = [output_padding] * num_layers if isinstance(output_padding, (str, int)) else output_padding
+
+    if isinstance(depth, int):
+       if depth_factor is None:
+           raise ValueError("When `depth` is an integer, the `depth_factor` cannot be None")
+       depth = [depth * depth_factor**i for i in reversed(range(num_layers - 1))]
+
+    sizes = [in_channels] + depth + [out_channels]
+
+    if isinstance(activation, str):
+        activation = get_activation_fn(activation)
+    if not isinstance(activation, StaticCallable):
+        activation = StaticCallable(activation)
+
+    layers = []
+
+    # Conv layers
+    keys = jax.random.split(key, len(sizes) - 1)
+    for i in range(len(sizes) - 1):
+        layers.append(
+            eqx.nn.ConvTranspose(
+                num_spatial_dims,
+                in_channels=sizes[i],
+                out_channels=sizes[i+1],
+                kernel_size=kernel_size[i],
+                stride=stride[i],
+                padding=padding[i],
+                output_padding=output_padding[i],
+                dilation=dilation[i],
+                groups=groups,
+                use_bias=use_bias,
+                padding_mode=padding_mode,
+                dtype=dtype,
+                key=keys[i]
+            )
+        )
 
         if i < len(sizes) - 2:
             layers.append(activation)

@@ -11,7 +11,7 @@ from jaxinn.structs import LatentState
 from jaxinn.configs.model import LinearEncoderConfig, LinearDecoderConfig
 
 from .base import Encoder, Decoder
-from ..utils import get_activation_fn, dx, StaticCallable, make_mlp
+from ..utils import dx, make_mlp
 from ..distributions import DistributionLike
 
 
@@ -33,16 +33,15 @@ class LinearEncoder(Encoder):
             f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
             f"but got {shape} with {len(shape)} dimensions."
         )
-        activation = get_activation_fn(activation_function)
 
         if hidden_size is not None and \
            embedding_size is not None:
             self.net = make_mlp(
-                input_size = math.prod(shape),
-                hidden_size = hidden_size,
-                output_size = embedding_size,
-                activation = StaticCallable(activation),
-                key = key
+                input_size=math.prod(shape),
+                hidden_size=hidden_size,
+                output_size=embedding_size,
+                activation=activation_function,
+                key=key
             )
         else:
             self.net = eqx.nn.Identity()
@@ -75,17 +74,16 @@ class LinearDecoder(Decoder):
             f"but got {shape} with {len(shape)} dimensions."
         )
         self.shape = shape
-        activation = get_activation_fn(activation_function)
 
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)
 
         self.net = make_mlp(
-            input_size = belief_size + state_size,
-            hidden_size = hidden_size,
-            output_size = math.prod(shape),
-            activation = StaticCallable(activation),
-            key = key
+            input_size=belief_size + state_size,
+            hidden_size=hidden_size,
+            output_size=math.prod(shape),
+            activation=activation_function,
+            key=key
         )
 
     def __call__(
