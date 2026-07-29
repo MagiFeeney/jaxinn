@@ -1,5 +1,6 @@
 import math
-from typing import Callable, Union, Tuple, ClassVar, Type, Sequence
+from typing import ClassVar
+from collections.abc import Callable, Sequence
 
 import jax
 import jax.numpy as jnp
@@ -17,24 +18,24 @@ from ..distributions import DistributionLike
 
 # Perception
 class CNNEncoder(Encoder):
-    config_cls: ClassVar[Type] = CNNEncoderConfig
+    config_cls: ClassVar[type] = CNNEncoderConfig
 
     body: eqx.nn.Sequential
-    head: Union[eqx.nn.Linear, eqx.nn.Identity]
+    head: eqx.nn.Linear | eqx.nn.Identity
     embedding_size: int = eqx.field(static=True)
     dtype: str = eqx.field(static=True)
 
-    feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
+    feature_map_shape: tuple[int, int, int] = eqx.field(static=True)
 
     def __init__(
             self,
-            shape: Tuple[int, int, ...],
+            shape: tuple[int, int, ...],
             embedding_size: int,
             num_layers: int | None = 4,
             kernel_size: int | Sequence[int] = 4,
             depth: int | Sequence[int] = 32,
             stride: int | Sequence[int] = 2,
-            activation_function: Union[str, Callable] = "elu",
+            activation_function: str | Callable = "elu",
             dtype: str = "float32",
             *,
             key: PRNGKeyArray
@@ -85,27 +86,27 @@ class CNNEncoder(Encoder):
 
 
 class CNNDecoder(Decoder):
-    config_cls: ClassVar[Type] = CNNDecoderConfig
+    config_cls: ClassVar[type] = CNNDecoderConfig
 
     embedding: eqx.nn.Sequential
     body: eqx.nn.Sequential
-    shape: Tuple[int, int, ...] = eqx.field(static=True)
+    shape: tuple[int, int, ...] = eqx.field(static=True)
     event_ndim: int = eqx.field(static=True)
     dtype: str = eqx.field(static=True)
 
-    feature_map_shape: Tuple[int, int, int] = eqx.field(static=True)
+    feature_map_shape: tuple[int, int, int] = eqx.field(static=True)
 
     def __init__(
             self,
             belief_size: int,
-            state_size: Union[int, Tuple[int, ...]],
-            shape: Tuple[int, int, ...],
-            feature_map_shape: Tuple[int, ...],
+            state_size: int | tuple[int, ...],
+            shape: tuple[int, int, ...],
+            feature_map_shape: tuple[int, ...],
             num_layers: int | None = 4,
             kernel_size: int | Sequence[int] = 4,
             depth: int | Sequence[int] = 32,
             stride: int | Sequence[int] = 2,
-            activation_function: Union[str, Callable] = "elu",
+            activation_function: str | Callable = "elu",
             dtype: str = "float32",
             *,
             key: PRNGKeyArray
@@ -149,7 +150,7 @@ class CNNDecoder(Decoder):
 
     def __call__(
             self,
-            latent_state: Union[jax.Array, LatentState],
+            latent_state: jax.Array | LatentState,
     ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature

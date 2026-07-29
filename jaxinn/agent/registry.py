@@ -1,12 +1,12 @@
 import dataclasses
-from typing import Any, ClassVar, Dict, Type, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 ConfigT = TypeVar("ConfigT")
 ModelT = TypeVar("ModelT")
 
 
 class Registrable:
-    _registry: ClassVar[Dict[Type[ConfigT], Type[ModelT]]]
+    _registry: ClassVar[dict[type[ConfigT], type[ModelT]]]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

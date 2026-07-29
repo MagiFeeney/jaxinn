@@ -1,5 +1,5 @@
 import math
-from typing import Tuple, Union, Callable
+from collections.abc import Callable
 
 import jax
 from jaxtyping import PRNGKeyArray, PyTree
@@ -29,11 +29,11 @@ class Actor(eqx.Module):
     def __init__(
         self,
         belief_size: int,
-        state_size: Union[int, Tuple[int, ...]],
+        state_size: int | tuple[int, ...],
         hidden_size: list[int],
         action_size: PyTree[int],
         head_config: PyTree[HeadConfig],
-        activation_function: Union[str, Callable] = "elu",
+        activation_function: str | Callable = "elu",
         *,
         key: PRNGKeyArray,
     ):
@@ -58,7 +58,7 @@ class Actor(eqx.Module):
 
     def __call__(
         self,
-        latent_state: Union[jax.Array, LatentState],
+        latent_state: jax.Array | LatentState,
     ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Optional, Literal
+from typing import Literal
 
 from .base import Base
 from .env import Env
@@ -24,10 +24,10 @@ class Exploration(Base):
 # Logger
 @dataclass
 class Logger(Base):
-    log_dir: Optional[str] = None
+    log_dir: str | None = None
     backend: str = "tensorboard"
     shaded_method: Literal["std", "se", "ci", "iqr"] = "std"
-    aggregate_keywords: Tuple[str, ...] = ("eval",)
+    aggregate_keywords: tuple[str, ...] = ("eval",)
 
 
 # console

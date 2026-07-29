@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Any
 import re
 import importlib
 
@@ -55,8 +55,8 @@ def make_env(
         env_id: str,
         separated: bool,
         prefill_mode: str,
-        creation: Dict[str, Any],
-        wrapper: Dict[str, Any],
+        creation: dict[str, Any],
+        wrapper: dict[str, Any],
 ) -> Environment:
     parts = re.split(r'[:/]', env_id, maxsplit=1)
     if len(parts) != 2:

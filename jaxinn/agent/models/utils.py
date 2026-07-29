@@ -1,5 +1,6 @@
 import math
-from typing import Any, Callable, Dict, Union, Optional, Literal, Sequence
+from typing import Any, Literal
+from collections.abc import Callable, Sequence
 
 import jax
 import jax.nn as jnn
@@ -9,7 +10,7 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
-RegisteredItem = Union[str, Callable]
+RegisteredItem = str | Callable
 Activation = RegisteredItem
 Dtype = RegisteredItem
 
@@ -33,7 +34,7 @@ DTYPES = {
 }
 
 
-def _create_getter(registry: Dict[str, Any], entity_name: str) -> Callable[[RegisteredItem], Callable]:
+def _create_getter(registry: dict[str, Any], entity_name: str) -> Callable[[RegisteredItem], Callable]:
     """Generates a getter function for a specific registry."""
     def getter(name_or_fn: RegisteredItem) -> Callable:
         if isinstance(name_or_fn, str):
@@ -163,11 +164,11 @@ dx = ProxyDistrax()
 
 def make_mlp(
         input_size: int,
-        hidden_size: Union[int, list[int]],
+        hidden_size: int | list[int],
         output_size: int,
-        activation: Union[str, Callable, StaticCallable],
-        num_layers: Optional[int] = None,
-        layer_norm: Optional[Literal['all', 'input', 'output', 'first', 'last']] = None,
+        activation: str | Callable | StaticCallable,
+        num_layers: int | None = None,
+        layer_norm: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -229,7 +230,7 @@ def make_cnn(
         use_bias: bool = True,
         padding_mode: str = 'ZEROS',
         dtype: str = "float32",
-        num_layers: Optional[int] = None,
+        num_layers: int | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -326,7 +327,7 @@ def make_cnn_transposed(
         use_bias: bool = True,
         padding_mode: str = 'ZEROS',
         dtype: str = "float32",
-        num_layers: Optional[int] = None,
+        num_layers: int | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -412,8 +413,8 @@ def apply_init(
         model: eqx.Module,
         weight_init: Callable,
         bias_init: Callable = jax.nn.initializers.constant(0.0),
-        output_weight_init: Optional[Callable] = None,
-        output_bias_init: Optional[Callable] = None,
+        output_weight_init: Callable | None = None,
+        output_bias_init: Callable | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.Module:

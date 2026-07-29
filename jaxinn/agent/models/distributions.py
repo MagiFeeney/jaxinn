@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import Tuple, Optional, Any, TypeAlias, Dict
+from typing import Any, TypeAlias
 from functools import partial
 
 import jax
@@ -61,7 +61,7 @@ class PatchedBeta(distrax.Beta):
     """Patched Beta to correct the batch_shape when used with vmap."""
 
     @property
-    def batch_shape(self) -> Tuple[int, ...]:
+    def batch_shape(self) -> tuple[int, ...]:
       return jax.lax.broadcast_shapes(self._alpha.shape, self._beta.shape)
 
 
@@ -176,13 +176,13 @@ class FlattenDist(Distribution):
 class IndependentJointDistribution(JointDistribution):
     """Wraps any sequence of independent distributions into a single joint distribution."""
 
-    dists: Tuple[DistributionLike, ...]
-    target_shape: Optional[Tuple[int, ...]] = eqx.field(static=True)
+    dists: tuple[DistributionLike, ...]
+    target_shape: tuple[int, ...] | None = eqx.field(static=True)
 
     def __init__(
             self,
-            dists: Tuple[DistributionLike, ...],
-            target_shape: Optional[Tuple[int, ...]] = None
+            dists: tuple[DistributionLike, ...],
+            target_shape: tuple[int, ...] | None = None
     ):
         if target_shape is not None and math.prod(target_shape) != len(dists):
             raise ValueError(
@@ -255,7 +255,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
     Expects a PyTree dictionary containing the keys 'option' and 'actions'.
     """
 
-    def _mask_branches(self, option: jax.Array, branch_tree: Dict[str, Any], reduce_to_scalar: bool) -> Any:
+    def _mask_branches(self, option: jax.Array, branch_tree: dict[str, Any], reduce_to_scalar: bool) -> Any:
         """Helper function to mask inactive branches.
 
         If reduce_to_scalar is True, sums the active branch leaves and returns a scalar.
@@ -283,7 +283,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
 
             return masked_dict
 
-    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> Dict[str, jax.Array]:
+    def sample(self, *, seed: PRNGKeyArray, sample_shape=()) -> dict[str, jax.Array]:
         key_option, key_branch = jax.random.split(seed)
         option = self.dists["option"].sample(seed=key_option, sample_shape=sample_shape)
 
@@ -325,7 +325,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
             "actions": actions
         }
 
-    def log_prob(self, x: Dict[str, jax.Array]) -> jax.Array:
+    def log_prob(self, x: dict[str, jax.Array]) -> jax.Array:
         option = x["option"]
         option_log_prob = self.dists["option"].log_prob(option)
 
@@ -338,7 +338,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
 
         return option_log_prob + self._mask_branches(option, branch_log_probs, reduce_to_scalar=True)
 
-    def entropy(self, x: Dict[str, jax.Array]) -> jax.Array:
+    def entropy(self, x: dict[str, jax.Array]) -> jax.Array:
         option = x["option"]
         option_entropy = self.dists["option"].entropy()
 
@@ -350,7 +350,7 @@ class HierarchicalJointDistribution(TreeJointDistribution):
 
         return option_entropy + self._mask_branches(option, branch_entropies, reduce_to_scalar=True)
 
-    def mode(self) -> Dict[str, jax.Array]:
+    def mode(self) -> dict[str, jax.Array]:
         option_mode = self.dists["option"].mode()
         branch_modes = jax.tree.map(
             lambda d: d.mode(),

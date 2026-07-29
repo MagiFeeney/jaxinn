@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import jax
 from craftax.craftax_env import make_craftax_env_from_name
 
@@ -27,7 +25,7 @@ class Craftax(Gymnax):
         )
 
     @property
-    def observation_size(self) -> Tuple[int, ...]:
+    def observation_size(self) -> tuple[int, ...]:
         key = jax.random.PRNGKey(0)
         obs, _ = jax.eval_shape(self.env.reset, key)
         return obs.shape

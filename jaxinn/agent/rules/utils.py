@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import jax
 import jax.numpy as jnp
 import equinox as eqx
@@ -60,7 +58,7 @@ def flatten_time_major(
     return time_major_x
 
 
-def replenish_boundary_obs(experiences: Experience) -> Tuple[Transition, jax.Array]:
+def replenish_boundary_obs(experiences: Experience) -> tuple[Transition, jax.Array]:
     if experiences.boundary_obs is None:
         return experiences.transition, None
 
@@ -121,7 +119,7 @@ def compute_adv_and_ret(
         next_values: jax.Array,
         discount_factor: float = 0.99,
         uae_lambda: float = 0.95,
-) -> Tuple[jax.Array, jax.Array]:
+) -> tuple[jax.Array, jax.Array]:
     def uae_step_fn(uae, inputs):
         """
         Unified advantage estimator (UAE): a generalized version of GAE.

@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, Optional, Dict
+from typing import Any
 
 import gymnasium as gym
 from gymnasium.envs.registration import register
@@ -14,7 +14,7 @@ class DMControl(Gymnasium):
     def __init__(
         self,
         env: gym.Env,
-        env_params: Optional[Dict[str, Any]] = None,
+        env_params: dict[str, Any] | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -223,7 +223,7 @@ def make(
     time_limit=None,
     channels_first=True,
 ):
-    env_id = "dmc_%s_%s-v1" % (domain_name, task_name)
+    env_id = f"dmc_{domain_name}_{task_name}-v1"
 
     if from_pixels:
         assert not visualize_reward, (

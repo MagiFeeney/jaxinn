@@ -1,5 +1,4 @@
 import abc
-from typing import Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -17,15 +16,15 @@ class Memory(eqx.Module):
     seed_idx: jax.Array   # Unique id to anchor data for multiple seeds
     ptr: jax.Array
     size: jax.Array
-    capacity: Union[int, Tuple[int, ...]] = eqx.field(static=True)
+    capacity: int | tuple[int, ...] = eqx.field(static=True)
 
     def __init__(
             self,
             seed_idx: jax.Array,
-            capacity: Union[int, Tuple[int, ...]],
-            obs_shape: PyTree[Tuple[int, ...]],
+            capacity: int | tuple[int, ...],
+            obs_shape: PyTree[tuple[int, ...]],
             obs_dtype: PyTree[DTypeLike],
-            action_shape: PyTree[Tuple[int, ...]],
+            action_shape: PyTree[tuple[int, ...]],
             action_dtype: PyTree[DTypeLike],
             num_seeds: int | None = None
     ):
@@ -55,7 +54,7 @@ class Memory(eqx.Module):
         pass
 
     @abc.abstractmethod
-    def sample(self, sample_shape: Tuple[int, ...], key: PRNGKeyArray):
+    def sample(self, sample_shape: tuple[int, ...], key: PRNGKeyArray):
         pass
 
     @abc.abstractmethod
@@ -90,7 +89,7 @@ class Uniform(Memory):
             (new_storage, new_ptr, new_size)
         )
 
-    def sample(self, sample_shape: Tuple[int, ...], key: PRNGKeyArray):
+    def sample(self, sample_shape: tuple[int, ...], key: PRNGKeyArray):
         """Samples a batch of trajectories with equal length."""
         batch_size, chunk_size = sample_shape
 
@@ -156,12 +155,12 @@ class SumTree(eqx.Module):
 
         return eqx.tree_at(lambda t: (t.tree, t.masked_priorities), self, (new_tree, new_masked_priorities))
 
-    def sample(self, batch_size: int, key: jax.Array) -> Tuple[jax.Array, jax.Array]:
+    def sample(self, batch_size: int, key: jax.Array) -> tuple[jax.Array, jax.Array]:
         total_priority = self.tree[0]
         queries = jax.random.uniform(key, shape=(batch_size,)) * total_priority
         return jax.vmap(self._retrieve)(queries)
 
-    def _retrieve(self, s: float) -> Tuple[int, float]:
+    def _retrieve(self, s: float) -> tuple[int, float]:
         idx = 0
 
         def body_fn(_, state):
@@ -188,7 +187,7 @@ class Prioritized(Uniform):
     beta: float = eqx.field(static=True)
 
     # Require chunk_size to be given because we want to handle the overshooting during settling priorities
-    def __init__(self, capacity: int, obs_shape: Tuple[int, ...], action_size: int, chunk_size: int, num_seeds: int | None = None, alpha=0.6, beta=0.4):
+    def __init__(self, capacity: int, obs_shape: tuple[int, ...], action_size: int, chunk_size: int, num_seeds: int | None = None, alpha=0.6, beta=0.4):
         if not isinstance(capacity, int):
             raise TypeError(f"Capacity for Prioritized memory only supports integer types, but got {type(capacity).__name__}.")
         super().__init__(capacity, obs_shape, action_size, num_seeds)
@@ -219,10 +218,10 @@ class Batched(Uniform):
     def __init__(
             self,
             seed_idx: jax.Array,
-            capacity: Union[int, Tuple[int, ...]],
-            obs_shape: PyTree[Tuple[int, ...]],
+            capacity: int | tuple[int, ...],
+            obs_shape: PyTree[tuple[int, ...]],
             obs_dtype: PyTree[DTypeLike],
-            action_shape: PyTree[Tuple[int, ...]],
+            action_shape: PyTree[tuple[int, ...]],
             action_dtype: PyTree[DTypeLike],
             num_seeds: int | None = None
     ):

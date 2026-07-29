@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, ClassVar, Type
+from typing import Any, ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -18,7 +18,7 @@ from .utils import soft_update
 
 
 class SACAgent(SACLossMixIn, Agent):
-    config_cls: ClassVar[Type] = SACAgentConfig
+    config_cls: ClassVar[type] = SACAgentConfig
 
     actor: Learner[PerceptionActor]
     critic: Learner[Ensemble[PerceptionCritic]]
@@ -72,10 +72,10 @@ class SACAgent(SACLossMixIn, Agent):
             **config.optimization() # Extra particulars for agent learning
         )
 
-    def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
+    def init_latent_state(self, key: PRNGKeyArray, batch_shape: tuple[int, ...] = (), eval=False) -> Any:
         return None
 
-    def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
+    def act(self, last_latent_state: jax.Array | None, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor)(obs)
         action = self.actor.sample(actor_dist, key, eval)
         return None, action
@@ -100,7 +100,7 @@ class SACAgent(SACLossMixIn, Agent):
             )
         return step_fn
 
-    def learn(self, data: Transition, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
+    def learn(self, data: Transition, key: PRNGKeyArray) -> tuple["Agent", dict[str, jax.Array]]:
         key, key_actor, key_critic = jax.random.split(key, 3)
         metrics = {}
 

@@ -1,4 +1,4 @@
-from typing import Any, Optional, ClassVar, Type, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 import math
 import jax
@@ -59,7 +59,7 @@ class PerceptionCritic(eqx.Module):
 
         return cls(encoder=encoder, critic=critic)
 
-    def __call__(self, obs: jax.Array, action: Optional[jax.Array] = None) -> distrax.Distribution:
+    def __call__(self, obs: jax.Array, action: jax.Array | None = None) -> distrax.Distribution:
         feature = self.encoder(obs)
         return self.critic(feature, action)
 
@@ -111,7 +111,7 @@ class ActorCritic(Registrable, eqx.Module):
 
 # Independent encoders
 class ActorCriticDecoupled(ActorCritic):
-    config_cls: ClassVar[Type] = ActorCriticDecoupledConfig
+    config_cls: ClassVar[type] = ActorCriticDecoupledConfig
 
     actor: PerceptionActor
     critic: PerceptionCritic
@@ -149,7 +149,7 @@ class ActorCriticDecoupled(ActorCritic):
 
 # Shared encoder
 class ActorCriticShared(ActorCritic):
-    config_cls: ClassVar[Type] = ActorCriticSharedConfig
+    config_cls: ClassVar[type] = ActorCriticSharedConfig
 
     encoder: Encoder
     actor: Actor

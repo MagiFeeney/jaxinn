@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Union, Optional, Dict, Any
+from typing import Any
 
 from jaxtyping import Float, Array
 
@@ -21,7 +21,7 @@ class ComplexHeadConfig(HeadConfig):
 
 @dataclass
 class DictHeadConfig(ComplexHeadConfig):
-    data: Dict[str, HeadConfig]
+    data: dict[str, HeadConfig]
 
     def __post_init__(self) -> None:
         if not isinstance(self.data, dict):
@@ -30,7 +30,7 @@ class DictHeadConfig(ComplexHeadConfig):
 
 @dataclass
 class TupleHeadConfig(ComplexHeadConfig):
-    data: Tuple[HeadConfig, ...]
+    data: tuple[HeadConfig, ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.data, tuple):
@@ -39,7 +39,7 @@ class TupleHeadConfig(ComplexHeadConfig):
 
 @dataclass
 class HierarchicalHeadConfig(DictHeadConfig):
-    data: Dict[HeadConfig, ...]
+    data: dict[HeadConfig, ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.data, dict):
@@ -95,8 +95,8 @@ class FreeStdNormalHeadConfig(HeadConfig):
 class TanhNormalHeadConfig(HeadConfig):
     min_std: float = 1e-4
     init_std: float = 5.0
-    mean_scale: Optional[float] = 5.0
-    log_std_range: Optional[Tuple[int, int]] = None
+    mean_scale: float | None = 5.0
+    log_std_range: tuple[int, int] | None = None
 
 
 @dataclass
@@ -116,19 +116,12 @@ class OneHotCategoricalHeadConfig(CategoricalHeadConfig):
 
 @dataclass
 class MultiCategoricalHeadConfig(CategoricalHeadConfig):
-    nvec: Optional[Float[Array, "..."]] = field(default=None)
-    variable_shape: Tuple[int, ...] = ()
+    nvec: Float[Array, "..."] | None = field(default=None)
+    variable_shape: tuple[int, ...] = ()
 
 
-HeadUnion = Union[
-    NormalHeadConfig, IsotropicNormalHeadConfig, ExpNormalHeadConfig, FreeStdNormalHeadConfig, TanhNormalHeadConfig, BetaHeadConfig, CategoricalHeadConfig, OneHotCategoricalHeadConfig, MultiCategoricalHeadConfig
-]
+HeadUnion = NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig | CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
 
-ContinuousHeadUnion = Union[
-    NormalHeadConfig, IsotropicNormalHeadConfig, ExpNormalHeadConfig,
-    FreeStdNormalHeadConfig, TanhNormalHeadConfig, BetaHeadConfig,
-]
+ContinuousHeadUnion = NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig
 
-DiscreteHeadUnion = Union[
-    CategoricalHeadConfig, OneHotCategoricalHeadConfig, MultiCategoricalHeadConfig
-]
+DiscreteHeadUnion = CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig

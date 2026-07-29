@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Tuple, Dict, Optional
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -16,15 +16,15 @@ from .utils import flatten_time_major, replenish_boundary_obs
 class Agent(Registrable, eqx.Module):
 
     @abc.abstractmethod
-    def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
+    def init_latent_state(self, key: PRNGKeyArray, batch_shape: tuple[int, ...] = (), eval=False) -> Any:
         pass
 
     @abc.abstractmethod
-    def act(self, last_latent_state: Any, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[Any, jax.Array]:
+    def act(self, last_latent_state: Any, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[Any, jax.Array]:
         pass
 
     @abc.abstractmethod
-    def learn(self, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
+    def learn(self, key: PRNGKeyArray) -> tuple["Agent", dict[str, jax.Array]]:
         pass
 
     @abc.abstractmethod
@@ -34,7 +34,7 @@ class Agent(Registrable, eqx.Module):
     def add_experience(
             self,
             experiences: Experience,
-            last_experience: Optional[Experience] = None,
+            last_experience: Experience | None = None,
             source: int = 1,
             is_serial: bool = True,
     ) -> "Agent":

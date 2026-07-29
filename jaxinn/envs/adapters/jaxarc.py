@@ -1,5 +1,3 @@
-from typing import Optional, Tuple as PyTuple
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
@@ -48,7 +46,7 @@ class JaxARC(Environment):
     def __init__(
             self,
             env: JaxARCEnvironment,
-            env_params: Optional[JaxARCEnvParams] = None,
+            env_params: JaxARCEnvParams | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -76,7 +74,7 @@ class JaxARC(Environment):
                 f"If the name is invalid, available tasks for '{subset}' are: {tasks}"
             ) from e
 
-    def reset(self, key: PRNGKeyArray) -> PyTuple[Transition, EnvInfo, JaxARCTimeStep]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, JaxARCTimeStep]:
         env_state, timestep = self.env.reset(key, self.env_params)
         transition = Transition(
             action = jax.tree.map(
@@ -96,7 +94,7 @@ class JaxARC(Environment):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: JaxARCTimeStep, action: jax.Array) -> PyTuple[Transition, EnvInfo, JaxARCTimeStep]:
+    def step(self, key: PRNGKeyArray, env_state: JaxARCTimeStep, action: jax.Array) -> tuple[Transition, EnvInfo, JaxARCTimeStep]:
         next_env_state, timestep = self.env.step(env_state, action, self.env_params)
         transition = Transition(
             action=action,

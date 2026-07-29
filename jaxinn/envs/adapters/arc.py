@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, Dict, Optional
+from typing import Any
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -15,7 +15,7 @@ class ARC(Gymnasium):
     def __init__(
         self,
         env: gym.Env,
-        env_params: Optional[Dict[str, Any]] = None,
+        env_params: dict[str, Any] | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -127,7 +127,7 @@ def make_env(
         render_mode="rgb_array",
         max_episode_length=100,
 ):
-    env_id = "arc3_%s-v1" % (game_id,)
+    env_id = f"arc3_{game_id}-v1"
 
     if env_id not in gym.registry:
         register(

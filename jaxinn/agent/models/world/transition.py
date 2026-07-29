@@ -1,5 +1,4 @@
 import math
-from typing import Union, Tuple, Optional
 
 import jax
 import jax.numpy as jnp
@@ -31,12 +30,12 @@ class Transition(eqx.Module):
     def __init__(
             self,
             belief_size: int,
-            state_size: Union[int, Tuple[int, ...]],
-            action_shape: PyTree[Tuple[int, ...]],
+            state_size: int | tuple[int, ...],
+            action_shape: PyTree[tuple[int, ...]],
             hidden_size: int,
             head_config: HeadConfig,
             activation_function="elu",
-            action_embedding_size: Optional[int] = None,
+            action_embedding_size: int | None = None,
             *,
             key: PRNGKeyArray,
     ):
@@ -72,7 +71,7 @@ class Transition(eqx.Module):
             self,
             latent_state: LatentState,
             action: jax.Array,
-    ) -> Tuple[
+    ) -> tuple[
         DistributionLike,
         jax.Array,
     ]:

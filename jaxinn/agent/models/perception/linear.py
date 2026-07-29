@@ -1,5 +1,6 @@
 import math
-from typing import Optional, Callable, Union, Tuple, ClassVar, Type
+from typing import ClassVar
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
@@ -16,16 +17,16 @@ from ..distributions import DistributionLike
 
 
 class LinearEncoder(Encoder):
-    config_cls: ClassVar[Type] = LinearEncoderConfig
+    config_cls: ClassVar[type] = LinearEncoderConfig
 
     net: eqx.Module
 
     def __init__(
             self,
-            shape: Tuple[int, ...],
-            hidden_size: Optional[list[int]] = None,
-            embedding_size: Optional[int] = None,
-            activation_function: Union[str, Callable] = "elu",
+            shape: tuple[int, ...],
+            hidden_size: list[int] | None = None,
+            embedding_size: int | None = None,
+            activation_function: str | Callable = "elu",
             *,
             key: PRNGKeyArray
     ):
@@ -54,18 +55,18 @@ class LinearEncoder(Encoder):
 
 
 class LinearDecoder(Decoder):
-    config_cls: ClassVar[Type] = LinearDecoderConfig
+    config_cls: ClassVar[type] = LinearDecoderConfig
 
     net: eqx.Module
-    shape: Tuple[int, ...] = eqx.field(static=True)
+    shape: tuple[int, ...] = eqx.field(static=True)
 
     def __init__(
             self,
-            shape: Tuple[int, ...],
+            shape: tuple[int, ...],
             belief_size: int,
-            state_size: Union[int, Tuple[int, ...]],
+            state_size: int | tuple[int, ...],
             hidden_size: list[int],
-            activation_function: Union[str, Callable] = "elu",
+            activation_function: str | Callable = "elu",
             *,
             key: PRNGKeyArray
     ):
@@ -88,7 +89,7 @@ class LinearDecoder(Decoder):
 
     def __call__(
             self,
-            latent_state: Union[jax.Array, LatentState],
+            latent_state: jax.Array | LatentState,
     ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature

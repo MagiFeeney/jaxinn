@@ -1,5 +1,3 @@
-from typing import Tuple, Dict
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
@@ -44,7 +42,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             self,
             data: Transition,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], LatentStateWithDist]]:
+    ) -> tuple[jax.Array, tuple[dict[str, jax.Array], LatentStateWithDist]]:
         prior, posterior = self.reason(data, key)
 
         reward_dist = jax.vmap(jax.vmap(self.world.reward))(posterior.latent_state)
@@ -79,7 +77,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             self,
             posterior: LatentStateWithDist,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], jax.Array, jax.Array]]:
+    ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
         (advantages, return_predictions), aux = self.process(imagined_latent_states)
 
@@ -97,7 +95,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             imagined_latent_states: jax.Array,
             return_prediction: jax.Array,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+    ) -> tuple[jax.Array, dict[str, jax.Array]]:
         value_dist = jax.vmap(jax.vmap(self.critic))(imagined_latent_states[:-1].detach())
         critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction))
         critic_loss = critic_loss.mean()
@@ -116,7 +114,7 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             self,
             posterior: LatentStateWithDist,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array], jax.Array, jax.Array]]:
+    ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
         (advantages, return_predictions, action_log_probs), aux = self.process(imagined_latent_states, actions)
 

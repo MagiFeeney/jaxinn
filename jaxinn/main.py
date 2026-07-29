@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 import tyro
 from rich import print as rprint
@@ -13,7 +12,7 @@ from jaxinn.agent import Agent
 from jaxinn.configs import Config, EnvSelector, get_config, post_process
 
 
-def setup_context(vectorization_mode: Optional[str]):
+def setup_context(vectorization_mode: str | None):
     if vectorization_mode == "async":
         try:
             import multiprocessing as mp

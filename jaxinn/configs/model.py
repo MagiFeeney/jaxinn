@@ -1,7 +1,8 @@
 from copy import deepcopy
-from enum import Enum
+from enum import StrEnum
 from dataclasses import dataclass, field
-from typing import Tuple, Dict, Optional, Union, Sequence, ClassVar, Generic, TypeVar
+from typing import ClassVar, Generic, TypeVar
+from collections.abc import Sequence
 
 from jaxtyping import PyTree
 
@@ -36,10 +37,10 @@ class Model(Base):
 class ModelShared(Model, StaticShared):
     """Shared parameters across different models."""
     belief_size: int = 200
-    state_size: Union[int, Tuple[int, ...]] = 30
+    state_size: int | tuple[int, ...] = 30
 
 
-class Domain(str, Enum):
+class Domain(StrEnum):
     STATE = "state"
     PIXEL = "pixel"
 
@@ -49,7 +50,7 @@ class PerceptionShared(Resolvable, Model):
     """Shared parameters across perception modules."""
     DOMAIN: ClassVar[Domain]
 
-    obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    obs_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
 
     def _resolve(self, ctx: dict) -> None:
@@ -69,7 +70,7 @@ class PerceptionShared(Resolvable, Model):
 
 @dataclass
 class EncoderConfig(PerceptionShared):
-    embedding_size: Optional[int] = None
+    embedding_size: int | None = None
 
     def _resolve(self, ctx: dict) -> None:
         super()._resolve(ctx)
@@ -87,7 +88,7 @@ class DecoderConfig(PerceptionShared, ModelShared):
 
 @dataclass
 class LearningRateScheduler(Base):
-    kwargs: Dict[str, Union[int, float, bool]] = field(default_factory=dict)
+    kwargs: dict[str, int | float | bool] = field(default_factory=dict)
 
     def __call__(self) -> dict:
         return self.kwargs
@@ -99,9 +100,9 @@ class Optimizer(Base):          # TODO: safeguard on lr_scheduler
     b2: float = 0.999
     eps: float = 1e-8
     lr: float = 3e-4
-    max_norm: Optional[float] = None
+    max_norm: float | None = None
     use_lr_scheduler: bool = field(default=False, metadata={"transient": True})
-    lr_scheduler: Optional[LearningRateScheduler] = None
+    lr_scheduler: LearningRateScheduler | None = None
 
 
 T = TypeVar('T')
@@ -140,8 +141,8 @@ class CNNDecoderConfig(DecoderConfig):
 @dataclass
 class LinearEncoderConfig(EncoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.STATE
-    hidden_size: Optional[list[int]] = None
-    embedding_size: Optional[int] = None
+    hidden_size: list[int] | None = None
+    embedding_size: int | None = None
 
 
 @dataclass
@@ -150,13 +151,13 @@ class LinearDecoderConfig(DecoderConfig):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300])
 
 
-EncoderUnion = Union[CNNEncoderConfig, LinearEncoderConfig] # TODO: automate this
-DecoderUnion = Union[CNNDecoderConfig, LinearDecoderConfig]
+EncoderUnion = CNNEncoderConfig | LinearEncoderConfig # TODO: automate this
+DecoderUnion = CNNDecoderConfig | LinearDecoderConfig
 
 
 @dataclass
 class RepresentationConfig(Resolvable, ModelShared):
-    embedding_size: Optional[int] = field(default=None, init=False)
+    embedding_size: int | None = field(default=None, init=False)
     hidden_size: list[int] = field(default_factory=lambda: [200])
     activation_function: str = "elu"
 
@@ -183,7 +184,7 @@ class RepresentationConfig(Resolvable, ModelShared):
 @dataclass
 class TransitionConfig(Resolvable, ModelShared):
     hidden_size: int = 200
-    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
 
     head: HeadUnion = field(default_factory=NormalHeadConfig)
@@ -195,7 +196,7 @@ class TransitionConfig(Resolvable, ModelShared):
 @dataclass
 class RewardConfig(ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
-    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 
@@ -211,7 +212,7 @@ class RewardConfig(ModelShared):
 @dataclass
 class WorldConfig(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
-    decoder: Optional[DecoderUnion] = field(default_factory=CNNDecoderConfig)
+    decoder: DecoderUnion | None = field(default_factory=CNNDecoderConfig)
     representation: RepresentationConfig = field(default_factory=RepresentationConfig)
     transition: TransitionConfig = field(default_factory=TransitionConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
@@ -221,9 +222,9 @@ class WorldConfig(Resolvable, Model):
 class ActorConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     activation_function: str = "elu"
-    action_size: Optional[PyTree[int]] = field(default=None, init=False) # Pass from the env params
+    action_size: PyTree[int] | None = field(default=None, init=False) # Pass from the env params
 
-    head: Optional[PyTree[HeadUnion]] = field(default=None, init=False) # TODO: add head_overrides
+    head: PyTree[HeadUnion] | None = field(default=None, init=False) # TODO: add head_overrides
 
     # For building head; discard after use
     continuous_head: ContinuousHeadUnion = field(default_factory=TanhNormalHeadConfig)
@@ -265,7 +266,7 @@ class ActorConfig(Resolvable, ModelShared):
 @dataclass
 class CriticConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
-    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
+    action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 

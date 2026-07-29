@@ -1,5 +1,4 @@
 import abc
-from typing import Union
 
 import jax
 import equinox as eqx
@@ -18,5 +17,5 @@ class Encoder(Registrable, eqx.Module):
 
 class Decoder(Registrable, eqx.Module):
     @abc.abstractmethod
-    def __call__(self, latent: Union[jax.Array, LatentState]) -> Union[DistributionLike, jax.Array]:
+    def __call__(self, latent: jax.Array | LatentState) -> DistributionLike | jax.Array:
         pass

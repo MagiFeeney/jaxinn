@@ -1,6 +1,6 @@
 import abc
 import numpy as np
-from typing import Tuple, Any, Union
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -11,7 +11,7 @@ from jaxinn.structs import Transition
 
 
 class HostRAM:
-    def __init__(self, num_seeds: int, capacity: Union[int, Tuple[int, ...]], obs_shape: PyTree[Tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[Tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
+    def __init__(self, num_seeds: int, capacity: int | tuple[int, ...], obs_shape: PyTree[tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
         action = jax.tree.map(
             lambda shape, dtype: np.zeros((num_seeds, *capacity, *shape), dtype=np.dtype(dtype)),
@@ -49,7 +49,7 @@ class HostRAM:
 
 class Storage(eqx.Module):
     @abc.abstractmethod
-    def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition) -> Tuple["Storage", jax.Array]:
+    def write(self, seed_idx: jax.Array, index: jax.Array, transition: Transition) -> tuple["Storage", jax.Array]:
         pass
 
     @abc.abstractmethod
@@ -65,7 +65,7 @@ class CPUStorage(Storage):
     num_seeds: int = eqx.field(static=True)
     base_struct: Any = eqx.field(static=True)
 
-    def __init__(self, num_seeds: int, capacity: int, obs_shape: PyTree[Tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[Tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
+    def __init__(self, num_seeds: int, capacity: int, obs_shape: PyTree[tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
         self.host = HostRAM(num_seeds, capacity, obs_shape, obs_dtype, action_shape, action_dtype)
         self.num_seeds = num_seeds
 
@@ -103,7 +103,7 @@ class CPUStorage(Storage):
 class GPUStorage(Storage):
     data: Transition
 
-    def __init__(self, capacity: Union[int, Tuple[int, ...]], obs_shape: PyTree[Tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[Tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
+    def __init__(self, capacity: int | tuple[int, ...], obs_shape: PyTree[tuple[int, ...]], obs_dtype: PyTree[DTypeLike], action_shape: PyTree[tuple[int, ...]], action_dtype: PyTree[DTypeLike]):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
         action = jax.tree.map(
             lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=dtype),

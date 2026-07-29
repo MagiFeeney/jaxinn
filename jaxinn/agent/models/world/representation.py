@@ -1,5 +1,3 @@
-from typing import Union, Tuple
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
@@ -28,7 +26,7 @@ class Representation(eqx.Module):
             self,
             belief_size: int,
             embedding_size: int,
-            state_size: Union[int, Tuple[int, ...]],
+            state_size: int | tuple[int, ...],
             hidden_size: list[int],
             head_config: HeadConfig,
             activation_function="elu",
@@ -49,7 +47,7 @@ class Representation(eqx.Module):
             self,
             belief: jax.Array,
             obs: jax.Array,
-    ) -> Tuple[
+    ) -> tuple[
         DistributionLike,
         jax.Array,
     ]:

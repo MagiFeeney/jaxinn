@@ -1,4 +1,5 @@
-from typing import Any, Callable, Tuple, Optional
+from typing import Any
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
@@ -17,10 +18,10 @@ class Wrapper(Environment):
         self.env = env
         self.env_params = env.env_params # populate env_params
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         return self.env.reset(key)
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         return self.env.step(key, env_state, action)
 
     @property
@@ -32,7 +33,7 @@ class Wrapper(Environment):
         return self.env.action_space
 
     @property
-    def max_episode_length(self) -> Optional[int]:
+    def max_episode_length(self) -> int | None:
         return self.env.max_episode_length
 
     def __getattr__(self, name):
@@ -58,12 +59,12 @@ class Batched(Wrapper):
         self.vmap_reset = jax.vmap(self.env.reset)
         self.vmap_step = jax.vmap(self.env.step)
 
-    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> tuple[Transition, EnvInfo, EnvState]:
         num_keys = num_envs if num_envs is not None else self.num_envs
         keys = jax.random.split(key, num_keys)
         return self.vmap_reset(keys)
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         num_keys = jax.tree.leaves(action)[0].shape[0] # Infer from action since we have already known that at reset
         keys = jax.random.split(key, num_keys)
         return self.vmap_step(keys, env_state, action)
@@ -76,7 +77,7 @@ class TimeLimit(Wrapper):
         super().__init__(env)
         self._max_episode_length = max_episode_length
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
 
         state_with_time = EnvState(
@@ -85,7 +86,7 @@ class TimeLimit(Wrapper):
         )
         return transition, env_info, state_with_time
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
         time = env_state.time + 1
         truncated = time >= self.max_episode_length
@@ -105,10 +106,10 @@ class AutoReset(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         return self.env.reset(key)
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         key_step, key_reset = jax.random.split(key)
         step_transition, step_env_info, step_env_state = self.env.step(key_step, env_state, action)
         reset_transition, reset_env_info, reset_env_state = self.env.reset(key_reset)
@@ -146,7 +147,7 @@ class ActionRepeat(Wrapper):
         super().__init__(env)
         self.action_repeat = action_repeat
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         key, key_step = jax.random.split(key, 2)
         transition, env_info, next_env_state = self.env.step(key_step, env_state, action)
         first_reward = transition.reward
@@ -229,13 +230,13 @@ class ChannelFirst(Wrapper):
                 return type(space)(low=low, high=high, shape=new_shape, dtype=space.dtype)
         return space
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self.process_obs(transition.next_obs))
         info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self.process_obs))
         return transition, info, state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self.process_obs(transition.next_obs))
         info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self.process_obs))
@@ -252,7 +253,7 @@ class UnsqueezeScalar(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(
             lambda t: (t.reward, t.terminated, t.truncated),
@@ -265,7 +266,7 @@ class UnsqueezeScalar(Wrapper):
         )
         return transition, info, state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(
             lambda t: (t.reward, t.terminated, t.truncated),
@@ -283,7 +284,7 @@ class OneHotAction(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
         batch_shape = transition.reward.shape
         target_shape = batch_shape + self.action_space.shape
@@ -291,7 +292,7 @@ class OneHotAction(Wrapper):
         transition = eqx.tree_at(lambda t: t.action, transition, dummy_one_hot_action)
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         discrete_action = jnp.argmax(action, axis=-1)
         # Interact with actual scalar action
         transition, env_info, next_env_state = self.env.step(key, env_state, discrete_action)
@@ -316,7 +317,7 @@ class NextStepAutoResetTerminalObs(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key)
         env_info = EnvInfo(**env_info.data, boundary_obs=None)
         env_state = EnvState(
@@ -325,7 +326,7 @@ class NextStepAutoResetTerminalObs(Wrapper):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         action = jax.tree.map(
             lambda x: jnp.where(
                 env_state.last_done,
@@ -345,9 +346,9 @@ class NextStepAutoResetTerminalObs(Wrapper):
 
 class ResizeImage(Wrapper):
     """Resize image to a target shape."""
-    target_shape: Tuple[int, int] = eqx.field(static=True, default=(64, 64))
+    target_shape: tuple[int, int] = eqx.field(static=True, default=(64, 64))
 
-    def __init__(self, env: Environment, target_shape: Tuple[int, int]):
+    def __init__(self, env: Environment, target_shape: tuple[int, int]):
         super().__init__(env)
         self.target_shape = target_shape
 
@@ -357,13 +358,13 @@ class ResizeImage(Wrapper):
             obs = jax.image.resize(obs, shape=target_shape, method="nearest")
         return obs.astype(jnp.uint8)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
         info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
         return transition, info, state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
         info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
@@ -424,7 +425,7 @@ class NormalizeObservation(Wrapper):
         self.clip_obs = clip_obs
         self.eps = eps
 
-    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key, num_envs)
         obs_mean = jax.tree.map(
             lambda shape, dtype: jnp.zeros(shape, dtype=dtype),
@@ -456,7 +457,7 @@ class NormalizeObservation(Wrapper):
         )
         return new_transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
         new_obs_rms = jax.lax.cond(
             env_state.is_training,
@@ -507,7 +508,7 @@ class NormalizeReward(Wrapper):
         self.eps = eps
         self.gamma = gamma
 
-    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key, num_envs)
         unbatched_reward = transition.reward[0]
         ret_rms = RunningMeanStdState(
@@ -523,7 +524,7 @@ class NormalizeReward(Wrapper):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
 
         def _active():
@@ -570,7 +571,7 @@ class Phase(Wrapper):
     def __init__(self, env: Environment):
         super().__init__(env)
 
-    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key, num_envs)
         env_state = EnvState(
             state=env_state,
@@ -578,7 +579,7 @@ class Phase(Wrapper):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, next_inner_state = self.env.step(key, env_state.state, action)
         next_env_state = eqx.tree_at(
             lambda s: s.state,
@@ -593,13 +594,13 @@ class Branched:
         self.env = env
         self.separated = separated
 
-    def reset(self, key: PRNGKeyArray, *, mode: str, **kwargs) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray, *, mode: str, **kwargs) -> tuple[Transition, EnvInfo, EnvState]:
         if self.separated:
             return self.env[mode].reset(key, **kwargs)
         else:
             return self.env.reset(key, **kwargs)
 
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array, *, mode: str) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array, *, mode: str) -> tuple[Transition, EnvInfo, EnvState]:
         if self.separated:
             return self.env[mode].step(key, env_state, action)
         else:

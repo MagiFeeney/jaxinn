@@ -1,5 +1,5 @@
 import math
-from typing import Union, Tuple, Any
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -53,10 +53,10 @@ class Transition(eqx.Module, ArrayLikeOps):
     @classmethod
     def initialize(
             cls,
-            capacity: Union[int, Tuple[int, ...]],
-            obs_shape: PyTree[Tuple[int, ...]],
+            capacity: int | tuple[int, ...],
+            obs_shape: PyTree[tuple[int, ...]],
             obs_dtype: PyTree[DTypeLike],
-            action_shape: PyTree[Tuple[int, ...]],
+            action_shape: PyTree[tuple[int, ...]],
             action_dtype: PyTree[DTypeLike],
     ):
         capacity = (capacity,) if isinstance(capacity, int) else capacity
@@ -88,10 +88,10 @@ class Experience(eqx.Module):
     @classmethod
     def initialize(
             cls,
-            capacity: Union[int, Tuple[int, ...]],
-            obs_shape: PyTree[Tuple[int, ...]],
+            capacity: int | tuple[int, ...],
+            obs_shape: PyTree[tuple[int, ...]],
             obs_dtype: PyTree[DTypeLike],
-            action_shape: PyTree[Tuple[int, ...]],
+            action_shape: PyTree[tuple[int, ...]],
             action_dtype: PyTree[DTypeLike],
             needs_boundary_obs: bool,
     ):
@@ -111,9 +111,9 @@ class LatentState(eqx.Module, ArrayLikeOps):
     def initialize(
             cls,
             belief_size: int,
-            state_size: Union[int, Tuple[int, ...]],
+            state_size: int | tuple[int, ...],
             random_init: bool = False,
-            batch_shape: Tuple[int, ...] = (),
+            batch_shape: tuple[int, ...] = (),
             *,
             key: PRNGKeyArray,
     ) -> "LatentState":

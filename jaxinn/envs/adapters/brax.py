@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple, Dict
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +17,7 @@ class Brax(Environment):
     def __init__(
             self,
             env: BraxEnv,
-            env_params: Optional[Dict[str, Any]] = None,
+            env_params: dict[str, Any] | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -26,7 +26,7 @@ class Brax(Environment):
         env = brax.envs.get_environment(env_name.lower(), **kwargs)
         return cls(env, env_params=kwargs)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, BraxEnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, BraxEnvState]:
         env_state = self.env.reset(key)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
@@ -42,7 +42,7 @@ class Brax(Environment):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: BraxEnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, BraxEnvState]:
+    def step(self, key: PRNGKeyArray, env_state: BraxEnvState, action: jax.Array) -> tuple[Transition, EnvInfo, BraxEnvState]:
         next_env_state = self.env.step(env_state, action)
         terminated = next_env_state.done.astype(bool)
         transition = Transition(

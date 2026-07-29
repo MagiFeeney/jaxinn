@@ -2,10 +2,10 @@ import jax
 import equinox as eqx
 import functools
 
-from typing import Union, Sequence, Optional, Callable
+from collections.abc import Sequence, Callable
 
 
-def differentiable(fields: Union[str, Sequence[str]]):
+def differentiable(fields: str | Sequence[str]):
     """
     Decorator that selects differentiable sub-modules by input names.
     """
@@ -31,9 +31,9 @@ def differentiable(fields: Union[str, Sequence[str]]):
 
 
 def value_and_grad(
-        loss_fn: Optional[Callable] = None,
+        loss_fn: Callable | None = None,
         *,
-        fields: Optional[Union[str, Sequence[str]]] = None,
+        fields: str | Sequence[str] | None = None,
         **grad_kwargs
 ):
 

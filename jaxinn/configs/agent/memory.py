@@ -1,7 +1,7 @@
 import math
 import warnings
 from dataclasses import dataclass, field, InitVar
-from typing import Tuple, Union, Literal, Optional
+from typing import Literal
 
 from jaxtyping import PyTree, DTypeLike
 
@@ -11,16 +11,16 @@ from .base import Base, Resolvable
 # Memory
 @dataclass
 class Memory(Resolvable, Base):
-    capacity: Union[int, Tuple[int, ...]] = 1000000
+    capacity: int | tuple[int, ...] = 1000000
     device: InitVar[Literal['cpu', 'gpu']] = 'gpu'
     type: Literal['uniform', 'prioritized', 'batched'] = 'uniform' # TODO: switch to registry
 
-    num_seeds: Optional[int] = field(default=None, init=False)
-    obs_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
-    obs_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
-    action_shape: Optional[PyTree[Tuple[int, ...]]] = field(default=None, init=False)
-    action_dtype: Optional[PyTree[DTypeLike]] = field(default=None, init=False)
-    needs_boundary_obs: Optional[bool] = field(default=None, init=False)
+    num_seeds: int | None = field(default=None, init=False)
+    obs_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
+    obs_dtype: PyTree[DTypeLike] | None = field(default=None, init=False)
+    action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
+    action_dtype: PyTree[DTypeLike] | None = field(default=None, init=False)
+    needs_boundary_obs: bool | None = field(default=None, init=False)
 
     def _resolve(self, ctx: dict) -> None:
         self.needs_boundary_obs = True if not ctx.get("next_step_autoreset", False) else False

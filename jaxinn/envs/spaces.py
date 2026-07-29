@@ -1,6 +1,7 @@
 import math
 import abc
-from typing import Any, Dict as PyDict, Tuple as PyTuple, TypeVar, Generic, Sequence, Union
+from typing import Any, TypeVar, Generic
+from collections.abc import Sequence
 
 import jax
 import jax.numpy as jnp
@@ -16,7 +17,7 @@ class Space(abc.ABC, Generic[T]):
     Registered as a PyTree to allow passing into JIT-compiled functions.
     """
 
-    def __init__(self, shape: PyTuple[int, ...], dtype: Any):
+    def __init__(self, shape: tuple[int, ...], dtype: Any):
         self._validate_dtype(dtype)
         self.shape = shape
         self.dtype = dtype
@@ -126,7 +127,7 @@ class Box(Space[jax.Array]):
     """
     A continuous space in [low, high].
     """
-    def __init__(self, low: Union[float, jax.Array], high: Union[float, jax.Array], shape: PyTuple[int, ...], dtype=jnp.float32):
+    def __init__(self, low: float | jax.Array, high: float | jax.Array, shape: tuple[int, ...], dtype=jnp.float32):
         super().__init__(shape, dtype)
         self.low = jnp.broadcast_to(jnp.asarray(low, dtype=dtype), shape)
         self.high = jnp.broadcast_to(jnp.asarray(high, dtype=dtype), shape)
@@ -224,11 +225,11 @@ class MultiDiscrete(Space[jax.Array]):
 
 
 @jax.tree_util.register_pytree_node_class
-class Dict(ComplexSpace, Space[PyDict[str, Any]]):
+class Dict(ComplexSpace, Space[dict[str, Any]]):
     """
     A dictionary of spaces.
     """
-    def __init__(self, spaces: PyDict[str, Space]):
+    def __init__(self, spaces: dict[str, Space]):
         self.spaces = spaces
 
         shape, dtype = {}, {}
@@ -239,17 +240,17 @@ class Dict(ComplexSpace, Space[PyDict[str, Any]]):
         super().__init__(shape=shape, dtype=dtype)
 
     @property
-    def size(self) -> PyDict[str, int]:
+    def size(self) -> dict[str, int]:
         return {k: space.size for k, space in self.spaces.items()}
 
-    def sample(self, key: PRNGKeyArray) -> PyDict[str, Any]:
+    def sample(self, key: PRNGKeyArray) -> dict[str, Any]:
         keys = jax.random.split(key, len(self.spaces))
         return {
             k: space.sample(k_key)
             for (k, space), k_key in zip(self.spaces.items(), keys)
         }
 
-    def contains(self, x: PyDict[str, Any]) -> bool:
+    def contains(self, x: dict[str, Any]) -> bool:
         if not isinstance(x, dict) or len(x) != len(self.spaces):
             return False
         return all(k in x and self.spaces[k].contains(x[k]) for k in self.spaces)
@@ -267,8 +268,8 @@ class Dict(ComplexSpace, Space[PyDict[str, Any]]):
 
 
 @jax.tree_util.register_pytree_node_class
-class Tuple(ComplexSpace, Space[PyTuple[Any, ...]]):
-    def __init__(self, spaces: PyTuple[Space, ...]):
+class Tuple(ComplexSpace, Space[tuple[Any, ...]]):
+    def __init__(self, spaces: tuple[Space, ...]):
         self.spaces = tuple(spaces)
 
         shape = tuple(space.shape for space in self.spaces)
@@ -277,16 +278,16 @@ class Tuple(ComplexSpace, Space[PyTuple[Any, ...]]):
         super().__init__(shape=shape, dtype=dtype)
 
     @property
-    def size(self) -> PyTuple[int, ...]:
+    def size(self) -> tuple[int, ...]:
         return tuple(space.size for space in self.spaces)
 
-    def sample(self, key: PRNGKeyArray) -> PyTuple[Any, ...]:
+    def sample(self, key: PRNGKeyArray) -> tuple[Any, ...]:
         keys = jax.random.split(key, len(self.spaces))
         return tuple(
             space.sample(k) for space, k in zip(self.spaces, keys)
         )
 
-    def contains(self, x: PyTuple[Any, ...]) -> bool:
+    def contains(self, x: tuple[Any, ...]) -> bool:
         if not isinstance(x, tuple) or len(x) != len(self.spaces):
             return False
         return all(space.contains(item) for space, item in zip(self.spaces, x))
@@ -305,12 +306,12 @@ class Hierarchical(Dict):
     A hierarchical action space with a flat dictionary of low-level actions and a high-level option that selects the route.
     """
 
-    def __init__(self, spaces: PyDict[str, Space]):
+    def __init__(self, spaces: dict[str, Space]):
         if not self._valid_structure(spaces):
             spaces = self._restructure(spaces)
         super().__init__(spaces)
 
-    def sample(self, key: PRNGKeyArray) -> PyDict[str, Any]: # TODO: only sample for a specific branch
+    def sample(self, key: PRNGKeyArray) -> dict[str, Any]: # TODO: only sample for a specific branch
         key_option, key_actions = jax.random.split(key)
         option = self.spaces["option"].sample(key_option)
         actions = self.spaces["actions"].sample(key_actions)
@@ -320,7 +321,7 @@ class Hierarchical(Dict):
         }
 
     @staticmethod
-    def _valid_structure(spaces: PyDict[str, Space]) -> bool:
+    def _valid_structure(spaces: dict[str, Space]) -> bool:
         if "option" not in spaces or "actions" not in spaces:
             return False
 
@@ -335,7 +336,7 @@ class Hierarchical(Dict):
         return True
 
     @staticmethod
-    def _restructure(spaces: PyDict[str, Space]) -> PyDict[str, Space]:
+    def _restructure(spaces: dict[str, Space]) -> dict[str, Space]:
         def _flatten_spaces(space, parent_key=""):
             flat_spaces = {}
             if hasattr(space, 'spaces') and isinstance(space.spaces, dict):

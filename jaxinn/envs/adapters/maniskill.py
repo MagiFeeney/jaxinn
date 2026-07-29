@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import torch
 from torch2jax import torch2jax
@@ -23,7 +23,7 @@ class Torch2JaxEnvWrapper:
         self.env = env
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        def torch_step(action: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+        def torch_step(action: torch.Tensor) -> tuple[torch.Tensor, ...]:
             obs, reward, terminated, truncated, info = self.env.step(action)
             final_obs = info.get("final_observation", jax.tree.map(torch.zeros_like, obs))
             return obs, reward, terminated, truncated, final_obs
@@ -65,7 +65,7 @@ class ManiSkill(GymnasiumVmapMixIn, Environment):
     def __init__(
             self,
             env: Torch2JaxEnvWrapper,
-            env_params: Optional[Dict[str, Any]] = None,
+            env_params: dict[str, Any] | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -78,7 +78,7 @@ class ManiSkill(GymnasiumVmapMixIn, Environment):
             render_mode: str = "rgb_array",
             sim_backend: str = "physx_cuda",
             include_state: bool = False,
-            seed: Optional[int] = None,
+            seed: int | None = None,
             **kwargs
     ) -> "ManiSkill":
         env = gym.make(
@@ -109,7 +109,7 @@ class ManiSkill(GymnasiumVmapMixIn, Environment):
             **kwargs,
         })
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, jax.Array]:
         obs = self.v_reset(self, key)
         transition = Transition(
             action = jax.tree.map(
@@ -127,7 +127,7 @@ class ManiSkill(GymnasiumVmapMixIn, Environment):
         env_state = EnvState()
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> tuple[Transition, EnvInfo, jax.Array]:
         # VmapMixIn → torch2jax
         next_obs, reward, terminated, truncated, final_obs = self.v_step(self, key, action)
         transition = Transition(

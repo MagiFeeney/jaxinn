@@ -1,4 +1,4 @@
-from typing import Optional, Any, Tuple
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -11,13 +11,13 @@ from ..utils import get_flatten_size, is_shape_leaf
 
 
 class ActionEncoder(eqx.Module):
-    action_embedding: Optional[Any]
+    action_embedding: Any | None
     output_size: int = eqx.field(static=True)
 
     def __init__(
         self,
-        action_shape: PyTree[Tuple[int, ...]],
-        action_embedding_size: Optional[int] = None,
+        action_shape: PyTree[tuple[int, ...]],
+        action_embedding_size: int | None = None,
         *,
         key: PRNGKeyArray
     ):

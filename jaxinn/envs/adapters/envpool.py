@@ -1,4 +1,5 @@
-from typing import Any, Callable, Optional, Tuple, Dict
+from typing import Any
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
@@ -79,7 +80,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
     def __init__(
             self,
             env: EnvPoolMixin,
-            env_params: Optional[Dict[str, Any]] = None,
+            env_params: dict[str, Any] | None = None,
     ):
         super().__init__(env, env_params)
         handle, recv, send, step = env.xla()
@@ -91,7 +92,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
         env = envpool.make(env_name, env_type="gymnasium", num_envs=num_envs, **kwargs)
         return cls(env, env_params={"capacity": num_envs, **kwargs})
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, jax.Array]:
         env_state, (obs, info) = self.v_reset(self, key)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
@@ -103,7 +104,7 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
         env_info = EnvInfo(info=info)
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> Tuple[Transition, EnvInfo, jax.Array]:
+    def step(self, key: PRNGKeyArray, env_state: jax.Array, action: jax.Array) -> tuple[Transition, EnvInfo, jax.Array]:
         next_env_state, (next_obs, reward, terminated, truncated, info) = self.v_step(self, key, env_state, action)
         transition = Transition(
             action=action,

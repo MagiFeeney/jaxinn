@@ -1,4 +1,5 @@
-from typing import Generic, TypeVar, Any, Optional, Callable
+from typing import Generic, TypeVar, Any
+from collections.abc import Callable
 
 import jax
 from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
@@ -22,7 +23,7 @@ class Learner(eqx.Module, Generic[ModelType]):
         self.optimizer_state = self.optimizer.init(self.dynamic_flatten)
 
     @classmethod
-    def create(cls, model_cls, config, lr_scheduler: Optional[Callable] = None, *, key: PRNGKeyArray) -> "Learner":
+    def create(cls, model_cls, config, lr_scheduler: Callable | None = None, *, key: PRNGKeyArray) -> "Learner":
         if hasattr(model_cls, "create"): # nested / multiple routes
             model = model_cls.create(config.model, key=key)
         else:                            # primitive

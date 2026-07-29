@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, is_dataclass, replace
-from typing import Any, Optional
+from typing import Any
 
 from .env import Wrapper
 from .config import Config
@@ -73,7 +73,7 @@ def get_config(env_id: str, custom_updates: dict = None) -> Config:
 class Separated:
     train: Wrapper = field(default_factory=Wrapper)
     eval: Wrapper = field(default_factory=Wrapper)
-    prefill: Optional[Wrapper] = None
+    prefill: Wrapper | None = None
 
     def __call__(self) -> dict[str, Any]:
         return {k: v() for k, v in vars(self).items() if v is not None and is_dataclass(v)}

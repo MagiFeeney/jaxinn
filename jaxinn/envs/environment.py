@@ -1,5 +1,5 @@
 import abc
-from typing import Tuple, Any, Dict, ClassVar, Optional
+from typing import Any, ClassVar
 
 import jax
 from jaxtyping import PRNGKeyArray, PyTree
@@ -9,7 +9,7 @@ from jaxinn.structs import Transition
 
 
 class EnvInfo(eqx.Module):
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
     _lookup_key: ClassVar[str] = "info"
 
@@ -42,11 +42,11 @@ class Environment(eqx.Module):
     env_params: Any = eqx.field(static=True)
 
     @abc.abstractmethod
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, EnvState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         pass
 
     @abc.abstractmethod
-    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> Tuple[Transition, EnvInfo, EnvState]:
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         pass
 
     @property
@@ -61,7 +61,7 @@ class Environment(eqx.Module):
 
     @property
     @abc.abstractmethod
-    def max_episode_length(self) -> Optional[int]:
+    def max_episode_length(self) -> int | None:
         pass
 
     @property

@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple, Dict
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +17,7 @@ class Navix(Environment):
     def __init__(
             self,
             env: NavixEnvironment,
-            env_params: Optional[Dict[str, Any]] = None,
+            env_params: dict[str, Any] | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -26,7 +26,7 @@ class Navix(Environment):
         env = navix.make("Navix-" + env_name, **kwargs)
         return cls(env, env_params=kwargs)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, NavixTimestep]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, NavixTimestep]:
         env_state = self.env.reset(key)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
@@ -41,7 +41,7 @@ class Navix(Environment):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: NavixTimestep, action: jax.Array) -> Tuple[Transition, EnvInfo, NavixTimestep]:
+    def step(self, key: PRNGKeyArray, env_state: NavixTimestep, action: jax.Array) -> tuple[Transition, EnvInfo, NavixTimestep]:
         next_env_state = self.env.step(env_state, action)
         transition = Transition(
             action=action,

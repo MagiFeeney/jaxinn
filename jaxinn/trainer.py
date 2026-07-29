@@ -1,4 +1,4 @@
-from typing import Any, Dict, Generic, Literal, Optional, Tuple, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 import equinox as eqx
 import jax
@@ -93,7 +93,7 @@ class Interactor:
             eval: bool = False,
             prefill: bool = False,
             num_envs: int | None = None
-    ) -> Tuple[InteractionState, Experience]:
+    ) -> tuple[InteractionState, Experience]:
         mode = self.resolve_mode(eval, prefill)
         num_envs = self.resolve_num_envs(mode, num_envs)
         episode_length = self.resolve_episode_length(num_envs, mode)
@@ -219,7 +219,7 @@ class Trainer(Interactor, eqx.Module):
         logger = Logger.create(**config.logger(), axis_name=config.axis_name) if config.logger.log_dir else None
         return cls(env=env, logger=logger, **config.exploration())
 
-    def __call__(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, Tuple[Dict[str, Any], jax.Array]]:
+    def __call__(self, agent: Agent, key: PRNGKeyArray) -> tuple[Agent, tuple[dict[str, Any], jax.Array]]:
         key_prefill, key_interleaved = jax.random.split(key, 2)
 
         # Prefill
@@ -290,7 +290,7 @@ class Trainer(Interactor, eqx.Module):
 
         return final_agent, (metrics, evaluation)
 
-    def learn(self, agent: Agent, key: PRNGKeyArray, prefill: bool = False) -> Tuple[Agent, Optional[Dict[str, jax.Array]]]:
+    def learn(self, agent: Agent, key: PRNGKeyArray, prefill: bool = False) -> tuple[Agent, dict[str, jax.Array] | None]:
 
         make_batch = agent.make_batch_fn()
 
@@ -314,7 +314,7 @@ class Trainer(Interactor, eqx.Module):
             return agent, avg_metrics
         return agent, {}
 
-    def prefill(self, agent: Agent, key: PRNGKeyArray) -> Tuple[Agent, InteractionState, Dict[str, jax.Array]]:
+    def prefill(self, agent: Agent, key: PRNGKeyArray) -> tuple[Agent, InteractionState, dict[str, jax.Array]]:
         key_init, key_interact, key_learn = jax.random.split(key, 3)
 
         def prefill_fn(key):
@@ -349,7 +349,7 @@ class Trainer(Interactor, eqx.Module):
             agent: Agent,
             interaction_state: InteractionState,
             key: PRNGKeyArray,
-    ) -> Tuple[Tuple[Agent, InteractionState, PRNGKeyArray], Dict[str, jax.Array]]:
+    ) -> tuple[tuple[Agent, InteractionState, PRNGKeyArray], dict[str, jax.Array]]:
         key, key_interact, key_learn = jax.random.split(key, 3)
         keys_interact = jax.random.split(key_interact, self.train_interval // self.episode_length)
         interaction_state, experiences = jax.lax.scan(lambda s, k: self.interact(agent, s, k), interaction_state, keys_interact)

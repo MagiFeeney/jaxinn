@@ -1,5 +1,3 @@
-from typing import Dict, Tuple
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
@@ -14,9 +12,9 @@ class PPOLossMixIn(Loss, ActorCriticLoss):
     @differentiable(['actor_critic'])
     def actor_critic_loss_fn(
             self,
-            mini_batch: Tuple[jax.Array, ...],
+            mini_batch: tuple[jax.Array, ...],
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Tuple[Dict[str, jax.Array]]]:
+    ) -> tuple[jax.Array, tuple[dict[str, jax.Array]]]:
         obs, actions, advantages, returns, old_values, old_log_probs = mini_batch
 
         # Actor loss
@@ -61,7 +59,7 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             self,
             obs: jax.Array,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+    ) -> tuple[jax.Array, dict[str, jax.Array]]:
         actor_dists = jax.vmap(self.actor)(obs)
         actions, log_probs = actor_dists.sample_and_log_prob(seed=key)
         log_probs = log_probs[..., None]
@@ -86,7 +84,7 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             next_obs: jax.Array,
             terminated: jax.Array,
             key: PRNGKeyArray,
-    ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+    ) -> tuple[jax.Array, dict[str, jax.Array]]:
         actor_dists = jax.vmap(self.actor)(next_obs)
         next_actions, next_log_probs = actor_dists.sample_and_log_prob(seed=key)
         next_log_probs = next_log_probs[..., None]

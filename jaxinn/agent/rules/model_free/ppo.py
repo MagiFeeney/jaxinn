@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, ClassVar, Type
+from typing import Any, ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +17,7 @@ from .utils import reconstruct_rl_tuple
 
 
 class PPOAgent(PPOLossMixIn, Agent):
-    config_cls: ClassVar[Type] = PPOAgentConfig
+    config_cls: ClassVar[type] = PPOAgentConfig
 
     actor_critic: Learner[ActorCritic]
     memory: Experience
@@ -54,10 +54,10 @@ class PPOAgent(PPOLossMixIn, Agent):
             **config.optimization() # Extra particulars for agent learning
         )
 
-    def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> Any:
+    def init_latent_state(self, key: PRNGKeyArray, batch_shape: tuple[int, ...] = (), eval=False) -> Any:
         return None
 
-    def act(self, last_latent_state: Optional[jax.Array], last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[None, jax.Array]:
+    def act(self, last_latent_state: jax.Array | None, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
         action = self.actor_critic.actor.sample(actor_dist, key, eval)
         return None, action
@@ -94,7 +94,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             return mini_batches
         return step_fn
 
-    def learn(self, mini_batches: Tuple[jax.Array], key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
+    def learn(self, mini_batches: tuple[jax.Array], key: PRNGKeyArray) -> tuple["Agent", dict[str, jax.Array]]:
         def mini_batch_step_fn(carry, mini_batch):
             agent, key = carry
             key, key_ac = jax.random.split(key, 2)

@@ -1,11 +1,11 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 import jax.numpy as jnp
 
 
 class VmapTransformation:
     """Transformations for custom vmap."""
 
-    is_static_leaf: Optional[Callable] = None
+    is_static_leaf: Callable | None = None
 
     def _wrap_factory(self, core_fn, static_fallback_val=None):
         """build body function based on signature requirements."""

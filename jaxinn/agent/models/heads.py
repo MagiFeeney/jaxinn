@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import Tuple, Optional, ClassVar, Type
+from typing import ClassVar
 
 import numpy as np
 import jax
@@ -46,14 +46,14 @@ class Head(Registrable, eqx.Module):
 
 
 class NormalHead(Head):
-    config_cls: ClassVar[Tuple[Type, ...]] = (
+    config_cls: ClassVar[tuple[type, ...]] = (
         NormalHeadConfig,
         IsotropicNormalHeadConfig,
         ExpNormalHeadConfig,
         FreeStdNormalHeadConfig
     )
 
-    log_std: Optional[jax.Array]
+    log_std: jax.Array | None
 
     param_size: int = eqx.field(static=True)
     state_dependent_std: bool = eqx.field(static=True)
@@ -108,21 +108,21 @@ class NormalHead(Head):
 
 
 class TanhNormalHead(Head):
-    config_cls: ClassVar[Type] = TanhNormalHeadConfig
+    config_cls: ClassVar[type] = TanhNormalHeadConfig
 
     param_size: int = eqx.field(static=True)
     min_std: float = eqx.field(static=True)
     mean_scale: float = eqx.field(static=True)
     raw_init_std: float = eqx.field(static=True)
-    log_std_range: Optional[Tuple[int, int]] = eqx.field(static=True)
+    log_std_range: tuple[int, int] | None = eqx.field(static=True)
 
     def __init__(
         self,
         event_size: int,
         min_std: float = 1e-4,
         init_std: float = 5.0,
-        mean_scale: Optional[float] = 5.0,
-        log_std_range: Optional[Tuple[int, int]] = None,
+        mean_scale: float | None = 5.0,
+        log_std_range: tuple[int, int] | None = None,
     ):
         self.param_size = 2 * event_size
 
@@ -147,7 +147,7 @@ class TanhNormalHead(Head):
 
 
 class BetaHead(Head):
-    config_cls: ClassVar[Type] = BetaHeadConfig
+    config_cls: ClassVar[type] = BetaHeadConfig
 
     param_size: int = eqx.field(static=True)
     min_std: float = eqx.field(static=True)
@@ -169,7 +169,7 @@ class BetaHead(Head):
 
 
 class CategoricalHead(Head):
-    config_cls: ClassVar[Type] = CategoricalHeadConfig
+    config_cls: ClassVar[type] = CategoricalHeadConfig
 
     param_size: int = eqx.field(static=True)
     event_size: tuple = eqx.field(static=True)
@@ -192,7 +192,7 @@ class CategoricalHead(Head):
 
 
 class OneHotCategoricalHead(CategoricalHead):
-    config_cls: ClassVar[Type] = OneHotCategoricalHeadConfig
+    config_cls: ClassVar[type] = OneHotCategoricalHeadConfig
 
     def __call__(self, x: jax.Array) -> FlattenDist:
         if x.shape[-len(self.event_size):] != self.event_size:
@@ -204,14 +204,14 @@ class OneHotCategoricalHead(CategoricalHead):
 
 
 class MultiCategoricalHead(CategoricalHead):
-    config_cls: ClassVar[Type] = MultiCategoricalHeadConfig
+    config_cls: ClassVar[type] = MultiCategoricalHeadConfig
 
-    heads: Tuple[CategoricalHead, ...]
-    nvec_shape: Tuple[int, ...] = eqx.field(static=True)
-    split_points: Tuple[int, ...] = eqx.field(static=True)
-    variable_shape: Tuple[int, ...] = eqx.field(static=True)
+    heads: tuple[CategoricalHead, ...]
+    nvec_shape: tuple[int, ...] = eqx.field(static=True)
+    split_points: tuple[int, ...] = eqx.field(static=True)
+    variable_shape: tuple[int, ...] = eqx.field(static=True)
 
-    def __init__(self, event_size: int, nvec: jax.Array, variable_shape: Tuple[int, ...] = ()):
+    def __init__(self, event_size: int, nvec: jax.Array, variable_shape: tuple[int, ...] = ()):
         super().__init__(event_size=math.prod(variable_shape) * event_size)
 
         self.nvec_shape = nvec.shape
@@ -240,10 +240,10 @@ class TreeHead(Head):
     heads: PyTree[Head]
     treedef: PyTreeDef = eqx.field(static=True)
     param_size: int = eqx.field(static=True)
-    split_points: Tuple[int, ...] = eqx.field(static=True)
+    split_points: tuple[int, ...] = eqx.field(static=True)
     is_leaf: callable = eqx.field(static=True)
 
-    dist_cls: ClassVar[Type[TreeJointDistribution]] = TreeJointDistribution
+    dist_cls: ClassVar[type[TreeJointDistribution]] = TreeJointDistribution
 
     @classmethod
     def create(cls, head_config: PyTree[HeadConfig], **kwargs):
@@ -290,4 +290,4 @@ class TreeHead(Head):
 
 
 class HierarchicalHead(TreeHead):
-    dist_cls: ClassVar[Type[HierarchicalJointDistribution]] = HierarchicalJointDistribution
+    dist_cls: ClassVar[type[HierarchicalJointDistribution]] = HierarchicalJointDistribution

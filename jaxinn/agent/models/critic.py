@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Callable, Union, Tuple
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
@@ -19,7 +19,7 @@ from .distributions import DistributionLike
 class Critic(eqx.Module):
     net: eqx.Module
     head: Head
-    action_encoder: Optional[ActionEncoder]
+    action_encoder: ActionEncoder | None
 
     @classmethod
     def create(cls, config: CriticConfig, *, key: PRNGKeyArray):
@@ -28,12 +28,12 @@ class Critic(eqx.Module):
     def __init__(
             self,
             belief_size: int,
-            state_size: Union[int, Tuple[int, ...]],
+            state_size: int | tuple[int, ...],
             hidden_size: list[int],
             head_config: HeadConfig,
-            activation_function: Union[str, Callable] = "elu",
-            action_shape: Optional[PyTree[Tuple[int, ...]]] = None,
-            action_embedding_size: Optional[int] = None,
+            activation_function: str | Callable = "elu",
+            action_shape: PyTree[tuple[int, ...]] | None = None,
+            action_embedding_size: int | None = None,
             *,
             key: PRNGKeyArray,
     ):  # if action_shape is not None, use Q fn
@@ -62,8 +62,8 @@ class Critic(eqx.Module):
 
     def __call__(
         self,
-        latent_state: Union[jax.Array, LatentState],
-        action: Optional[jax.Array] = None,
+        latent_state: jax.Array | LatentState,
+        action: jax.Array | None = None,
     ) -> DistributionLike:
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature

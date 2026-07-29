@@ -1,4 +1,3 @@
-from typing import Union
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Resolvable
@@ -63,4 +62,4 @@ class ActorCriticSharedConfig(Resolvable, Model):
         _resolve_input_size(ctx, self.actor, self.critic)
 
 
-ActorCriticUnion = Union[ActorCriticDecoupledConfig, ActorCriticSharedConfig]
+ActorCriticUnion = ActorCriticDecoupledConfig | ActorCriticSharedConfig

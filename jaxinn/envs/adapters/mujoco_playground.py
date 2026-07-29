@@ -1,6 +1,6 @@
 from ml_collections import config_dict
 from collections.abc import Mapping
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -55,7 +55,7 @@ class MjxVisionWrapper:
         env: MjxEnv,
         vision_config: Any,
         pixels_only: bool = True,
-        obs_noise: Optional[Any] = None
+        obs_noise: Any | None = None
     ):
         self._env = env
         self._pixels_only = pixels_only
@@ -239,7 +239,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
     def __init__(
             self,
             env: MjxEnv,
-            env_params: Optional[Any] = None,
+            env_params: Any | None = None,
     ):
         super().__init__(env, env_params)
 
@@ -277,7 +277,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
         env_params["capacity"] = num_envs
         return cls(env, env_params)
 
-    def reset(self, key: PRNGKeyArray) -> Tuple[Transition, EnvInfo, MjxState]:
+    def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, MjxState]:
         env_state = self.v_reset(self, key)
         transition = Transition(
             action=jnp.zeros(self.action_space.shape, dtype=self.action_space.dtype),
@@ -293,7 +293,7 @@ class Playground(Environment, PlaygroundVmapMixIn):
         )
         return transition, env_info, env_state
 
-    def step(self, key: PRNGKeyArray, env_state: MjxState, action: jax.Array) -> Tuple[Transition, EnvInfo, MjxState]:
+    def step(self, key: PRNGKeyArray, env_state: MjxState, action: jax.Array) -> tuple[Transition, EnvInfo, MjxState]:
         next_env_state = self.v_step(self, key, env_state, action)
         terminated = next_env_state.done.astype(bool)
         transition = Transition(

@@ -1,7 +1,8 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-from typing import Tuple, Dict, Any, Optional, Sequence, Literal, Callable
+from typing import Any, Literal
+from collections.abc import Sequence, Callable
 
 from rich import print as rprint
 import equinox as eqx
@@ -9,8 +10,8 @@ import equinox as eqx
 
 class FormatParams(eqx.Module):
     signature: str = eqx.field(static=True, default="Train")
-    headline_params: Optional[Dict] = eqx.field(static=True, default=None)
-    group_configs: Optional[Dict] = eqx.field(static=True, default=None)
+    headline_params: dict | None = eqx.field(static=True, default=None)
+    group_configs: dict | None = eqx.field(static=True, default=None)
 
 
 default_group_configs = {
@@ -45,7 +46,7 @@ class HostLogger:
 
     def __init__(
             self,
-            log_dir: Optional[str] = None,
+            log_dir: str | None = None,
             backend: str = "tensorboard",
             aggregate_keywords: tuple = ("eval", "test"),
             shaded_method: Literal["std", "se", "ci", "iqr"] = "std"
@@ -95,7 +96,7 @@ class HostLogger:
             ]
             self.writer.add_custom_scalars(self.layout)
 
-    def log_dict(self, metrics: Dict[str, Any], step: Any) -> None:
+    def log_dict(self, metrics: dict[str, Any], step: Any) -> None:
         if self.writer is None:
             return
 
@@ -130,7 +131,7 @@ class HostLogger:
                     self.writer.add_scalar(f"shaded/{k}/lower", float(lower), s)
                     self.writer.add_scalar(f"shaded/{k}/upper", float(upper), s)
 
-    def log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any) -> None:
+    def log_sequence(self, metrics: dict[str, Any], start_step: Any, interval: Any) -> None:
         if self.writer is None:
             return
 
@@ -150,11 +151,11 @@ class HostLogger:
 
     def print_summary(
             self,
-            metrics: Dict[str, Any],
+            metrics: dict[str, Any],
             step: int,
             signature: str = "Train",
-            headline_params: Optional[Dict[str, Any]] = None,
-            group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+            headline_params: dict[str, Any] | None = None,
+            group_configs: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         metric_shapes = {}
         print_kwargs = {}
@@ -194,11 +195,11 @@ class HostLogger:
     @classmethod
     def _get_summary_template(
             cls,
-            metric_shapes: Dict[str, Tuple[int, ...]],
+            metric_shapes: dict[str, tuple[int, ...]],
             signature: str = "Train",
-            group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+            group_configs: dict[str, dict[str, Any]] | None = None,
             group_order: Sequence[str] = ("model", "ac", "auxiliary", "evaluation")
-    ) -> Tuple[str, Dict[str, Any]]:
+    ) -> tuple[str, dict[str, Any]]:
         """
         Pure Python formatter. Generates the template string and static parameters.
         Runs ONCE at trace time for JAX, or at runtime for Eager mode.
@@ -250,7 +251,7 @@ class HostLogger:
         return fmt_string, static_params
 
     @staticmethod
-    def _get_headline(configs: Dict[str, Any], current_group: str, fallback: str) -> Tuple[str, Dict[str, Any]]:
+    def _get_headline(configs: dict[str, Any], current_group: str, fallback: str) -> tuple[str, dict[str, Any]]:
         print_kwargs_update = {}
         headline = fallback
 
@@ -268,7 +269,7 @@ class HostLogger:
         return headline, print_kwargs_update
 
     @staticmethod
-    def _merge_configs(base: Dict[str, Any], custom: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _merge_configs(base: dict[str, Any], custom: dict[str, Any] | None) -> dict[str, Any]:
         merged = {k: v.copy() if isinstance(v, dict) else v for k, v in base.items()}
         if custom:
             for group, config in custom.items():
@@ -305,7 +306,7 @@ class LoggerJaxConverter(eqx.Module):
             return 0
         return jax.lax.axis_index(self.axis_name)
 
-    def _gather_all(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+    def _gather_all(self, metrics: dict[str, Any]) -> dict[str, Any]:
         if not self._in_pmap:
             return metrics
         gathered = jax.lax.all_gather(metrics, axis_name=self.axis_name)
@@ -314,7 +315,7 @@ class LoggerJaxConverter(eqx.Module):
     def _dispatch(
         self,
         host_fn: Callable,
-        metrics: Dict[str, Any],
+        metrics: dict[str, Any],
         *args: Any,
     ) -> None:
         """Gather metrics from devices and invoke `host_fn` on device 0 only."""
@@ -326,15 +327,15 @@ class LoggerJaxConverter(eqx.Module):
             lambda: None,
         )
 
-    def _log_dict(self, metrics: Dict[str, Any], step: Any) -> None:
+    def _log_dict(self, metrics: dict[str, Any], step: Any) -> None:
         self._dispatch(self.host_logger.log_dict, metrics, step)
 
-    def _log_sequence(self, metrics: Dict[str, Any], start_step: Any, interval: Any) -> None:
+    def _log_sequence(self, metrics: dict[str, Any], start_step: Any, interval: Any) -> None:
         self._dispatch(self.host_logger.log_sequence, metrics, start_step, interval)
 
     def _print_summary(
             self,
-            metrics: Dict[str, Any],
+            metrics: dict[str, Any],
             step: int,
             format_params: FormatParams,
     ) -> None:
@@ -394,7 +395,7 @@ class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
     @classmethod
     def create(
             cls,
-            log_dir: Optional[str] = None,
+            log_dir: str | None = None,
             backend: str = "tensorboard",
             aggregate_keywords: tuple = ("eval", "test"),
             shaded_method: Literal["std", "se", "ci", "iqr"] = "std",
@@ -412,12 +413,12 @@ class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
     def log_scalar(self, key: str, value: Any, step: int) -> None:
         self.v_log_dict(self, {key: value}, step)
 
-    def log_dict(self, metrics: Dict[str, Any], step: int, prefix: Optional[str] = None) -> None:
+    def log_dict(self, metrics: dict[str, Any], step: int, prefix: str | None = None) -> None:
         if prefix:
             metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
         self.v_log_dict(self, metrics, step)
 
-    def log_sequence(self, metrics: Dict[str, Sequence[Any]], start_step: int, interval: int, prefix: Optional[str] = None) -> None:
+    def log_sequence(self, metrics: dict[str, Sequence[Any]], start_step: int, interval: int, prefix: str | None = None) -> None:
         if prefix:
             metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
 
@@ -426,11 +427,11 @@ class JaxLogger(LoggerJaxConverter, LoggerVmapMixIn):
 
     def print_summary(
             self,
-            metrics: Dict[str, Any],
+            metrics: dict[str, Any],
             step: int,
             signature: str = "Train",
-            headline_params: Optional[Dict[str, Any]] = None,
-            group_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+            headline_params: dict[str, Any] | None = None,
+            group_configs: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         # Close over the non-JAX arguments
         format_params = FormatParams(

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Any, Optional, Literal, Dict, Union
+from typing import Any, Literal
 
 from .base import Base
 
@@ -10,7 +10,7 @@ class Wrapper(Base):
     num_envs: int = 1                # num. of envs for collecting data
     action_repeat: int = 2
     use_one_hot_action: bool = False
-    target_shape: Optional[Tuple[int, int]] = None
+    target_shape: tuple[int, int] | None = None
     normalize_obs: bool = False
     normalize_reward: bool = False
 
@@ -18,7 +18,7 @@ class Wrapper(Base):
 @dataclass
 class Env(Base):
     env_id: str = "gymnax/DeepSea-bsuite"
-    creation: Dict[str, Union[int, float, bool, str]] = field(default_factory=dict)
+    creation: dict[str, int | float | bool | str] = field(default_factory=dict)
     wrapper: Wrapper = field(default_factory=Wrapper)
     separated: bool = False
     prefill_mode: Literal['batched', 'serial', 'external'] = "serial" # TODO: handle external dataset

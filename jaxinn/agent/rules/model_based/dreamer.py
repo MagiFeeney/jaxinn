@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, ClassVar, Type
+from typing import ClassVar
 from jaxtyping import PRNGKeyArray
 
 import jax
@@ -19,7 +19,7 @@ from jaxinn.agent.models import World, Actor, Critic
 
 
 class DreamerAgent(DreamerLossMixIn, Agent):
-    config_cls: ClassVar[Type] = DreamerAgentConfig
+    config_cls: ClassVar[type] = DreamerAgentConfig
 
     world: Learner[World]
     actor: Learner[Actor]
@@ -83,10 +83,10 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             **config.optimization() # Extra particulars for agent learning
         )
 
-    def init_latent_state(self, key: PRNGKeyArray, batch_shape: Tuple[int, ...] = (), eval=False) -> LatentState:
+    def init_latent_state(self, key: PRNGKeyArray, batch_shape: tuple[int, ...] = (), eval=False) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, False if eval else self.random_init, batch_shape, key=key)
 
-    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> Tuple[LatentState, jax.Array]:
+    def act(self, last_latent_state: LatentState, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[LatentState, jax.Array]:
         key_perceive, key_action = jax.random.split(key, 2)
         obs = jax.vmap(self.world.encoder)(transform(obs))
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
@@ -104,7 +104,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         )
         return prior
 
-    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray) -> Tuple[LatentStateWithDist, LatentStateWithDist]:
+    def perceive(self, latent_state: LatentState, action: jax.Array, observation: jax.Array, key: PRNGKeyArray) -> tuple[LatentStateWithDist, LatentStateWithDist]:
         """
         Perception is the process of recognizing existing knowledge or deriving new information from sensory inputs based on memory, representations, and predictive models.
         """
@@ -118,7 +118,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         )
         return prior, posterior
 
-    def reason(self, data: Transition, key: PRNGKeyArray) -> Tuple[LatentStateWithDist, LatentStateWithDist]:
+    def reason(self, data: Transition, key: PRNGKeyArray) -> tuple[LatentStateWithDist, LatentStateWithDist]:
         """
         Reason about the relationship among data and to the goal with contexts from predictive models or memory given a fixed belief;
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
@@ -148,7 +148,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         )
         return priors, posteriors
 
-    def plan(self, latent_state: LatentState, key: PRNGKeyArray) -> Tuple[jax.Array, jax.Array]:
+    def plan(self, latent_state: LatentState, key: PRNGKeyArray) -> tuple[jax.Array, jax.Array]:
         # Imagination
         def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
             latent_state, key = carry
@@ -168,7 +168,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         )
         return LatentState.concatenate([latent_states_before_last, last_latent_state[None, ...]]), actions
 
-    def process(self, latent_states: LatentState) -> Tuple[Tuple[jax.Array, ...], Dict[str, jax.Array]]:
+    def process(self, latent_states: LatentState) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
         # Processing imagined data
         rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states[1:]).mean() # Equivalent to r(s, a, s') instead of r(s, a)
         values = jax.vmap(
@@ -206,7 +206,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             return data
         return step_fn
 
-    def learn(self, data: Transition, key: PRNGKeyArray) -> Tuple["Agent", Dict[str, jax.Array]]:
+    def learn(self, data: Transition, key: PRNGKeyArray) -> tuple["Agent", dict[str, jax.Array]]:
         """Update world model, actor and critic."""
         key, key_world, key_actor, key_critic = jax.random.split(key, 4)
         metrics = {}
@@ -233,11 +233,11 @@ class DreamerAgent(DreamerLossMixIn, Agent):
 
 
 class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
-    config_cls: ClassVar[Type] = DreamerV2AgentConfig
+    config_cls: ClassVar[type] = DreamerV2AgentConfig
 
     pg_mix: float = eqx.field(static=True)
 
-    def process(self, latent_states: LatentState, actions: jax.Array) -> Tuple[Tuple[jax.Array, ...], Dict[str, jax.Array]]:
+    def process(self, latent_states: LatentState, actions: jax.Array) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
         processed, metrics = super().process(latent_states)
 
         actor_dists = jax.vmap(jax.vmap(self.actor))(latent_states[:-1])
