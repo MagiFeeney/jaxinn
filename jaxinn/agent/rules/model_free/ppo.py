@@ -64,7 +64,7 @@ class PPOAgent(PPOLossMixIn, Agent):
 
     def make_batch_fn(self) -> callable:
         transition, boundary_obs = self.memory.transition, self.memory.boundary_obs
-        obs, actions, rewards, next_obs, terminated, truncated = reconstruct_rl_tuple(transition, boundary_obs)
+        obs, actions, rewards, next_obs, terminated_or_boundary = reconstruct_rl_tuple(transition, boundary_obs)
 
         # Get advantages and returns
         values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs).mean()
@@ -75,7 +75,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             rewards,
             values,
             baselines,
-            terminated,
+            terminated_or_boundary,
             next_values,
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda

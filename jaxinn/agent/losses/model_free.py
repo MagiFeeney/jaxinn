@@ -82,7 +82,7 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
             actions: jax.Array,
             rewards: jax.Array,
             next_obs: jax.Array,
-            terminated: jax.Array,
+            terminated_or_boundary: jax.Array,
             key: PRNGKeyArray,
     ) -> tuple[jax.Array, dict[str, jax.Array]]:
         actor_dists = jax.vmap(self.actor)(next_obs)
@@ -92,7 +92,7 @@ class SACLossMixIn(Loss, ActorLoss, CriticLoss):
         next_qs = next_q_dists.mean()         # E x B x 1
         next_min_q = jnp.min(next_qs, axis=0) # B x 1
         bootstrapped_q = next_min_q - self.alpha * next_log_probs
-        td_target = rewards + (1 - terminated) * self.discount_factor * bootstrapped_q
+        td_target = rewards + (1 - terminated_or_boundary) * self.discount_factor * bootstrapped_q
 
         q_dists = eqx.filter_vmap(lambda net: jax.vmap(net)(obs, actions))(self.critic.nets)
         qs = q_dists.mean()         # E x B x 1

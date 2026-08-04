@@ -89,14 +89,16 @@ class SACAgent(SACLossMixIn, Agent):
                 replace_fn=transform
             )
 
+            last_done = data.terminated[0] | data.truncated[0]
+            terminated_or_boundary = data.terminated[1] | last_done
+
             # Map a 2-step temporal sequence into a single (s, a, r, s') causal transition
             return (
                 data.next_obs[0],
                 data.action[1],
                 data.reward[1],
                 data.next_obs[1],
-                data.terminated[1],
-                data.truncated[1]
+                terminated_or_boundary
             )
         return step_fn
 
@@ -104,10 +106,10 @@ class SACAgent(SACLossMixIn, Agent):
         key, key_actor, key_critic = jax.random.split(key, 3)
         metrics = {}
 
-        obs, actions, rewards, next_obs, terminated, truncated = data
+        obs, actions, rewards, next_obs, terminated_or_boundary = data
 
         # Update critic
-        (loss, aux), grads = self.critic_loss_fn(obs, actions, rewards, next_obs, terminated, key_critic)
+        (loss, aux), grads = self.critic_loss_fn(obs, actions, rewards, next_obs, terminated_or_boundary, key_critic)
         new_critic = self.critic.update(grads.critic)
         agent = eqx.tree_at(lambda a: a.critic, self, new_critic)
         metrics.update(**aux)
