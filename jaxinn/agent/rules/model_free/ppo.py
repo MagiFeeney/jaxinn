@@ -75,8 +75,8 @@ class PPOAgent(PPOLossMixIn, Agent):
         obs, actions, rewards, next_obs, terminated_or_boundary = reconstruct_rl_tuple(transition, boundary_obs)
 
         # Get advantages and returns
-        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs).mean()
-        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(next_obs).mean() # Recalculate values on actual terminal observation to handle truncation
+        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs)
+        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(next_obs) # Recalculate values on actual terminal observation to handle truncation
 
         baselines = values
         advantages, returns = compute_adv_and_ret(

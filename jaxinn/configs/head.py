@@ -56,6 +56,11 @@ class HierarchicalHeadConfig(DictHeadConfig):
 
 
 @dataclass
+class DeterministicHeadConfig(HeadConfig):
+    pass
+
+
+@dataclass
 class NormalHeadConfig(HeadConfig):
     state_dependent_std: bool = True
     constant_std: bool = False
@@ -120,8 +125,8 @@ class MultiCategoricalHeadConfig(CategoricalHeadConfig):
     variable_shape: tuple[int, ...] = ()
 
 
-HeadUnion = NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig | CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
+HeadUnion = DeterministicHeadConfig | NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig | CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
 
-ContinuousHeadUnion = NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig
+ContinuousHeadUnion = DeterministicHeadConfig | NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig
 
 DiscreteHeadUnion = CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig

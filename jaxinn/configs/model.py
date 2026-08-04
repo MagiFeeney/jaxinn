@@ -15,6 +15,7 @@ from .head import (
     DictHeadConfig,
     TupleHeadConfig,
     HierarchicalHeadConfig,
+    DeterministicHeadConfig,
     IsotropicNormalHeadConfig,
     TanhNormalHeadConfig,
     NormalHeadConfig,
@@ -270,7 +271,7 @@ class CriticConfig(Resolvable, ModelShared):
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 
-    head: HeadUnion = field(default_factory=IsotropicNormalHeadConfig)
+    head: HeadUnion = field(default_factory=DeterministicHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:

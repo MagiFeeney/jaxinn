@@ -10,6 +10,7 @@ from jaxinn.configs.model import (
 )
 
 from .base import AgentConfig
+from ..head import IsotropicNormalHeadConfig
 
 
 # Dreamer
@@ -35,7 +36,7 @@ class DreamerAgentConfig(AgentConfig):
     )
     critic: LearnerConfig[CriticConfig] = field(
         default_factory=lambda: LearnerConfig(
-            model=CriticConfig(),
+            model=CriticConfig(head=IsotropicNormalHeadConfig()),
             optimizer=Optimizer(lr=8e-5, max_norm=100, eps=1e-7)
         )
     )

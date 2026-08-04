@@ -13,6 +13,7 @@ from jaxinn.agent.registry import Registrable
 from jaxinn.configs.head import (
     HeadConfig,
     ComplexHeadConfig,
+    DeterministicHeadConfig,
     NormalHeadConfig,
     IsotropicNormalHeadConfig,
     ExpNormalHeadConfig,
@@ -43,6 +44,21 @@ class Head(Registrable, eqx.Module):
     @abc.abstractmethod
     def __call__(self, x: jax.Array) -> DistributionLike:
         pass
+
+
+class DeterministicHead(Head):
+    config_cls: ClassVar[type] = DeterministicHeadConfig
+
+    param_size: int = eqx.field(static=True)
+
+    def __init__(
+        self,
+        event_size: int,
+    ):
+        self.param_size = event_size
+
+    def __call__(self, x: jax.Array) -> jax.Array:
+        return x
 
 
 class NormalHead(Head):
