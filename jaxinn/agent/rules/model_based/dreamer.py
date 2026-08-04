@@ -16,6 +16,7 @@ from jaxinn.agent.rules.utils import transform, compute_adv_and_ret
 from jaxinn.agent.losses import DreamerLossMixIn, MixedActorGradientLoss
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
 from jaxinn.agent.models import World, Actor, Critic
+from jaxinn.agent.models.distributions import SampleDist
 
 
 class DreamerAgent(DreamerLossMixIn, Agent):
@@ -91,7 +92,14 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         obs = jax.vmap(self.world.encoder)(transform(obs))
         _, posterior = self.perceive(last_latent_state, last_action, obs, key_perceive)
         actor_dist = jax.vmap(self.actor)(posterior.latent_state)
-        action = self.actor.sample(actor_dist, key_action, eval)
+
+        if not eval:
+            action = actor_dist.sample(seed=key)
+        else:
+            try:
+                action = actor_dist.mode()
+            except (AttributeError, TypeError, NotImplementedError):
+                action = SampleDist(actor_dist).mode(seed=key) # Fall back to sample-based estimates
         return posterior.latent_state, action
 
     def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray) -> LatentStateWithDist:

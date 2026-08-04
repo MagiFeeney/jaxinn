@@ -77,7 +77,7 @@ class SACAgent(SACLossMixIn, Agent):
 
     def act(self, last_latent_state: jax.Array | None, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor)(obs)
-        action = self.actor.sample(actor_dist, key, eval)
+        action = actor_dist.mean() if eval else actor_dist.sample(seed=key)
         return None, action
 
     def make_batch_fn(self) -> callable:

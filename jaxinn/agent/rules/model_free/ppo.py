@@ -11,6 +11,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret, staircase_lr_schedule
 from jaxinn.agent.losses import PPOLossMixIn
+from jaxinn.agent.models.distributions import SampleDist
 
 from .actor_critic import ActorCritic
 from .utils import reconstruct_rl_tuple
@@ -59,7 +60,14 @@ class PPOAgent(PPOLossMixIn, Agent):
 
     def act(self, last_latent_state: jax.Array | None, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
-        action = self.actor_critic.actor.sample(actor_dist, key, eval)
+
+        if not eval:
+            action = actor_dist.sample(seed=key)
+        else:
+            try:
+                action = actor_dist.mode()
+            except (AttributeError, TypeError, NotImplementedError):
+                action = SampleDist(actor_dist).mode(seed=key) # Fall back to sample-based estimates
         return None, action
 
     def make_batch_fn(self) -> callable:

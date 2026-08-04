@@ -15,7 +15,7 @@ from jaxinn.configs.head import (
 
 from .utils import make_mlp
 from .heads import Head, TreeHead, HierarchicalHead
-from .distributions import SampleDist, DistributionLike
+from .distributions import DistributionLike
 
 
 class Actor(eqx.Module):
@@ -66,19 +66,3 @@ class Actor(eqx.Module):
         out = self.net(latent_state)
 
         return self.head(out)
-
-    def sample(
-            self,
-            dist: DistributionLike,
-            key: PRNGKeyArray,
-            det: bool = False,      # Default to training
-    ) -> PyTree[jax.Array]:
-        if det:
-            if hasattr(dist, "mode") and callable(dist.mode):
-                try:
-                    return dist.mode()
-                except NotImplementedError:
-                    pass
-            dist = SampleDist(dist) # Fall back to sample-based estimates
-            return dist.mode(seed=key)
-        return dist.sample(seed=key)
