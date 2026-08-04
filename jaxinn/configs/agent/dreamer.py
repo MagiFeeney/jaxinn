@@ -8,9 +8,9 @@ from jaxinn.configs.model import (
     Optimizer,
     LearnerConfig,
 )
+from jaxinn.configs.head import IsotropicNormalHeadConfig
 
 from .base import AgentConfig
-from ..head import IsotropicNormalHeadConfig
 
 
 # Dreamer
