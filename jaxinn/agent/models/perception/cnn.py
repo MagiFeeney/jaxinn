@@ -29,7 +29,7 @@ class CNNEncoder(Encoder):
 
     def __init__(
             self,
-            shape: tuple[int, int, ...],
+            obs_shape: tuple[int, int, ...],
             embedding_size: int,
             num_layers: int | None = 4,
             kernel_size: int | Sequence[int] = 4,
@@ -40,17 +40,17 @@ class CNNEncoder(Encoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(shape) >= 2, (
+        assert len(obs_shape) >= 2, (
             f"Expected a 2D+ observation shape in {self.__class__.__name__}, "
-            f"but got {shape} with {len(shape)} dimensions."
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
         self.dtype = get_precision_fn(dtype)
 
         key_body, key_head = jax.random.split(key, 2)
 
         self.body = make_cnn(
-            in_channels=shape[0],
-            num_spatial_dims=len(shape) - 1,
+            in_channels=obs_shape[0],
+            num_spatial_dims=len(obs_shape) - 1,
             activation=activation_function,
             kernel_size=kernel_size,
             depth=depth,
@@ -62,7 +62,7 @@ class CNNEncoder(Encoder):
             key=key_body
         )
 
-        self.feature_map_shape = self.get_feature_map_shape(shape)
+        self.feature_map_shape = self.get_feature_map_shape(obs_shape)
         feature_map_size = math.prod(self.feature_map_shape)
         self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=key_head)
 
@@ -90,7 +90,7 @@ class CNNDecoder(Decoder):
 
     embedding: eqx.nn.Sequential
     body: eqx.nn.Sequential
-    shape: tuple[int, int, ...] = eqx.field(static=True)
+    obs_shape: tuple[int, int, ...] = eqx.field(static=True)
     event_ndim: int = eqx.field(static=True)
     dtype: str = eqx.field(static=True)
 
@@ -100,7 +100,7 @@ class CNNDecoder(Decoder):
             self,
             belief_size: int,
             state_size: int | tuple[int, ...],
-            shape: tuple[int, int, ...],
+            obs_shape: tuple[int, int, ...],
             feature_map_shape: tuple[int, ...],
             num_layers: int | None = 4,
             kernel_size: int | Sequence[int] = 4,
@@ -111,9 +111,9 @@ class CNNDecoder(Decoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(shape) >= 2, (
+        assert len(obs_shape) >= 2, (
             f"Expected a 2D+ observation shape in {self.__class__.__name__}, "
-            f"but got {shape} with {len(shape)} dimensions."
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
         activation = get_activation_fn(activation_function)
         self.dtype = get_precision_fn(dtype)
@@ -132,8 +132,8 @@ class CNNDecoder(Decoder):
 
         self.body = make_cnn_transposed(
             in_channels=feature_map_shape[0],
-            out_channels=shape[0],
-            num_spatial_dims=len(shape) - 1,
+            out_channels=obs_shape[0],
+            num_spatial_dims=len(obs_shape) - 1,
             activation=activation,
             kernel_size=kernel_size,
             depth=depth,
@@ -145,8 +145,8 @@ class CNNDecoder(Decoder):
             key=key_body
         )
 
-        self.shape = shape
-        self.event_ndim = len(shape)
+        self.obs_shape = obs_shape
+        self.event_ndim = len(obs_shape)
 
     def __call__(
             self,
@@ -159,8 +159,8 @@ class CNNDecoder(Decoder):
         out = eqx.filter_checkpoint(self.body)(embedding)
         out = out.astype(jnp.float32)
 
-        if out.shape[-self.event_ndim:] != self.shape:
-            out = jax.image.resize(out, shape=out.shape[:-self.event_ndim] + self.shape, method="bilinear")
+        if out.shape[-self.event_ndim:] != self.obs_shape:
+            out = jax.image.resize(out, shape=out.shape[:-self.event_ndim] + self.obs_shape, method="bilinear")
 
         dist = dx.Normal(out, jnp.ones_like(out))
         return dx.Independent(dist, reinterpreted_batch_ndims=Static(self.event_ndim))

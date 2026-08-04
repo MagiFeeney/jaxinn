@@ -23,22 +23,22 @@ class LinearEncoder(Encoder):
 
     def __init__(
             self,
-            shape: tuple[int, ...],
+            obs_shape: tuple[int, ...],
             hidden_size: list[int] | None = None,
             embedding_size: int | None = None,
             activation_function: str | Callable = "elu",
             *,
             key: PRNGKeyArray
     ):
-        assert len(shape) <= 1, (
+        assert len(obs_shape) <= 1, (
             f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
-            f"but got {shape} with {len(shape)} dimensions."
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
 
         if hidden_size is not None and \
            embedding_size is not None:
             self.net = make_mlp(
-                input_size=math.prod(shape),
+                input_size=math.prod(obs_shape),
                 hidden_size=hidden_size,
                 output_size=embedding_size,
                 activation=activation_function,
@@ -58,11 +58,11 @@ class LinearDecoder(Decoder):
     config_cls: ClassVar[type] = LinearDecoderConfig
 
     net: eqx.Module
-    shape: tuple[int, ...] = eqx.field(static=True)
+    obs_shape: tuple[int, ...] = eqx.field(static=True)
 
     def __init__(
             self,
-            shape: tuple[int, ...],
+            obs_shape: tuple[int, ...],
             belief_size: int,
             state_size: int | tuple[int, ...],
             hidden_size: list[int],
@@ -70,11 +70,11 @@ class LinearDecoder(Decoder):
             *,
             key: PRNGKeyArray
     ):
-        assert len(shape) <= 1, (
+        assert len(obs_shape) <= 1, (
             f"Expected a scalar or 1D observation shape in {self.__class__.__name__}, "
-            f"but got {shape} with {len(shape)} dimensions."
+            f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
-        self.shape = shape
+        self.obs_shape = obs_shape
 
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)
@@ -82,7 +82,7 @@ class LinearDecoder(Decoder):
         self.net = make_mlp(
             input_size=belief_size + state_size,
             hidden_size=hidden_size,
-            output_size=math.prod(shape),
+            output_size=math.prod(obs_shape),
             activation=activation_function,
             key=key
         )
@@ -94,6 +94,6 @@ class LinearDecoder(Decoder):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         out = self.net(latent_state)
-        out = out.reshape(out.shape[:-1] + self.shape)
+        out = out.reshape(out.shape[:-1] + self.obs_shape)
         dist = dx.Normal(out, jnp.ones_like(out))
-        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.shape)))
+        return dx.Independent(dist, reinterpreted_batch_ndims=Static(len(self.obs_shape)))
