@@ -13,7 +13,7 @@ from mujoco_playground._src import dm_control_suite, locomotion, manipulation
 from mujoco import mjx
 from mujoco.mjx.warp import types as mjx_warp_types
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo
 from ..spaces import Box, Dict

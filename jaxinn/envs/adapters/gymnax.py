@@ -9,7 +9,7 @@ import gymnax.environments.spaces as gymnax_spaces
 from gymnax.environments.environment import Environment as GymnaxEnvironment
 from gymnax.environments.environment import EnvState as GymnaxEnvState, EnvParams as GymnaxEnvParams
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo
 from ..spaces import Discrete, Box, Dict, Tuple

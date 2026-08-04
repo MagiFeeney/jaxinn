@@ -13,6 +13,7 @@ class Wrapper(Base):
     target_shape: tuple[int, int] | None = None
     normalize_obs: bool = False
     normalize_reward: bool = False
+    reward_transform: Literal["tanh", "sign", "symlog"] | None = None
 
 
 @dataclass

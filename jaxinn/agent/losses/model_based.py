@@ -3,14 +3,13 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.structs import Transition, LatentStateWithDist
+from jaxinn.common.structs import Transition, LatentStateWithDist
 
 from .base import Loss, ActorLoss, CriticLoss, WorldLoss
 from .utils import differentiable
 
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
-
     def _compute_kl_loss(self, prior: LatentStateWithDist, posterior: LatentStateWithDist) -> jax.Array:
         if self.kl_balance > 0:
             kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist)
@@ -107,7 +106,6 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
 
 
 class MixedActorGradientLoss(DreamerLossMixIn):
-
     @eqx.filter_value_and_grad(has_aux=True)
     @differentiable(['actor'])
     def actor_loss_fn(
@@ -116,18 +114,22 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             key: PRNGKeyArray,
     ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
-        (advantages, return_predictions, action_log_probs), aux = self.process(imagined_latent_states, actions)
+        (advantages, return_predictions, action_log_probs, entropies), aux = self.process(imagined_latent_states, actions)
 
         bptt_loss = -return_predictions.mean()
+
         likelihood_pg_loss = -action_log_probs * jax.lax.stop_gradient(advantages)
         likelihood_pg_loss = likelihood_pg_loss.mean()
 
-        actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss
+        entropy_loss = -self.entropy_coef * entropies.mean()
+
+        actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss + entropy_loss
 
         metrics = {
             "ac/actor": actor_loss,
             "ac/bptt_loss": bptt_loss,
             "ac/likelihood_pg_loss": likelihood_pg_loss,
+            "ac/entropy_loss": entropy_loss,
             **aux
         }
         return actor_loss, (metrics, (imagined_latent_states, return_predictions))

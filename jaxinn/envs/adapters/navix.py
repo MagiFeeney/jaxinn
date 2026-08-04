@@ -7,7 +7,7 @@ import navix
 from navix.environments import Environment as NavixEnvironment
 from navix.environments import Timestep as NavixTimestep
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo
 from ..spaces import Box, Discrete

@@ -10,7 +10,7 @@ from mani_skill.utils import gym_utils
 from mani_skill.utils.wrappers.flatten import FlattenRGBDObservationWrapper
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from .gymnasium import GymnasiumVmapMixIn, gymnasium_space_to_jaxinn_space
 from ..environment import Environment, EnvInfo, EnvState

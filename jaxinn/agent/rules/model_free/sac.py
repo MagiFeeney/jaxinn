@@ -1,20 +1,21 @@
 from typing import Any, ClassVar
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
+from jaxinn.common.transforms import Stateless
 from jaxinn.configs.agent.sac import SACAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
-from jaxinn.agent.rules.utils import transform
 from jaxinn.agent.losses import SACLossMixIn
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
 
 from .actor_critic import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
-from .utils import soft_update
+from ..utils import soft_update
 
 
 class SACAgent(SACLossMixIn, Agent):
@@ -30,6 +31,8 @@ class SACAgent(SACLossMixIn, Agent):
     batch_size: int = eqx.field(static=True)
     tau: float = eqx.field(static=True)
     target_update_interval: int = eqx.field(static=True)
+
+    obs_transform: Callable | None = eqx.field(static=True)
 
     num_updates: jax.Array
 
@@ -63,11 +66,20 @@ class SACAgent(SACLossMixIn, Agent):
             num_seeds=config.memory.num_seeds,
         )
 
+        if config.memory.obs_dtype == jnp.uint8 and config.memory.obs_shape.ndim == 3:
+            obs_transform = Stateless(
+                forward=lambda x: x.astype(jnp.float32) / 255.0 - 0.5,
+                inverse=lambda x: (x + 0.5) * 255.0,
+            )
+        else:
+            obs_transform = None
+
         return cls(
             actor=actor,
             critic=critic,
             critic_target=critic_target,
             memory=memory,
+            obs_transform=obs_transform,
             num_updates=jnp.array(0, dtype=jnp.int32),
             **config.optimization() # Extra particulars for agent learning
         )
@@ -83,11 +95,12 @@ class SACAgent(SACLossMixIn, Agent):
     def make_batch_fn(self) -> callable:
         def step_fn(key: PRNGKeyArray):
             data = self.memory.sample((self.batch_size, 2), key) # 2 x B
-            data = eqx.tree_at(
-                lambda d: d.next_obs,
-                data,
-                replace_fn=transform
-            )
+            if self.obs_transform is not None:
+                data = eqx.tree_at(
+                    lambda d: d.next_obs,
+                    data,
+                    replace_fn=self.obs_transform
+                )
 
             # Map a 2-step temporal sequence into a single (s, a, r, s') causal transition
             return (

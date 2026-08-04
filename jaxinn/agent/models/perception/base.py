@@ -3,7 +3,7 @@ import abc
 import jax
 import equinox as eqx
 
-from jaxinn.structs import LatentState
+from jaxinn.common.structs import LatentState
 from jaxinn.agent.registry import Registrable
 
 from ..distributions import DistributionLike

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.structs import Experience
+from jaxinn.common.structs import Experience
 from jaxinn.agent.memory import Memory
 from jaxinn.agent.registry import Registrable
 

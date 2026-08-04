@@ -5,7 +5,7 @@ import jax
 from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 
 class EnvInfo(eqx.Module):

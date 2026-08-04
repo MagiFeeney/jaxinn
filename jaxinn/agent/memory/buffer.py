@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree, DTypeLike
 import equinox as eqx
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from .storage import Storage, CPUStorage, GPUStorage
 

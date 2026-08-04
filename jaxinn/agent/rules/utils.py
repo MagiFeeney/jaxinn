@@ -2,13 +2,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from jaxinn.structs import Transition, Experience
-
-
-def transform(obs: jax.Array) -> jax.Array:
-    if obs.dtype == jnp.uint8 and obs.ndim > 3:
-        return obs.astype(jnp.float32) / 255.0 - 0.5
-    return obs
+from jaxinn.common.structs import Transition, Experience
 
 
 def flatten_time_major(
@@ -159,3 +153,25 @@ def staircase_lr_schedule(init_lr, num_iterations, updates_per_iteration):
         frac = 1.0 - (current_iteration / num_iterations)
         return init_lr * jnp.maximum(frac, 0.0)
     return schedule
+
+
+def reconstruct_rl_tuple(transition: Transition, boundary_obs: jax.Array | None = None) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+    return (
+        transition.next_obs[:-1],
+        transition.action[1:],
+        transition.reward[1:],
+        transition.next_obs[1:] if boundary_obs is None else boundary_obs[1:],
+        transition.terminated[1:],
+        transition.truncated[1:],
+    )
+
+
+def soft_update(target_net: eqx.Module, source_net: eqx.Module, tau: float) -> eqx.Module:
+    """EMA update of the target network with source network."""
+
+    def update_leaf(t, s):
+        if eqx.is_inexact_array(t):
+            return t * (1.0 - tau) + s * tau
+        return t
+
+    return jax.tree.map(update_leaf, target_net, source_net)

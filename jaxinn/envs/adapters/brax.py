@@ -7,7 +7,7 @@ import brax
 from brax.envs import Env as BraxEnv
 from brax.envs.base import State as BraxEnvState
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo
 from ..spaces import Box

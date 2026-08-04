@@ -8,7 +8,7 @@ import envpool
 from envpool.python.envpool import EnvPoolMixin
 import equinox as eqx
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo
 from ..vmap import VmapTransformation

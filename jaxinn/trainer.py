@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 
-from jaxinn.structs import Experience, LatentState
+from jaxinn.common.structs import Experience, LatentState
 from jaxinn.agent import Agent
 from jaxinn.envs import Environment, make_env
 from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs, NormalizeObservation
