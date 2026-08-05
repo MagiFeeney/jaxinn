@@ -200,7 +200,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         next_values = all_values[1:]
         baselines = values
 
-        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).probs if self.world.continuation is not None else jnp.ones_like(rewards)
+        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).mean() if self.world.continuation is not None else jnp.ones_like(rewards)
         merged_discount = self.discount_factor * continues
 
         advantages, return_predictions = compute_adv_and_ret(

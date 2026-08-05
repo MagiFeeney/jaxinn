@@ -20,6 +20,7 @@ from jaxinn.configs.head import (
     FreeStdNormalHeadConfig,
     TanhNormalHeadConfig,
     BetaHeadConfig,
+    BernoulliHeadConfig,
     CategoricalHeadConfig,
     OneHotCategoricalHeadConfig,
     MultiCategoricalHeadConfig,
@@ -119,7 +120,10 @@ class NormalHead(Head):
         else:
             std = jnp.exp(log_std)
 
-        dist = dx.Independent(dx.Normal(loc=mean, scale=std), reinterpreted_batch_ndims=Static(1))
+        dist = dx.Independent(
+            dx.Normal(loc=mean, scale=std),
+            reinterpreted_batch_ndims=Static(1)
+        )
         return dist
 
 
@@ -159,7 +163,10 @@ class TanhNormalHead(Head):
         else:
             std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
 
-        return dx.Independent(dx(TanhNormal)(mean=mean, std=std), reinterpreted_batch_ndims=Static(1))
+        return dx.Independent(
+            dx(TanhNormal)(mean=mean, std=std),
+            reinterpreted_batch_ndims=Static(1)
+        )
 
 
 class BetaHead(Head):
@@ -181,7 +188,10 @@ class BetaHead(Head):
         alpha_beta = jax.nn.softplus(x) + self.min_std
         alpha, beta = jnp.split(alpha_beta, 2, axis=-1)
 
-        return dx.Independent(dx(AffineBeta)(alpha=alpha, beta=beta), reinterpreted_batch_ndims=Static(1))
+        return dx.Independent(
+            dx(AffineBeta)(alpha=alpha, beta=beta),
+            reinterpreted_batch_ndims=Static(1)
+        )
 
 
 class CategoricalHead(Head):
@@ -203,7 +213,27 @@ class CategoricalHead(Head):
             logits = x.reshape(*x.shape[:-1], *self.event_size)
         else:
             logits = x
-        dist = dx.Independent(dx.Categorical(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
+
+        dist = dx.Independent(
+            dx.Categorical(logits=logits),
+            reinterpreted_batch_ndims=Static(len(self.event_size) - 1)
+        )
+        return FlattenDist(dist)
+
+
+class BernoulliHeadConfig(CategoricalHead):
+    config_cls: ClassVar[type] = BernoulliHeadConfig
+
+    def __call__(self, x: jax.Array) -> FlattenDist:
+        if x.shape[-len(self.event_size):] != self.event_size:
+            logits = x.reshape(*x.shape[:-1], *self.event_size)
+        else:
+            logits = x
+
+        dist = dx.Independent(
+            dx.Bernoulli(logits=logits),
+            reinterpreted_batch_ndims=Static(len(self.event_size) - 1)
+        )
         return FlattenDist(dist)
 
 
@@ -215,7 +245,11 @@ class OneHotCategoricalHead(CategoricalHead):
             logits = x.reshape(*x.shape[:-1], *self.event_size)
         else:
             logits = x
-        dist = dx.Independent(dx(StraightThroughOneHotCategorical)(logits=logits), reinterpreted_batch_ndims=Static(len(self.event_size) - 1))
+
+        dist = dx.Independent(
+            dx(StraightThroughOneHotCategorical)(logits=logits),
+            reinterpreted_batch_ndims=Static(len(self.event_size) - 1)
+        )
         return FlattenDist(dist)
 
 

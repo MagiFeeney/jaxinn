@@ -6,7 +6,7 @@ from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
 
 from jaxinn.common.structs import LatentState
-from jaxinn.configs.head import HeadConfig
+from jaxinn.configs.head import BernoulliHeadConfig, DeterministicHeadConfig
 from jaxinn.configs.model import ContinuationConfig
 
 from ..utils import make_mlp
@@ -29,14 +29,14 @@ class Continuation(eqx.Module):
             belief_size: int,
             state_size: int | tuple[int, ...],
             hidden_size: list[int],
-            head_config: HeadConfig,
+            head_config: BernoulliHeadConfig | DeterministicHeadConfig,
             activation_function="elu",
             action_shape: PyTree[tuple[int, ...]] | None = None,
             action_embedding_size: int | None = None,
             *,
             key: PRNGKeyArray,
     ):
-        self.head = Head.create(head_config, event_size=2) # Bernoulli distribution as a special case of Categorical distribution
+        self.head = Head.create(head_config, event_size=1)
 
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)

@@ -19,6 +19,7 @@ from .head import (
     IsotropicNormalHeadConfig,
     TanhNormalHeadConfig,
     NormalHeadConfig,
+    BernoulliHeadConfig,
     CategoricalHeadConfig,
     OneHotCategoricalHeadConfig,
     MultiCategoricalHeadConfig
@@ -217,7 +218,7 @@ class ContinuationConfig(ModelShared):
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 
-    head: CategoricalHeadConfig | DeterministicHeadConfig = field(default_factory=CategoricalHeadConfig)
+    head: BernoulliHeadConfig | DeterministicHeadConfig = field(default_factory=BernoulliHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:

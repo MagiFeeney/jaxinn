@@ -115,6 +115,11 @@ class CategoricalHeadConfig(HeadConfig):
 
 
 @dataclass
+class BernoulliHeadConfig(CategoricalHeadConfig):
+    pass
+
+
+@dataclass
 class OneHotCategoricalHeadConfig(CategoricalHeadConfig):
     pass
 
@@ -125,8 +130,8 @@ class MultiCategoricalHeadConfig(CategoricalHeadConfig):
     variable_shape: tuple[int, ...] = ()
 
 
-HeadUnion = DeterministicHeadConfig | NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig | CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
+HeadUnion = DeterministicHeadConfig | NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig | BernoulliHeadConfig | CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
 
 ContinuousHeadUnion = DeterministicHeadConfig | NormalHeadConfig | IsotropicNormalHeadConfig | ExpNormalHeadConfig | FreeStdNormalHeadConfig | TanhNormalHeadConfig | BetaHeadConfig
 
-DiscreteHeadUnion = CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
+DiscreteHeadUnion = BernoulliHeadConfig | CategoricalHeadConfig | OneHotCategoricalHeadConfig | MultiCategoricalHeadConfig
