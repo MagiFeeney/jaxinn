@@ -60,18 +60,17 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             memory_cls = Uniform
         else:
             memory_cls = Prioritized
-            memory = memory_cls(
-                seed_idx=memory_id,
-                capacity=config.memory.capacity,
-                obs_shape=config.memory.obs_shape,
-                obs_dtype=config.memory.obs_dtype,
-                action_shape=config.memory.action_shape,
-                action_dtype=config.memory.action_dtype,
-                num_seeds=config.memory.num_seeds,
+        memory = memory_cls(
+            seed_idx=memory_id,
+            capacity=config.memory.capacity,
+            obs_shape=config.memory.obs_shape,
+            obs_dtype=config.memory.obs_dtype,
+            action_shape=config.memory.action_shape,
+            action_dtype=config.memory.action_dtype,
+            num_seeds=config.memory.num_seeds,
+        )
 
-            )
-
-        if config.memory.obs_dtype == jnp.uint8 and config.memory.obs_shape.ndim == 3:
+        if config.memory.obs_dtype == jnp.uint8 and len(config.memory.obs_shape) == 3:
             obs_transform = Stateless(
                 forward=lambda x: x.astype(jnp.float32) / 255.0 - 0.5,
                 inverse=lambda x: (x + 0.5) * 255.0,
@@ -95,7 +94,6 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             obs_transform=obs_transform,
             **config.optimization() # Extra particulars for agent learning
         )
-
 
     def init_latent_state(self, key: PRNGKeyArray, batch_shape: tuple[int, ...] = (), eval=False) -> LatentState:
         return LatentState.initialize(self.belief_size, self.state_size, False if eval else self.random_init, batch_shape, key=key)
