@@ -52,9 +52,16 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
         observation_log_prob = observation_dist.log_prob(data.next_obs)
         observation_loss = -observation_log_prob.mean()
 
+        if self.world.continuation is not None:
+            continuation_dist = jax.vmap(jax.vmap(self.world.continuation))(posterior.latent_state)
+            continuation_log_prob = continuation_dist.log_prob(1 - data.terminated)
+            continuation_loss = -continuation_log_prob.mean()
+        else:
+            continuation_loss = 0
+
         kl_loss = self._compute_kl_loss(prior, posterior)
 
-        total_loss = reward_loss + observation_loss + kl_loss
+        total_loss = reward_loss + observation_loss + continuation_loss + kl_loss
 
         # For logging
         reward_mse = jnp.mean((reward_dist.mean() - data.reward)**2)
@@ -63,6 +70,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
         metrics = {
             "model/reward": reward_loss,
             "model/observation": observation_loss,
+            "model/continuation": continuation_loss,
             "model/kl": kl_loss,
             "model/total": total_loss,
             "model/reward_mse": reward_mse,
