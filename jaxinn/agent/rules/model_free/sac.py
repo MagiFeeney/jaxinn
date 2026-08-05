@@ -89,7 +89,7 @@ class SACAgent(SACLossMixIn, Agent):
 
     def act(self, last_latent_state: jax.Array | None, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor)(obs)
-        action = self.actor.sample(actor_dist, key, eval)
+        action = actor_dist.mean() if eval else actor_dist.sample(seed=key)
         return None, action
 
     def make_batch_fn(self) -> callable:
@@ -102,14 +102,16 @@ class SACAgent(SACLossMixIn, Agent):
                     replace_fn=self.obs_transform
                 )
 
+            last_done = data.terminated[0] | data.truncated[0]
+            terminated_or_boundary = data.terminated[1] | last_done
+
             # Map a 2-step temporal sequence into a single (s, a, r, s') causal transition
             return (
                 data.next_obs[0],
                 data.action[1],
                 data.reward[1],
                 data.next_obs[1],
-                data.terminated[1],
-                data.truncated[1]
+                terminated_or_boundary
             )
         return step_fn
 
@@ -117,10 +119,10 @@ class SACAgent(SACLossMixIn, Agent):
         key, key_actor, key_critic = jax.random.split(key, 3)
         metrics = {}
 
-        obs, actions, rewards, next_obs, terminated, truncated = data
+        obs, actions, rewards, next_obs, terminated_or_boundary = data
 
         # Update critic
-        (loss, aux), grads = self.critic_loss_fn(obs, actions, rewards, next_obs, terminated, key_critic)
+        (loss, aux), grads = self.critic_loss_fn(obs, actions, rewards, next_obs, terminated_or_boundary, key_critic)
         new_critic = self.critic.update(grads.critic)
         agent = eqx.tree_at(lambda a: a.critic, self, new_critic)
         metrics.update(**aux)

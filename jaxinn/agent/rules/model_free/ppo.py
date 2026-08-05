@@ -11,6 +11,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret, staircase_lr_schedule
 from jaxinn.agent.losses import PPOLossMixIn
+from jaxinn.agent.models.distributions import SampleDist
 
 from .actor_critic import ActorCritic
 from ..utils import reconstruct_rl_tuple
@@ -59,16 +60,23 @@ class PPOAgent(PPOLossMixIn, Agent):
 
     def act(self, last_latent_state: jax.Array | None, last_action: jax.Array, obs: jax.Array, *, key: PRNGKeyArray, eval: bool = False) -> tuple[None, jax.Array]:
         actor_dist = jax.vmap(self.actor_critic.get_actor_dist)(obs)
-        action = self.actor_critic.actor.sample(actor_dist, key, eval)
+
+        if not eval:
+            action = actor_dist.sample(seed=key)
+        else:
+            try:
+                action = actor_dist.mode()
+            except (AttributeError, TypeError, NotImplementedError):
+                action = SampleDist(actor_dist).mode(seed=key) # Fall back to sample-based estimates
         return None, action
 
     def make_batch_fn(self) -> callable:
         transition, boundary_obs = self.memory.transition, self.memory.boundary_obs
-        obs, actions, rewards, next_obs, terminated, truncated = reconstruct_rl_tuple(transition, boundary_obs)
+        obs, actions, rewards, next_obs, terminated_or_boundary = reconstruct_rl_tuple(transition, boundary_obs)
 
         # Get advantages and returns
-        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs).mean()
-        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(next_obs).mean() # Recalculate values on actual terminal observation to handle truncation
+        values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(obs)
+        next_values = jax.vmap(jax.vmap(self.actor_critic.get_critic_dist))(next_obs) # Recalculate values on actual terminal observation to handle truncation
 
         baselines = values
         advantages, returns = compute_adv_and_ret(
@@ -76,7 +84,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             values,
             next_values,
             baselines,
-            terminated,
+            terminated_or_boundary,
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda
         )

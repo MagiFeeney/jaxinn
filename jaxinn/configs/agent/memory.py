@@ -1,6 +1,6 @@
 import math
 import warnings
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field
 from typing import Literal
 
 from jaxtyping import PyTree, DTypeLike
@@ -12,7 +12,7 @@ from .base import Base, Resolvable
 @dataclass
 class Memory(Resolvable, Base):
     capacity: int | tuple[int, ...] = 1000000
-    device: InitVar[Literal['cpu', 'gpu']] = 'gpu'
+    device: Literal['cpu', 'gpu'] = 'gpu'
     type: Literal['uniform', 'prioritized', 'batched'] = 'uniform' # TODO: switch to registry
 
     num_seeds: int | None = field(default=None, init=False)

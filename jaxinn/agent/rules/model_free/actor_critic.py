@@ -2,7 +2,7 @@ from typing import Any, ClassVar, Generic, TypeVar
 
 import math
 import jax
-from jaxtyping import PRNGKeyArray, PyTree
+from jaxtyping import PRNGKeyArray
 import equinox as eqx
 import distrax
 
@@ -15,7 +15,6 @@ from jaxinn.configs.agent.actor_critic import (
 from jaxinn.agent.registry import Registrable
 from jaxinn.agent.models import Actor, Critic
 from jaxinn.agent.models.perception import Encoder
-from jaxinn.agent.models.distributions import DistributionLike
 from jaxinn.agent.models.utils import apply_init
 
 
@@ -38,9 +37,6 @@ class PerceptionActor(eqx.Module):
     def __call__(self, obs: jax.Array):
         feature = self.encoder(obs)
         return self.actor(feature)
-
-    def sample(self, dist: DistributionLike, key: PRNGKeyArray, det: bool = False) -> PyTree[jax.Array]:
-        return self.actor.sample(dist, key, det)
 
 
 class PerceptionCritic(eqx.Module):
