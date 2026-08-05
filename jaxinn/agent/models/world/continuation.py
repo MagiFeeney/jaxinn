@@ -7,7 +7,7 @@ import equinox as eqx
 
 from jaxinn.common.structs import LatentState
 from jaxinn.configs.head import HeadConfig
-from jaxinn.configs.model import RewardConfig
+from jaxinn.configs.model import ContinuationConfig
 
 from ..utils import make_mlp
 from ..perception import ActionEncoder
@@ -15,13 +15,13 @@ from ..heads import Head
 from ..distributions import DistributionLike
 
 
-class Reward(eqx.Module):
+class Continuation(eqx.Module):
     net: eqx.Module
     head: Head
     action_encoder: ActionEncoder | None
 
     @classmethod
-    def create(cls, config: RewardConfig, *, key: PRNGKeyArray):
+    def create(cls, config: ContinuationConfig, *, key: PRNGKeyArray):
         return cls(**config(), head_config=config.head, key=key)
 
     def __init__(
@@ -36,7 +36,7 @@ class Reward(eqx.Module):
             *,
             key: PRNGKeyArray,
     ):
-        self.head = Head.create(head_config, event_size=1)
+        self.head = Head.create(head_config, event_size=2) # Bernoulli distribution as a special case of Categorical distribution
 
         if isinstance(state_size, tuple):
             state_size = math.prod(state_size)

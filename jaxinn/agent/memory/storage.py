@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import PyTree, DTypeLike
 import equinox as eqx
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 
 class HostRAM:

@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
-from jaxinn.structs import Experience
+from jaxinn.common.structs import Experience
 from jaxinn.configs.agent.ppo import PPOAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
@@ -14,7 +14,7 @@ from jaxinn.agent.losses import PPOLossMixIn
 from jaxinn.agent.models.distributions import SampleDist
 
 from .actor_critic import ActorCritic
-from .utils import reconstruct_rl_tuple
+from ..utils import reconstruct_rl_tuple
 
 
 class PPOAgent(PPOLossMixIn, Agent):
@@ -82,9 +82,9 @@ class PPOAgent(PPOLossMixIn, Agent):
         advantages, returns = compute_adv_and_ret(
             rewards,
             values,
+            next_values,
             baselines,
             terminated_or_boundary,
-            next_values,
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda
         )

@@ -8,7 +8,7 @@ from jaxtyping import PRNGKeyArray
 import equinox as eqx
 from equinox._module import Static
 
-from jaxinn.structs import LatentState
+from jaxinn.common.structs import LatentState
 from jaxinn.configs.model import LinearEncoderConfig, LinearDecoderConfig
 
 from .base import Encoder, Decoder

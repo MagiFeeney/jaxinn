@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 
-from jaxinn.structs import Experience, LatentState
+from jaxinn.common.structs import Experience, LatentState
 from jaxinn.agent import Agent
 from jaxinn.envs import Environment, make_env
 from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs, NormalizeObservation
@@ -70,7 +70,7 @@ class Interactor:
 
         if last_env_state is not None:
             if self.env.is_wrapped_by(NormalizeObservation, mode=mode):
-                env_state = eqx.tree_at(lambda s: s.obs_rms, env_state, last_env_state.obs_rms)
+                env_state = eqx.tree_at(lambda s: s.obs_transform, env_state, last_env_state.obs_transform)
 
         if hasattr(env_state, "is_training") and eval:
             env_state = eqx.tree_at(lambda s: s.is_training, env_state, False)

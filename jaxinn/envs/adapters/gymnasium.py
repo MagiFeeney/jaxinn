@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import gymnasium as gym
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo, EnvState
 from ..vmap import VmapTransformation

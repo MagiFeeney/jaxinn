@@ -8,6 +8,7 @@ from ..perception import Encoder, Decoder
 from .representation import Representation
 from .transition import Transition
 from .reward import Reward
+from .continuation import Continuation
 
 
 class World(eqx.Module):
@@ -16,25 +17,35 @@ class World(eqx.Module):
     representation: Representation
     transition: Transition
     reward: Reward
+    continuation: Continuation
 
     @classmethod
     def create(cls, config: WorldConfig, *, key: PRNGKeyArray):
-        key_encoder, key_decoder, key_representation, key_transition, key_reward = jax.random.split(key, 5)
+        key_encoder, key_decoder, key_representation, key_transition, key_reward, key_continuation = jax.random.split(key, 6)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        extra = {}
-        if hasattr(encoder, "feature_map_shape"):
-            extra["feature_map_shape"] = encoder.feature_map_shape
-        decoder = Decoder.create(config.decoder, **extra, key=key_decoder)
+        if config.decoder is not None:
+            extra = {}
+            if hasattr(encoder, "feature_map_shape"):
+                extra["feature_map_shape"] = encoder.feature_map_shape
+            decoder = Decoder.create(config.decoder, **extra, key=key_decoder)
+        else:
+            decoder = None
 
         representation = Representation.create(config.representation, key=key_representation)
         transition = Transition.create(config.transition, key=key_transition)
         reward = Reward.create(config.reward, key=key_reward)
+
+        if config.continuation is not None:
+            continuation = Continuation.create(config.continuation, key=key_continuation)
+        else:
+            continuation = None
 
         return cls(
             encoder=encoder,
             decoder=decoder,
             representation=representation,
             transition=transition,
-            reward=reward
+            reward=reward,
+            continuation=continuation
         )

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.structs import LatentState
+from jaxinn.common.structs import LatentState
 from jaxinn.configs.model import CriticConfig
 from jaxinn.configs.head import HeadConfig
 

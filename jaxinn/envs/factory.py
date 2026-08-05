@@ -16,6 +16,7 @@ from .wrapper import (
     ResizeImage,
     NormalizeObservation,
     NormalizeReward,
+    TransformReward,
     Phase,
     Branched,
 )
@@ -120,12 +121,16 @@ def make_env(
 
         normalize_obs = wrapper.get("normalize_obs", False)
         normalize_reward = wrapper.get("normalize_reward", False)
+        reward_transform = wrapper.get("reward_transform", None)
 
-        if normalize_obs or normalize_reward:
+        if normalize_obs or normalize_reward or reward_transform:
             env = Phase(env)
 
         if normalize_obs:
             env = NormalizeObservation(env)
+
+        if reward_transform is not None:
+            env = TransformReward(env, transform=reward_transform)
 
         if normalize_reward:
             env = NormalizeReward(env)

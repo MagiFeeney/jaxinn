@@ -9,7 +9,7 @@ from jaxarc.types import (
 )
 import stoa.spaces as stoa_spaces
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
 
 from ..environment import Environment, EnvInfo
 from ..spaces import Space, Discrete, MultiDiscrete, Box, Dict, Tuple

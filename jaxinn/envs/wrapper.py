@@ -6,7 +6,19 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
 
-from jaxinn.structs import Transition
+from jaxinn.common.structs import Transition
+from jaxinn.common.transforms import (
+    Transform,
+    Chain,
+    Stateless,
+    Clip,
+    Tanh,
+    Sign,
+    SymLog,
+    ArcSinh,
+    SignedSqrt,
+    RunningMeanStd,
+)
 from .environment import Environment, EnvInfo, EnvState
 from .spaces import Discrete, OneHotDiscrete
 
@@ -382,74 +394,43 @@ class ResizeImage(Wrapper):
         )
 
 
-class RunningMeanStdState(eqx.Module):
-    mean: jax.Array
-    var: jax.Array
-    count: jax.Array
-
-
-def update_rms(rms: RunningMeanStdState, x: Any) -> RunningMeanStdState:
-    """Welford's algorithm for calculating running mean and variance."""
-
-    batch_size = jnp.asarray(jax.tree.leaves(x)[0].shape[0], dtype=jnp.float32)
-
-    batch_mean = jax.tree.map(lambda arr: jnp.mean(arr, axis=0), x)
-    batch_var = jax.tree.map(lambda arr: jnp.var(arr, axis=0), x)
-
-    total_count = rms.count + batch_size
-    delta = jax.tree.map(jnp.subtract, batch_mean, rms.mean)
-
-    def _update_mean(rms_mean, delta):
-        return rms_mean + delta * batch_size / total_count
-
-    def _update_var(rms_var, var, delta):
-        m_a = rms_var * rms.count
-        m_b = var * batch_size
-        m_2 = m_a + m_b + jnp.square(delta) * rms.count * batch_size / total_count
-        return m_2 / total_count
-
-    new_mean = jax.tree.map(_update_mean, rms.mean, delta)
-    new_var = jax.tree.map(_update_var, rms.var, batch_var, delta)
-
-    return RunningMeanStdState(mean=new_mean, var=new_var, count=total_count)
-
-
 class NormalizeObservation(Wrapper):
     """Normalize observation with runnning mean and std of raw obs."""
 
-    clip_obs: float = eqx.field(static=True)
+    clip_obs: float | None = eqx.field(static=True)
     eps: float = eqx.field(static=True)
 
-    def __init__(self, env: Environment, clip_obs: float = 10.0, eps: float = 1e-8):
+    def __init__(self, env: Environment, clip_obs: float | None = 10.0, eps: float = 1e-8):
         super().__init__(env)
         self.clip_obs = clip_obs
         self.eps = eps
 
     def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key, num_envs)
-        obs_mean = jax.tree.map(
-            lambda shape, dtype: jnp.zeros(shape, dtype=dtype),
-            self.observation_space.shape,
-            self.observation_space.dtype,
-            is_leaf=lambda x: isinstance(x, tuple)
-        )
-        obs_var = jax.tree.map(
-            lambda shape, dtype: jnp.ones(shape, dtype=dtype),
-            self.observation_space.shape,
-            self.observation_space.dtype,
-            is_leaf=lambda x: isinstance(x, tuple)
-        )
-        obs_rms = RunningMeanStdState(
-            mean=obs_mean,
-            var=obs_var,
-            count=jnp.array(1e-4, dtype=jnp.float32)
-        )
-        new_obs_rms = update_rms(obs_rms, transition.next_obs)
+        if self.clip_obs is not None:
+            obs_transform = Chain(
+                transforms=(
+                    RunningMeanStd(
+                        self.observation_space.shape,
+                        self.observation_space.dtype,
+                        self.eps,
+                    ),
+                    Clip(low=-self.clip_obs, high=self.clip_obs)
+                )
+            )
+        else:
+            obs_transform = RunningMeanStd(
+                self.observation_space.shape,
+                self.observation_space.dtype,
+                self.eps,
+            )
+
+        new_obs_transform = obs_transform.update(transition.next_obs)
         env_state = EnvState(
             state=env_state,
-            obs_rms=new_obs_rms,
+            obs_transform=new_obs_transform,
         )
-        normalized_obs = self._normalize_obs(new_obs_rms, transition.next_obs)
+        normalized_obs = new_obs_transform(transition.next_obs)
         new_transition = eqx.tree_at(
             lambda t: t.next_obs,
             transition,
@@ -459,12 +440,12 @@ class NormalizeObservation(Wrapper):
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
-        new_obs_rms = jax.lax.cond(
+        new_obs_transform = jax.lax.cond(
             env_state.is_training,
-            lambda: update_rms(env_state.obs_rms, transition.next_obs),
-            lambda: env_state.obs_rms
+            lambda: env_state.obs_transform.update(transition.next_obs),
+            lambda: env_state.obs_transform
         )
-        normalized_obs = self._normalize_obs(new_obs_rms, transition.next_obs)
+        normalized_obs = new_obs_transform(transition.next_obs)
         new_transition = eqx.tree_at(
             lambda t: t.next_obs,
             transition,
@@ -472,37 +453,28 @@ class NormalizeObservation(Wrapper):
         )
         next_env_state = EnvState(
             state=next_env_state,
-            obs_rms=new_obs_rms,
+            obs_transform=new_obs_transform,
         )
         if hasattr(env_info, "boundary_obs"):
-            env_info = eqx.tree_at(lambda i: i.boundary_obs, env_info, self._normalize_obs(new_obs_rms, env_info.boundary_obs))
+            env_info = eqx.tree_at(
+                lambda i: i.boundary_obs,
+                env_info,
+                new_obs_transform(env_info.boundary_obs)
+            )
         return new_transition, env_info, next_env_state
 
-    def _normalize_obs(self, obs_rms: RunningMeanStdState, obs: Any) -> Any:
-        return jax.tree.map(
-            lambda o, m, v: jnp.clip(
-                (o - m) / jnp.sqrt(v + self.eps),
-                -self.clip_obs,
-                self.clip_obs
-            ),
-            obs, obs_rms.mean, obs_rms.var
-        )
-
     def unnormalize_obs(self, env_state: EnvState, obs: Any) -> Any:
-        return jax.tree.map(
-            lambda o, m, v: (o * jnp.sqrt(v + self.eps)) + m,
-            obs, env_state.obs_rms.mean, env_state.obs_rms.var
-        )
+        return env_state.obs_transform.inverse(obs)
 
 
 class NormalizeReward(Wrapper):
     """Normalize reward with runnning mean and std of backward discounted return."""
 
-    clip_reward: float = eqx.field(static=True)
+    clip_reward: float | None = eqx.field(static=True)
     eps: float = eqx.field(static=True)
     gamma: float = eqx.field(static=True)
 
-    def __init__(self, env: Environment, clip_reward: float = 10.0, eps: float = 1e-8, gamma: float = 0.99):
+    def __init__(self, env: Environment, clip_reward: float | None = 10.0, eps: float = 1e-8, gamma: float = 0.99):
         super().__init__(env)
         self.clip_reward = clip_reward
         self.eps = eps
@@ -511,15 +483,31 @@ class NormalizeReward(Wrapper):
     def reset(self, key: PRNGKeyArray, num_envs: int | None = None) -> tuple[Transition, EnvInfo, EnvState]:
         transition, env_info, env_state = self.env.reset(key, num_envs)
         unbatched_reward = transition.reward[0]
-        ret_rms = RunningMeanStdState(
-            mean=jnp.zeros_like(unbatched_reward, dtype=jnp.float32),
-            var=jnp.ones_like(unbatched_reward, dtype=jnp.float32),
-            count=jnp.array(1e-4, dtype=jnp.float32)
-        )
+
+        if self.clip_reward is not None:
+            reward_transform = Chain(
+                transforms=(
+                    RunningMeanStd(
+                        unbatched_reward.shape,
+                        unbatched_reward.dtype,
+                        self.eps,
+                        center=False,
+                    ),
+                    Clip(low=-self.clip_reward, high=self.clip_reward)
+                )
+            )
+        else:
+            reward_transform = RunningMeanStd(
+                unbatched_reward.shape,
+                unbatched_reward.dtype,
+                self.eps,
+                center=False,
+            )
+
         returns = jnp.zeros_like(transition.reward)
         env_state = EnvState(
             state=env_state,
-            ret_rms=ret_rms,
+            reward_transform=reward_transform,
             returns=returns,
         )
         return transition, env_info, env_state
@@ -529,14 +517,14 @@ class NormalizeReward(Wrapper):
 
         def _active():
             new_returns = env_state.returns * self.gamma + transition.reward
-            new_ret_rms = update_rms(env_state.ret_rms, new_returns)
-            normalized_reward = self._normalize_reward(new_ret_rms, transition.reward)
-            return new_returns, new_ret_rms, normalized_reward
+            new_reward_transform = env_state.reward_transform.update(new_returns)
+            normalized_reward = new_reward_transform(transition.reward)
+            return new_returns, new_reward_transform, normalized_reward
 
         def _frozen():
-            return env_state.returns, env_state.ret_rms, transition.reward
+            return env_state.returns, env_state.reward_transform, transition.reward
 
-        new_returns, new_ret_rms, normalized_reward = jax.lax.cond(
+        new_returns, new_reward_transform, normalized_reward = jax.lax.cond(
             env_state.is_training,
             _active,
             _frozen
@@ -549,20 +537,63 @@ class NormalizeReward(Wrapper):
         )
         next_env_state = EnvState(
             state=next_env_state,
-            ret_rms=new_ret_rms,
+            reward_transform=new_reward_transform,
             returns=new_returns,
         )
         return new_transition, env_info, next_env_state
 
-    def _normalize_reward(self, ret_rms: RunningMeanStdState, reward: jax.Array) -> jax.Array:
-        return jnp.clip(
-            reward / jnp.sqrt(ret_rms.var + self.eps),
-            -self.clip_reward,
-            self.clip_reward
-        )
-
     def unnormalize_reward(self, env_state: EnvState, reward: jax.Array) -> jax.Array:
-        return reward * jnp.sqrt(env_state.ret_rms.var + self.eps)
+        return env_state.reward_transform.inverse(reward)
+
+
+class TransformReward(Wrapper):
+    """Transform reward with a non-decreasing function."""
+
+    transform: Transform
+
+    def __init__(self, env: Environment, transform: str | Transform | Callable):
+        super().__init__(env)
+
+        if isinstance(transform, str):
+            if transform == "tanh":
+                self.transform = Tanh()
+            elif transform == "sign":
+                self.transform = Sign()
+            elif transform == "symlog":
+                self.transform = SymLog()
+            elif transform == "arcsinh":
+                self.transform = ArcSinh()
+            elif transform == "signedsqrt":
+                self.transform = SignedSqrt()
+            else:
+                raise ValueError(f"Unknown transform: {transform}")
+        elif isinstance(transform, Transform):
+            self.transform = transform
+        elif isinstance(transform, Callable):
+            self.transform = Stateless(forward=transform)
+        else:
+            raise ValueError(f"Unsupported transform type {type(transform)}")
+
+    def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
+        transition, env_info, next_env_state = self.env.step(key, env_state, action)
+        transformed_reward = jax.lax.cond(
+            env_state.is_training,
+            self.transform,
+            lambda x: x,
+            transition.reward
+        )
+        new_transition = eqx.tree_at(
+            lambda t: t.reward,
+            transition,
+            transformed_reward
+        )
+        return new_transition, env_info, next_env_state
+
+    def forward(self, reward: jax.Array) -> jax.Array:
+        return self.transform(reward)
+
+    def inverse(self, reward: jax.Array) -> jax.Array:
+        return self.transform.inverse(reward)
 
 
 class Phase(Wrapper):
