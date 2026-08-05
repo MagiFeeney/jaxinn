@@ -217,7 +217,7 @@ class ContinuationConfig(ModelShared):
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
     activation_function: str = "elu"
 
-    head: CategoricalHeadConfig = field(default_factory=CategoricalHeadConfig) # TODO: add DeterministicHeadConfig from main branch
+    head: CategoricalHeadConfig | DeterministicHeadConfig = field(default_factory=CategoricalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
         if self.use_action:

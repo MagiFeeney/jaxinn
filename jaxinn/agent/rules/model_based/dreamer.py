@@ -171,12 +171,12 @@ class DreamerAgent(DreamerLossMixIn, Agent):
 
     def plan(self, latent_state: LatentState, key: PRNGKeyArray) -> tuple[jax.Array, jax.Array]:
         # Imagination
-        def imagine_step_fn(carry, _): # TODO: integrate the logic of masking inputs when terminated; require a terminal predictor d(s, a)
+        def imagine_step_fn(carry, _):
             latent_state, key = carry
 
             key, key_action, key_predict = jax.random.split(key, 3)
             actor_dist = jax.vmap(self.actor)(latent_state.detach())
-            action = self.actor.sample(actor_dist, key_action)
+            action = actor_dist.sample(seed=key_action)
             prior = self.predict(latent_state, action, key_predict)
 
             return (prior.latent_state, key), (latent_state, action)

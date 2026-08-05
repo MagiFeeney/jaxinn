@@ -66,7 +66,7 @@ class SACAgent(SACLossMixIn, Agent):
             num_seeds=config.memory.num_seeds,
         )
 
-        if config.memory.obs_dtype == jnp.uint8 and config.memory.obs_shape.ndim == 3:
+        if config.memory.obs_dtype == jnp.uint8 and len(config.memory.obs_shape) == 3:
             obs_transform = Stateless(
                 forward=lambda x: x.astype(jnp.float32) / 255.0 - 0.5,
                 inverse=lambda x: (x + 0.5) * 255.0,
