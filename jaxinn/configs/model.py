@@ -210,12 +210,29 @@ class RewardConfig(ModelShared):
 
 
 @dataclass
+class ContinuationConfig(ModelShared):
+    hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
+    action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
+    use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
+    activation_function: str = "elu"
+
+    head: CategoricalHeadConfig = field(default_factory=CategoricalHeadConfig) # TODO: add DeterministicHeadConfig from main branch
+
+    def _resolve(self, ctx: dict) -> None:
+        if self.use_action:
+            self.action_shape = ctx["action_space"].shape
+        else:
+            self.action_shape = None
+
+
+@dataclass
 class WorldConfig(Resolvable, Model):
     encoder: EncoderUnion = field(default_factory=CNNEncoderConfig)
     decoder: DecoderUnion | None = field(default_factory=CNNDecoderConfig)
     representation: RepresentationConfig = field(default_factory=RepresentationConfig)
     transition: TransitionConfig = field(default_factory=TransitionConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
+    continuation: ContinuationConfig | None = None
 
 
 @dataclass

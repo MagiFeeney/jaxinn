@@ -186,21 +186,24 @@ class DreamerAgent(DreamerLossMixIn, Agent):
     def process(self, latent_states: LatentState) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
         # Processing imagined data
         rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states[1:]).mean() # Equivalent to r(s, a, s') instead of r(s, a)
-        values = jax.vmap(
+
+        all_values = jax.vmap(
             jax.vmap(jax.lax.stop_gradient(self.critic))
         )(latent_states).mean()
-        values_before_last = values[:-1]
+        values = all_values[:-1]
+        next_values = all_values[1:]
+        baselines = values
 
-        dones = jnp.zeros_like(values_before_last) # TODO: replace with termination predictor
-        baselines = values_before_last
+        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).probs if self.world.continuation is not None else jnp.ones_like(rewards)
+        merged_discount = self.discount_factor * continues
 
         advantages, return_predictions = compute_adv_and_ret(
             rewards,
-            values_before_last,
+            values,
+            next_values,
             baselines,
-            dones,
-            next_values=values[1:],
-            discount_factor=self.discount_factor,
+            terminated=None,
+            discount_factor=merged_discount,
             uae_lambda=self.uae_lambda
         )
         out = (advantages, return_predictions)
@@ -293,21 +296,24 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         # Processing imagined data
         rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states[1:]).mean() # Equivalent to r(s, a, s') instead of r(s, a)
         transformed_rewards = self.imagined_reward_transform(rewards) if self.imagined_reward_transform is not None else rewards
-        values = jax.vmap(
+
+        all_values = jax.vmap(
             jax.vmap(jax.lax.stop_gradient(self.critic_target))
         )(latent_states).mean()
-        values_before_last = values[:-1]
+        values = all_values[:-1]
+        next_values = all_values[1:]
+        baselines = values
 
-        dones = jnp.zeros_like(values_before_last) # TODO: replace with termination predictor
-        baselines = values_before_last
+        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).probs if self.world.continuation is not None else jnp.ones_like(rewards)
+        merged_discount = self.discount_factor * continues
 
         advantages, return_predictions = compute_adv_and_ret(
             transformed_rewards,
-            values_before_last,
+            values,
+            next_values,
             baselines,
-            dones,
-            next_values=values[1:],
-            discount_factor=self.discount_factor,
+            terminated=None,
+            discount_factor=merged_discount,
             uae_lambda=self.uae_lambda
         )
 
@@ -315,7 +321,10 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
         entropies = actor_dists.entropy()
 
-        out = (advantages, return_predictions, action_log_probs, entropies)
+        shifted_discount = jnp.concatenate([jnp.ones_like(merged_discount[:1]), merged_discount[:-1]], axis=0)
+        weights = jnp.cumprod(shifted_discount, axis=0)
+
+        out = (advantages, return_predictions, action_log_probs, entropies, weights)
         metrics = {
             "aux/return_prediction": return_predictions.mean(),
             "aux/imagined_rewards": rewards.mean(),

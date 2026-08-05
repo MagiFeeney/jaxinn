@@ -74,9 +74,9 @@ class PPOAgent(PPOLossMixIn, Agent):
         advantages, returns = compute_adv_and_ret(
             rewards,
             values,
+            next_values,
             baselines,
             terminated,
-            next_values,
             discount_factor=self.discount_factor,
             uae_lambda=self.uae_lambda
         )

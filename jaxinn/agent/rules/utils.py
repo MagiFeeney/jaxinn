@@ -108,12 +108,16 @@ def replenish_boundary_obs(experiences: Experience) -> tuple[Transition, jax.Arr
 def compute_adv_and_ret(
         rewards: jax.Array,
         values: jax.Array,
-        baselines: jax.Array,
-        terminated: jax.Array,
         next_values: jax.Array,
-        discount_factor: float = 0.99,
+        baselines: jax.Array,
+        terminated: jax.Array | None,
+        discount_factor: float | jax.Array = 0.99,
         uae_lambda: float = 0.95,
 ) -> tuple[jax.Array, jax.Array]:
+
+    discount_factor = jnp.broadcast_to(discount_factor, rewards.shape)
+    gammas = discount_factor if terminated is None else discount_factor * (1.0 - terminated)
+
     def uae_step_fn(uae, inputs):
         """
         Unified advantage estimator (UAE): a generalized version of GAE.
@@ -122,15 +126,11 @@ def compute_adv_and_ret(
 
         Reference: https://arxiv.org/pdf/2302.00533
         """
-        reward, value, baseline, next_value, term = inputs
+        reward, value, baseline, next_value, gamma = inputs
 
-        delta = (
-            reward
-            + discount_factor * next_value * (1 - term)
-            - baseline
-        )
+        delta = reward + gamma * next_value - baseline
         z = value - baseline
-        discounted_uae = discount_factor * uae_lambda * (1 - term) * uae
+        discounted_uae = gamma * uae_lambda * uae
         advantage = delta + discounted_uae
         uae = advantage - z
         return uae, advantage
@@ -140,7 +140,7 @@ def compute_adv_and_ret(
     _, advantages = jax.lax.scan(
         uae_step_fn,
         uae,
-        (rewards, values, baselines, next_values, terminated),
+        (rewards, values, baselines, next_values, gammas),
         reverse=True,
     )
     return_predictions = advantages + baselines

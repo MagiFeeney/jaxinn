@@ -114,22 +114,20 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             key: PRNGKeyArray,
     ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
-        (advantages, return_predictions, action_log_probs, entropies), aux = self.process(imagined_latent_states, actions)
+        (advantages, return_predictions, action_log_probs, entropies, weights), aux = self.process(imagined_latent_states, actions)
 
-        bptt_loss = -return_predictions.mean()
-
+        bptt_loss = -return_predictions
         likelihood_pg_loss = -action_log_probs * jax.lax.stop_gradient(advantages)
-        likelihood_pg_loss = likelihood_pg_loss.mean()
-
-        entropy_loss = -self.entropy_coef * entropies.mean()
+        entropy_loss = -self.entropy_coef * entropies
 
         actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss + entropy_loss
+        actor_loss = (weights * actor_loss).mean()
 
         metrics = {
             "ac/actor": actor_loss,
-            "ac/bptt_loss": bptt_loss,
-            "ac/likelihood_pg_loss": likelihood_pg_loss,
-            "ac/entropy_loss": entropy_loss,
+            "ac/bptt_loss": bptt_loss.mean(),
+            "ac/likelihood_pg_loss": likelihood_pg_loss.mean(),
+            "ac/entropy_loss": entropy_loss.mean(),
             **aux
         }
         return actor_loss, (metrics, (imagined_latent_states, return_predictions))
