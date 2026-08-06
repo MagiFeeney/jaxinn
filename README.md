@@ -185,10 +185,10 @@ transitions = rollout(keys)
 ## Benchmark
 We evaluate several algorithms on standard benchmarks, illustrating the sublinear scaling efficiency of JAX and strong reproducibility.
 
-| Image 1 | Image 2 |
-| :---: | :---: |
-| <img src="assets/benchmark/ppo-gymnax-cartpole.png" width="300" /> | <img src="assets/benchmark/ppo-brax-walker2d.png" width="300" /> |
-| <img src="assets/benchmark/sac-brax-walker2d.png" width="300" /> | <img src="assets/benchmark/dreamer-dmc-walker-walk.png" width="300" /> |
+<div align="center">
+  <img src="assets/benchmark/ppo-gymnax-cartpole.png" width="49%" /><img src="assets/benchmark/ppo-brax-walker2d.png" width="49%" /><br>
+  <img src="assets/benchmark/sac-brax-walker2d.png" width="49%" /><img src="assets/benchmark/dreamer-dmc-walker-walk.png" width="49%" />
+</div>
 
 ## Code Structure
 <details>
