@@ -90,7 +90,7 @@ uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dr
 > For pixel-based tasks and algorithms that require long sequence processing, JAX can easily become memory-bound, hindering efficiency. Therefore, we recommend using the CPU memory option to sidestep this issue.
 
 > [!TIP]
-> The life cycle of an algorithm is characterized by the divisibility chain: `num_environment_steps` → `eval_interval` → `train_interval` → `episode_length` → `num_envs`. You can adjust them relative to each other to accommodate different algorithms, as we did above. Additionally, `train_iterations` determines the number of updates per `train_interval`. Depending on the context, this can also be referred to as "epochs" or the "UTD ratio".
+> The life cycle of an algorithm is characterized by the divisibility chain: `num_environment_steps` → `eval_interval` → `train_interval` → `episode_length` → `num_envs`. You can adjust them relative to each other to accommodate different algorithms, as we did above. Additionally, `train_iterations` determines the number of updates per `train_interval`. Depending on the context, this can also be interpreted as "epochs" or the "UTD ratio".
 
 ## Algorithms
 ### Model-based RL
