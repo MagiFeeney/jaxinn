@@ -53,7 +53,7 @@ class PerceptionShared(Resolvable, Model):
     DOMAIN: ClassVar[Domain]
 
     obs_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
-    activation_function: str = "elu"
+    activation_function: str = "relu"
 
     def _resolve(self, ctx: dict) -> None:
         obs_shape = ctx["observation_space"].shape

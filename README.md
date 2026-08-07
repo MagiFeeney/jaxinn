@@ -119,7 +119,7 @@ uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dr
 ## Examples
 - Create a custom agent:
 ``` python
-from typing import Any, ClassVar, Type
+from typing import Any, ClassVar
 
 import jax
 
@@ -131,7 +131,7 @@ from jaxinn.configs.agent import CustomAgentConfig
 
 class CustomAgent(CustomLossMixIn, Agent):
     # Bind your agent to the config so that we can directly route it from cli.
-    config_cls: ClassVar[Type] = CustomAgentConfig
+    config_cls: ClassVar[type] = CustomAgentConfig
 
     actor_critic: Learner[ActorCritic]
     memory: UniformMemory
@@ -173,7 +173,7 @@ def rollout(key):
         make_episode_fn,
         (key_scan, env_state),
         None,
-        length=1000
+        length=1000 // num_envs
     )
     return transitions
 
