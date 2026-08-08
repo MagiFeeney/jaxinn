@@ -94,27 +94,27 @@ uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dr
 
 ## Algorithms
 ### Model-based RL
-- Dreamer
-- DreamerV2
+- [Dreamer](https://arxiv.org/pdf/1912.01603)
+- [DreamerV2](https://arxiv.org/pdf/2010.02193)
 
 ### Model-based RL
-- PPO
-- SAC
+- [PPO](https://arxiv.org/pdf/1707.06347)
+- [SAC](https://arxiv.org/pdf/1801.01290)
 
 ## Adapters
 ### JAX Native Environments
-- Brax
-- Craftax
-- Gymnax
-- MuJoCo Playground
-- Navix
-- JaxARC
+- [Brax](https://github.com/google/brax/tree/main)
+- [Craftax](https://github.com/MichaelTMatthews/Craftax)
+- [Gymnax](https://github.com/RobertTLange/gymnax)
+- [MuJoCo Playground](https://github.com/google-deepmind/mujoco_playground/tree/main)
+- [Navix](https://github.com/epignatelli/navix/tree/main)
+- [JaxARC](https://github.com/aadimator/JaxARC)
 
 ### Non-JAX Environments
-- EnvPool
-- Gymnasium
-- DeepMind Control Suite
-- ARC-AGI-3
+- [EnvPool](https://github.com/sail-sg/envpool/tree/main)
+- [Gymnasium](https://github.com/farama-foundation/gymnasium)
+- [DeepMind Control Suite](https://github.com/google-deepmind/dm_control)
+- [ARC-AGI-3](https://arcprize.org/arc-agi/3)
 
 ## Examples
 - Create a custom agent:
@@ -150,6 +150,7 @@ from jaxinn.envs.wrapper import UnsqueezeScalar, Batched
 
 env_name = ...
 num_episodes = ...
+episode_length = ...
 num_envs = ...
 
 env = Gymnax.create(env_name)
@@ -159,7 +160,7 @@ env = Batched(env, num_envs)
 @jax.vmap
 def rollout(key):
     key_reset, key_scan = jax.random.split(key, 2)
-    transition, env_info, env_state = env.reset(key_reset, num_envs)
+    transition, env_info, env_state = env.reset(key_reset)
 
     def make_episode_fn(carry, _):
         key, env_state = carry
@@ -173,7 +174,7 @@ def rollout(key):
         make_episode_fn,
         (key_scan, env_state),
         None,
-        length=1000 // num_envs
+        length=episode_length // num_envs
     )
     return transitions
 
