@@ -9,7 +9,7 @@ from jaxinn.common.structs import Experience
 from jaxinn.configs.agent.ppo import PPOAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
-from jaxinn.agent.rules.utils import compute_adv_and_ret, staircase_lr_schedule
+from jaxinn.agent.rules.utils import compute_adv_and_ret
 from jaxinn.agent.losses import PPOLossMixIn
 from jaxinn.agent.models.distributions import SampleDist
 
@@ -39,7 +39,7 @@ class PPOAgent(PPOLossMixIn, Agent):
             key: PRNGKeyArray,
             memory_id: jax.Array,
     ):
-        actor_critic = Learner.create(ActorCritic, config.actor_critic, lr_scheduler=staircase_lr_schedule, key=key)
+        actor_critic = Learner.create(ActorCritic, config.actor_critic, key=key)
         memory = Experience.initialize(
             capacity=config.memory.capacity,
             obs_shape=config.memory.obs_shape,

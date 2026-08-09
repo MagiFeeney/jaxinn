@@ -24,6 +24,7 @@ from .head import (
     OneHotCategoricalHeadConfig,
     MultiCategoricalHeadConfig
 )
+from .scheduler import LearningRateSchedulerUnion
 
 
 @dataclass
@@ -89,22 +90,13 @@ class DecoderConfig(PerceptionShared, ModelShared):
 
 
 @dataclass
-class LearningRateScheduler(Base):
-    kwargs: dict[str, int | float | bool] = field(default_factory=dict)
-
-    def __call__(self) -> dict:
-        return self.kwargs
-
-
-@dataclass
-class Optimizer(Base):          # TODO: safeguard on lr_scheduler
+class Optimizer(Base):
     b1: float = 0.9
     b2: float = 0.999
     eps: float = 1e-8
     lr: float = 3e-4
     max_norm: float | None = None
-    use_lr_scheduler: bool = field(default=False, metadata={"transient": True})
-    lr_scheduler: LearningRateScheduler | None = None
+    lr_scheduler: LearningRateSchedulerUnion | None = None
 
 
 T = TypeVar('T')

@@ -9,7 +9,7 @@ class InitializerConfig(Base):
 
 
 @dataclass
-class Constant(InitializerConfig):
+class ConstantConfig(InitializerConfig):
     value: float = 0.0
 
 
@@ -66,3 +66,6 @@ class HeNormalConfig(AxesConfig):
 @dataclass
 class HeUniformConfig(AxesConfig):
     pass
+
+
+InitializerUnion = ConstantConfig | OrthogonalConfig | DeltaOrthogonalConfig | TruncatedNormalConfig | LecunNormalConfig | LecunUniformConfig | XavierNormalConfig | XavierUniformConfig | HeNormalConfig | HeUniformConfig
