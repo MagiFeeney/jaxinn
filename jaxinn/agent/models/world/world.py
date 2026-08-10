@@ -1,9 +1,9 @@
 import jax
 from jaxtyping import PRNGKeyArray
-import equinox as eqx
 
 from jaxinn.configs.model import WorldConfig
 
+from ..base import Model
 from ..perception import Encoder, Decoder
 from .representation import Representation
 from .transition import Transition
@@ -11,7 +11,7 @@ from .reward import Reward
 from .continuation import Continuation
 
 
-class World(eqx.Module):
+class World(Model):
     encoder: Encoder
     decoder: Decoder
     representation: Representation
@@ -21,7 +21,7 @@ class World(eqx.Module):
 
     @classmethod
     def create(cls, config: WorldConfig, *, key: PRNGKeyArray):
-        key_encoder, key_decoder, key_representation, key_transition, key_reward, key_continuation = jax.random.split(key, 6)
+        key_encoder, key_decoder, key_representation, key_transition, key_reward, key_continuation, key_init = jax.random.split(key, 7)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
         if config.decoder is not None:
@@ -48,4 +48,4 @@ class World(eqx.Module):
             transition=transition,
             reward=reward,
             continuation=continuation
-        )
+        ).apply_init(config.initializer, key=key_init)

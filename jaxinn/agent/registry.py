@@ -1,6 +1,8 @@
 import dataclasses
 from typing import Any, ClassVar, TypeVar
 
+import jax
+
 ConfigT = TypeVar("ConfigT")
 ModelT = TypeVar("ModelT")
 
@@ -37,4 +39,16 @@ class Registrable:
             config_kwargs = dataclasses.asdict(config)
         else:
             config_kwargs = vars(config)
-        return model_cls(**config_kwargs, **kwargs)    # primitive
+
+        key = kwargs.get("key", None)
+        if key is not None:
+            key_model, key_init = jax.random.split(key, 2)
+            kwargs.update({"key": key_model})
+        else:
+            key_init = None
+
+        model = model_cls(**config_kwargs, **kwargs)   # primitive
+
+        if key_init is not None and hasattr(model, "apply_init"):
+            model = model.apply_init(getattr(config, "initializer", None), key=key_init)
+        return model

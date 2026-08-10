@@ -10,10 +10,10 @@ from jaxinn.configs.agent.ppo import PPOAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret
-from jaxinn.agent.losses import PPOLossMixIn
 from jaxinn.agent.models.distributions import SampleDist
+from jaxinn.agent.models import ActorCritic
+from jaxinn.agent.losses import PPOLossMixIn
 
-from .actor_critic import ActorCritic
 from ..utils import reconstruct_rl_tuple
 
 

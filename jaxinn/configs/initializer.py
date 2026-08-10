@@ -69,3 +69,21 @@ class HeUniformConfig(AxesConfig):
 
 
 InitializerUnion = ConstantConfig | OrthogonalConfig | DeltaOrthogonalConfig | TruncatedNormalConfig | LecunNormalConfig | LecunUniformConfig | XavierNormalConfig | XavierUniformConfig | HeNormalConfig | HeUniformConfig
+
+
+@dataclass
+class Initializer(Base):
+    weight_init: InitializerUnion | None = None
+    bias_init: InitializerUnion | None = None
+    output_weight_init: InitializerUnion | None = None
+    output_bias_init: InitializerUnion | None = None
+    fused: bool = False
+
+    @property
+    def is_empty(self):
+        return (
+            self.weight_init is None and
+            self.bias_init is None and
+            self.output_weight_init is None and
+            self.output_bias_init is None
+        )

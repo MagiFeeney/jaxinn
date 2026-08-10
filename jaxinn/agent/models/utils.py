@@ -10,6 +10,8 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
+from .initializers import Initializer
+
 RegisteredItem = str | Callable
 Activation = RegisteredItem
 Dtype = RegisteredItem
@@ -411,15 +413,23 @@ def make_cnn_transposed(
 
 def apply_init(
         model: eqx.Module,
-        weight_init: Callable,
-        bias_init: Callable = jax.nn.initializers.constant(0.0),
-        output_weight_init: Callable | None = None,
-        output_bias_init: Callable | None = None,
+        weight_init: Initializer | Callable | None = None,
+        bias_init: Initializer | Callable | None = None,
+        output_weight_init: Initializer | Callable | None = None,
+        output_bias_init: Initializer | Callable | None = None,
+        is_leaf: Callable | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.Module:
+
+    if weight_init is None and bias_init is None and output_weight_init is None and output_bias_init is None:
+        return model
+
     is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
-    get_layers = lambda m: [x for x in jax.tree.leaves(m, is_leaf=is_target) if is_target(x)]
+    if is_leaf is None:
+        is_leaf = is_target
+
+    get_layers = lambda m: [x for x in jax.tree.leaves(m, is_leaf=is_leaf) if is_target(x)]
 
     if output_weight_init is None:
         output_weight_init = weight_init
@@ -435,24 +445,33 @@ def apply_init(
 
         # Init weight
         weight = layer.weight
-        if isinstance(layer, eqx.nn.Conv2d):
-            out_c, in_c, height, width = weight.shape
-            hwio = w_fn(kw, (height, width, in_c, out_c), weight.dtype) # JAX's expected layout: HWIO
-            new_w = jnp.transpose(hwio, (3, 2, 0, 1))                   # Equinox's: OIHW
+        if w_fn is not None:
+            if isinstance(layer, eqx.nn.Conv2d):
+                out_c, in_c, height, width = weight.shape
+                hwio = w_fn(kw, (height, width, in_c, out_c), weight.dtype) # JAX's expected layout: HWIO
+                new_w = jnp.transpose(hwio, (3, 2, 0, 1))                   # Equinox's: OIHW
+            else:
+                new_w = w_fn(kw, weight.shape, weight.dtype)
         else:
-            new_w = w_fn(kw, weight.shape, weight.dtype)
+            new_w = weight
 
         # Init bias
         bias = layer.bias
-        new_b = b_fn(kb, bias.shape, bias.dtype)
+        if b_fn is not None and bias is not None:
+            new_b = b_fn(kb, bias.shape, bias.dtype)
+        else:
+            new_b = bias
 
         return eqx.tree_at(lambda l: (l.weight, l.bias), layer, (new_w, new_b))
 
     layers = get_layers(model)
+    if not layers:
+        return model
+
     keys = jax.random.split(key, len(layers))
     new_layers = [
         init_layer(l, k, is_output=(i == len(layers) - 1))
         for i, (l, k) in enumerate(zip(layers, keys))
     ]
 
-    return eqx.tree_at(get_layers, model, new_layers)
+    return eqx.tree_at(get_layers, model, new_layers, is_leaf=is_leaf)

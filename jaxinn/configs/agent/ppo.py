@@ -4,9 +4,68 @@ from dataclasses import dataclass, field
 from jaxinn.configs.base import Base, Resolvable
 
 from .base import AgentConfig
-from .actor_critic import ActorCriticUnion, ActorCriticSharedConfig
+from .actor_critic import PerceptionActorConfig, PerceptionCriticConfig, ActorCriticSharedConfig, ActorCriticDecoupledConfig
 from ..model import Optimizer, LearnerConfig
 from ..scheduler import LearningRateSchedulerUnion, StaircaseScheduleConfig
+from ..initializer import Initializer, OrthogonalConfig, ConstantConfig
+
+
+@dataclass
+class PPOActorCriticSharedConfig(ActorCriticSharedConfig):
+    initializer: Initializer = field(
+        default_factory=lambda: Initializer(
+            weight_init=OrthogonalConfig(scale=math.sqrt(2)),
+            bias_init=ConstantConfig(value=0.0),
+        )
+    )
+
+    def _resolve(self, ctx: dict) -> None:
+        super()._resolve(ctx)
+
+        base_weight_init = self.initializer.weight_init
+        base_bias_init = self.initializer.bias_init
+
+        if base_weight_init is not None and isinstance(base_weight_init, OrthogonalConfig):
+            if self.encoder.initializer.is_empty:
+                self.encoder.initializer.weight_init = base_weight_init
+                self.encoder.initializer.bias_init = base_bias_init
+
+            if self.actor.initializer.is_empty:
+                self.actor.initializer.weight_init = base_weight_init
+                self.actor.initializer.output_weight_init = OrthogonalConfig(scale=0.01)
+                self.actor.initializer.bias_init = base_bias_init
+
+            if self.critic.initializer.is_empty:
+                self.critic.initializer.weight_init = base_weight_init
+                self.critic.initializer.output_weight_init = OrthogonalConfig(scale=1.0)
+                self.critic.initializer.bias_init = base_bias_init
+
+
+@dataclass
+class PPOActorCriticDecoupledConfig(ActorCriticDecoupledConfig):
+    perception_actor: PerceptionActorConfig = field(
+        default_factory=PerceptionActorConfig(
+            initializer=lambda: Initializer(
+                weight_init=OrthogonalConfig(scale=math.sqrt(2)),
+                output_weight_init=OrthogonalConfig(scale=0.01),
+                bias_init=ConstantConfig(value=0.0),
+                fused=True,
+            )
+        )
+    )
+    perception_critic: PerceptionCriticConfig = field(
+        default_factory=PerceptionCriticConfig(
+            initializer=lambda: Initializer(
+                weight_init=OrthogonalConfig(scale=math.sqrt(2)),
+                output_weight_init=OrthogonalConfig(scale=1.0),
+                bias_init=ConstantConfig(value=0.0),
+                fused=True,
+            )
+        )
+    )
+
+
+PPOActorCriticUnion = PPOActorCriticDecoupledConfig | PPOActorCriticSharedConfig
 
 
 @dataclass
@@ -57,9 +116,9 @@ class PPOOptimization(Resolvable, Base):
 class PPOAgentConfig(AgentConfig):
     optimization: PPOOptimization = field(default_factory=PPOOptimization)
 
-    actor_critic: LearnerConfig[ActorCriticUnion] = field(
+    actor_critic: LearnerConfig[PPOActorCriticUnion] = field(
         default_factory=lambda: LearnerConfig(
-            model=ActorCriticSharedConfig(),
+            model=PPOActorCriticSharedConfig(),
             optimizer=PPOActorCriticOptimizer()
         )
     )
