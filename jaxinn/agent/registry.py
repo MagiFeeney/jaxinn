@@ -35,7 +35,7 @@ class Registrable:
 
         if callable(config):
             config_kwargs = config()
-        if dataclasses.is_dataclass(config):
+        elif dataclasses.is_dataclass(config):
             config_kwargs = dataclasses.asdict(config)
         else:
             config_kwargs = vars(config)

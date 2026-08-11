@@ -18,8 +18,7 @@ from jaxinn.configs.initializer import (
     XavierUniformConfig,
     TruncatedNormalConfig,
 )
-
-from .registry import Registrable
+from jaxinn.agent.registry import Registrable
 
 
 class Initializer(Registrable, eqx.Module):

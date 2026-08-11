@@ -2,8 +2,7 @@ from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base
 from .base import AgentConfig
-from .actor_critic import PerceptionActorConfig, PerceptionCriticConfig
-from ..model import Optimizer, LearnerConfig
+from ..model import Optimizer, LearnerConfig, PerceptionActorConfig, PerceptionCriticConfig
 from ..initializer import Initializer, LecunNormalConfig, ConstantConfig
 
 

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import equinox as eqx
 import optax
 
-from jaxinn.configs.initializer import (
+from jaxinn.configs.scheduler import (
     LearningRateSchedulerConfig,
     ConstantScheduleConfig,
     LinearScheduleConfig,
@@ -19,8 +19,7 @@ from jaxinn.configs.initializer import (
     PiecewiseConstantScheduleConfig,
     JoinSchedulesConfig
 )
-
-from .registry import Registrable
+from jaxinn.agent.registry import Registrable
 
 
 class LearningRateScheduler(Registrable, eqx.Module):

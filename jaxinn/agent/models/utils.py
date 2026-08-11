@@ -10,8 +10,6 @@ import equinox as eqx
 from equinox._module import Static
 import distrax
 
-from .initializers import Initializer
-
 RegisteredItem = str | Callable
 Activation = RegisteredItem
 Dtype = RegisteredItem
@@ -413,10 +411,10 @@ def make_cnn_transposed(
 
 def apply_init(
         model: eqx.Module,
-        weight_init: Initializer | Callable | None = None,
-        bias_init: Initializer | Callable | None = None,
-        output_weight_init: Initializer | Callable | None = None,
-        output_bias_init: Initializer | Callable | None = None,
+        weight_init: Callable | None = None,
+        bias_init: Callable | None = None,
+        output_weight_init: Callable | None = None,
+        output_bias_init: Callable | None = None,
         is_leaf: Callable | None = None,
         *,
         key: PRNGKeyArray
@@ -428,8 +426,6 @@ def apply_init(
     is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
     if is_leaf is None:
         is_leaf = is_target
-
-    get_layers = lambda m: [x for x in jax.tree.leaves(m, is_leaf=is_leaf) if is_target(x)]
 
     if output_weight_init is None:
         output_weight_init = weight_init
@@ -464,7 +460,7 @@ def apply_init(
 
         return eqx.tree_at(lambda l: (l.weight, l.bias), layer, (new_w, new_b))
 
-    layers = get_layers(model)
+    layers = [x for x in jax.tree.leaves(model, is_leaf=is_leaf) if is_target(x)]
     if not layers:
         return model
 
@@ -474,4 +470,8 @@ def apply_init(
         for i, (l, k) in enumerate(zip(layers, keys))
     ]
 
-    return eqx.tree_at(get_layers, model, new_layers, is_leaf=is_leaf)
+    iterator = iter(new_layers)
+    def maybe_replace(x):
+        return next(iterator) if is_target(x) else x
+
+    return jax.tree.map(maybe_replace, model, is_leaf=is_leaf)

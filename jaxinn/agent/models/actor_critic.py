@@ -3,9 +3,13 @@ from typing import ClassVar
 import jax
 from jaxtyping import PRNGKeyArray
 
-from jaxinn.configs.agent.actor_critic import (
+from jaxinn.configs.model import (
     ActorCriticSharedConfig,
     ActorCriticDecoupledConfig,
+)
+from jaxinn.configs.agent.ppo import (
+    PPOActorCriticSharedConfig,
+    PPOActorCriticDecoupledConfig,
 )
 from jaxinn.agent.registry import Registrable
 
@@ -23,7 +27,10 @@ class ActorCritic(Registrable, Model):
 
 # Independent encoders
 class ActorCriticDecoupled(ActorCritic):
-    config_cls: ClassVar[type] = ActorCriticDecoupledConfig
+    config_cls: ClassVar[tuple[type, ...]] = (
+        ActorCriticDecoupledConfig,
+        PPOActorCriticDecoupledConfig
+    )
 
     actor: PerceptionActor
     critic: PerceptionCritic
@@ -46,7 +53,10 @@ class ActorCriticDecoupled(ActorCritic):
 
 # Shared encoder
 class ActorCriticShared(ActorCritic):
-    config_cls: ClassVar[type] = ActorCriticSharedConfig
+    config_cls: ClassVar[tuple[type, ...]] = (
+        ActorCriticSharedConfig,
+        PPOActorCriticSharedConfig
+    )
 
     encoder: Encoder
     actor: Actor

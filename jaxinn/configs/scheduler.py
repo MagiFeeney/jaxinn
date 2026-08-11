@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .base import Base
 
@@ -81,8 +81,8 @@ class PiecewiseConstantScheduleConfig(LearningRateSchedulerConfig):
 
 @dataclass
 class JoinSchedulesConfig(LearningRateSchedulerConfig):
-    schedules: list[LearningRateSchedulerConfig, ...]
-    boundaries: list[int, ...]
+    schedules: list[LearningRateSchedulerConfig, ...] = field(default_factory=list)
+    boundaries: list[int, ...] = field(default_factory=list)
 
 
 LearningRateSchedulerUnion = ConstantScheduleConfig | LinearScheduleConfig | StaircaseScheduleConfig | CosineDecayScheduleConfig | CosineOnecycleScheduleConfig | ExponentialDecayScheduleConfig | PolynomialScheduleConfig | WarmupCosineDecayScheduleConfig | PiecewiseConstantScheduleConfig | JoinSchedulesConfig

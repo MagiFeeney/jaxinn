@@ -84,7 +84,7 @@ def _sync_statics(root_node: any) -> None:
         """Recursively finds fields from classes that directly inherit the marker."""
 
         if marker in cls.__bases__:
-            return frozenset(f.name for f in fields(cls))
+            return frozenset(getattr(cls, "__annotations__", {}).keys())
 
         static_fields = set()
         for base in cls.__bases__:

@@ -1,6 +1,3 @@
-import abc
-from typing import Any
-
 import jax
 from jaxtyping import PRNGKeyArray
 import equinox as eqx
@@ -11,12 +8,8 @@ from .utils import apply_init
 from .initializers import Initializer
 
 
-class Model(eqx.Module, abc.ABC):
-    _init_applied: bool = eqx.field(static=True, default=False)
-
-    @abc.abstractmethod
-    def __call__(self, x: Any) -> Any:
-        pass
+class Model(eqx.Module):
+    _init_applied: bool = eqx.field(static=True, default=False, init=False)
 
     def apply_init(self, config: InitializerConfig, *, key: PRNGKeyArray) -> "Model":
         if getattr(self, "_init_applied", False):
@@ -30,6 +23,7 @@ class Model(eqx.Module, abc.ABC):
         ]):
             return self
 
+        new_self = self
         fused = getattr(config, "fused", False)
 
         is_child_model = lambda x: isinstance(x, Model) and x is not self
@@ -42,14 +36,14 @@ class Model(eqx.Module, abc.ABC):
             if child_models:
                 key, *subkeys = jax.random.split(key, len(child_models) + 1)
                 new_children = [
-                    m.apply_init(config, k) for m, k in zip(child_models, subkeys)
+                    m.apply_init(config, key=k) for m, k in zip(child_models, subkeys)
                 ]
-                new_self = eqx.tree_at(
-                    lambda m: [x for x in jax.tree.leaves(m, is_leaf=is_child_model) if is_child_model(x)],
-                    self,
-                    new_children,
-                    is_leaf=is_child_model
-                )
+
+                iterator = iter(new_children)
+                def maybe_replace(x):
+                    return next(iterator) if is_child_model(x) else x
+
+                new_self = jax.tree.map(maybe_replace, self, is_leaf=is_child_model)
 
         is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
 
@@ -76,4 +70,5 @@ class Model(eqx.Module, abc.ABC):
             key=subkey
         )
 
-        return eqx.tree_at(lambda m: m._init_applied, new_self, True)
+        object.__setattr__(new_self, "_init_applied", True)
+        return new_self

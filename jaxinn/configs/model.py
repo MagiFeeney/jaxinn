@@ -130,7 +130,7 @@ T = TypeVar('T')
 
 
 @dataclass
-class LearnerConfig(Resolvable, Model, Generic[T]):
+class LearnerConfig(Resolvable, Base, Generic[T]):
     model: T
     optimizer: Optimizer
 

@@ -4,8 +4,7 @@ from dataclasses import dataclass, field
 from jaxinn.configs.base import Base, Resolvable
 
 from .base import AgentConfig
-from .actor_critic import PerceptionActorConfig, PerceptionCriticConfig, ActorCriticSharedConfig, ActorCriticDecoupledConfig
-from ..model import Optimizer, LearnerConfig
+from ..model import Optimizer, LearnerConfig, PerceptionActorConfig, PerceptionCriticConfig, ActorCriticSharedConfig, ActorCriticDecoupledConfig
 from ..scheduler import LearningRateSchedulerUnion, StaircaseScheduleConfig
 from ..initializer import Initializer, OrthogonalConfig, ConstantConfig
 
@@ -44,8 +43,8 @@ class PPOActorCriticSharedConfig(ActorCriticSharedConfig):
 @dataclass
 class PPOActorCriticDecoupledConfig(ActorCriticDecoupledConfig):
     perception_actor: PerceptionActorConfig = field(
-        default_factory=PerceptionActorConfig(
-            initializer=lambda: Initializer(
+        default_factory=lambda: PerceptionActorConfig(
+            initializer=Initializer(
                 weight_init=OrthogonalConfig(scale=math.sqrt(2)),
                 output_weight_init=OrthogonalConfig(scale=0.01),
                 bias_init=ConstantConfig(value=0.0),
@@ -54,8 +53,8 @@ class PPOActorCriticDecoupledConfig(ActorCriticDecoupledConfig):
         )
     )
     perception_critic: PerceptionCriticConfig = field(
-        default_factory=PerceptionCriticConfig(
-            initializer=lambda: Initializer(
+        default_factory=lambda: PerceptionCriticConfig(
+            initializer=Initializer(
                 weight_init=OrthogonalConfig(scale=math.sqrt(2)),
                 output_weight_init=OrthogonalConfig(scale=1.0),
                 bias_init=ConstantConfig(value=0.0),
@@ -69,7 +68,7 @@ PPOActorCriticUnion = PPOActorCriticDecoupledConfig | PPOActorCriticSharedConfig
 
 
 @dataclass
-class PPOActorCriticOptimizer(Optimizer):
+class PPOActorCriticOptimizer(Resolvable, Optimizer):
     lr: float = 3e-4
     max_norm: float = 0.5
     lr_scheduler: LearningRateSchedulerUnion | None = field(
