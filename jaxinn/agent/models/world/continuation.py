@@ -9,20 +9,22 @@ from jaxinn.common.structs import LatentState
 from jaxinn.configs.head import BernoulliHeadConfig, DeterministicHeadConfig
 from jaxinn.configs.model import ContinuationConfig
 
-from ..utils import make_mlp
+from ..base import Model
 from ..perception import ActionEncoder
 from ..heads import Head
 from ..distributions import DistributionLike
+from ..utils import make_mlp
 
 
-class Continuation(eqx.Module):
+class Continuation(Model):
+    action_encoder: ActionEncoder | None
     net: eqx.Module
     head: Head
-    action_encoder: ActionEncoder | None
 
     @classmethod
     def create(cls, config: ContinuationConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head_config=config.head, key=key)
+        key_model, key_init = jax.random.split(key, 2)
+        return cls(**config(), head_config=config.head, key=key_model).apply_init(config.initializer, key=key_init)
 
     def __init__(
             self,

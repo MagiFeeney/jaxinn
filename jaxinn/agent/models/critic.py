@@ -7,23 +7,25 @@ from jaxtyping import PyTree, PRNGKeyArray
 import equinox as eqx
 
 from jaxinn.common.structs import LatentState
-from jaxinn.configs.model import CriticConfig
+from jaxinn.configs.model import CriticConfig, PerceptionCriticConfig
 from jaxinn.configs.head import HeadConfig
 
-from .perception import ActionEncoder
-from .utils import make_mlp
+from .base import Model
+from .perception import ActionEncoder, Encoder
 from .heads import Head
 from .distributions import DistributionLike
+from .utils import make_mlp
 
 
-class Critic(eqx.Module):
+class Critic(Model):
+    action_encoder: ActionEncoder | None
     net: eqx.Module
     head: Head
-    action_encoder: ActionEncoder | None
 
     @classmethod
     def create(cls, config: CriticConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head_config=config.head, key=key)
+        key_model, key_init = jax.random.split(key, 2)
+        return cls(**config(), head_config=config.head, key=key_model).apply_init(config.initializer, key=key_init)
 
     def __init__(
             self,
@@ -77,3 +79,25 @@ class Critic(eqx.Module):
         out = self.net(latent_state)
 
         return self.head(out)
+
+
+class PerceptionCritic(Model):
+    encoder: Encoder
+    critic: Critic
+
+    @classmethod
+    def create(cls, config: PerceptionCriticConfig, *, key: PRNGKeyArray):
+        key_model, key_init = jax.random.split(key, 2)
+        key_encoder, key_critic = jax.random.split(key_model, 2)
+
+        encoder = Encoder.create(config.encoder, key=key_encoder)
+        critic = Critic.create(
+            config.critic,
+            key=key_critic
+        )
+
+        return cls(encoder=encoder, critic=critic).apply_init(config.initializer, key=key_init)
+
+    def __call__(self, obs: jax.Array, action: jax.Array | None = None) -> DistributionLike:
+        feature = self.encoder(obs)
+        return self.critic(feature, action)

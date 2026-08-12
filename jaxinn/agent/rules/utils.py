@@ -147,14 +147,6 @@ def compute_adv_and_ret(
     return advantages, return_predictions
 
 
-def staircase_lr_schedule(init_lr, num_iterations, updates_per_iteration):
-    def schedule(count):
-        current_iteration = count // updates_per_iteration
-        frac = 1.0 - (current_iteration / num_iterations)
-        return init_lr * jnp.maximum(frac, 0.0)
-    return schedule
-
-
 def reconstruct_rl_tuple(transition: Transition, boundary_obs: jax.Array | None = None) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
     terminated_or_boundary = transition.terminated[1:]
     if boundary_obs is None:    # Next-step autoreset introduces a dummy transition from terminated/truncated obs to the reset obs

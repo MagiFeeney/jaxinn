@@ -1,26 +1,98 @@
+import math
 from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base, Resolvable
 
 from .base import AgentConfig
-from .actor_critic import ActorCriticUnion, ActorCriticSharedConfig
-from ..model import LearningRateScheduler, Optimizer, LearnerConfig
+from ..model import Optimizer, LearnerConfig, PerceptionActorConfig, PerceptionCriticConfig, ActorCriticSharedConfig, ActorCriticDecoupledConfig
+from ..scheduler import LearningRateSchedulerUnion, StaircaseScheduleConfig
+from ..initializer import Initializer, OrthogonalConfig, ConstantConfig
 
 
 @dataclass
-class PPOActorCriticOptimizer(Optimizer):
-    lr: float = 3e-4
-    max_norm: float = 0.5
-    use_lr_scheduler: bool = field(default=True, metadata={"transient": True})
+class PPOActorCriticSharedConfig(ActorCriticSharedConfig):
+    initializer: Initializer = field(
+        default_factory=lambda: Initializer(
+            weight_init=OrthogonalConfig(scale=math.sqrt(2)),
+            bias_init=ConstantConfig(value=0.0),
+        )
+    )
 
     def _resolve(self, ctx: dict) -> None:
-        if self.use_lr_scheduler:
-            num_iterations = ctx["num_environment_steps"] // ctx["episode_length"]
-            updates_per_iteration = ctx["train_iterations"] * ctx["num_mini_batch"]
-            self.lr_scheduler = LearningRateScheduler({
-                "num_iterations": num_iterations,
-                "updates_per_iteration": updates_per_iteration
-            })
+        super()._resolve(ctx)
+
+        base_weight_init = self.initializer.weight_init
+        base_bias_init = self.initializer.bias_init
+
+        if base_weight_init is not None and isinstance(base_weight_init, OrthogonalConfig):
+            if self.encoder.initializer.is_empty:
+                self.encoder.initializer.weight_init = base_weight_init
+                self.encoder.initializer.bias_init = base_bias_init
+
+            if self.actor.initializer.is_empty:
+                self.actor.initializer.weight_init = base_weight_init
+                self.actor.initializer.output_weight_init = OrthogonalConfig(scale=0.01)
+                self.actor.initializer.bias_init = base_bias_init
+
+            if self.critic.initializer.is_empty:
+                self.critic.initializer.weight_init = base_weight_init
+                self.critic.initializer.output_weight_init = OrthogonalConfig(scale=1.0)
+                self.critic.initializer.bias_init = base_bias_init
+
+
+@dataclass
+class PPOActorCriticDecoupledConfig(ActorCriticDecoupledConfig):
+    perception_actor: PerceptionActorConfig = field(
+        default_factory=lambda: PerceptionActorConfig(
+            initializer=Initializer(
+                weight_init=OrthogonalConfig(scale=math.sqrt(2)),
+                output_weight_init=OrthogonalConfig(scale=0.01),
+                bias_init=ConstantConfig(value=0.0),
+                fused=True,
+            )
+        )
+    )
+    perception_critic: PerceptionCriticConfig = field(
+        default_factory=lambda: PerceptionCriticConfig(
+            initializer=Initializer(
+                weight_init=OrthogonalConfig(scale=math.sqrt(2)),
+                output_weight_init=OrthogonalConfig(scale=1.0),
+                bias_init=ConstantConfig(value=0.0),
+                fused=True,
+            )
+        )
+    )
+
+
+PPOActorCriticUnion = PPOActorCriticDecoupledConfig | PPOActorCriticSharedConfig
+
+
+@dataclass
+class PPOActorCriticOptimizer(Resolvable, Optimizer):
+    lr: float = 3e-4
+    max_norm: float = 0.5
+    lr_scheduler: LearningRateSchedulerUnion | None = field(
+        default_factory=lambda: StaircaseScheduleConfig(
+            init_value=math.nan,
+            num_iterations=-1,
+            updates_per_iteration=-1
+        )
+    )
+
+    def _resolve(self, ctx: dict) -> None:
+        if self.lr_scheduler is None:
+            return
+
+        if hasattr(self.lr_scheduler, "init_value"):
+            self.lr_scheduler.init_value = self.lr
+        elif hasattr(self.lr_scheduler, "value"):
+            self.lr_scheduler.value = self.lr
+
+        if isinstance(self.lr_scheduler, StaircaseScheduleConfig):
+            if self.lr_scheduler.num_iterations == -1:
+                self.lr_scheduler.num_iterations = ctx["num_environment_steps"] // ctx["episode_length"]
+            if self.lr_scheduler.updates_per_iteration == -1:
+                self.lr_scheduler.updates_per_iteration = ctx["train_iterations"] * ctx["num_mini_batch"]
 
 
 # PPO
@@ -43,9 +115,9 @@ class PPOOptimization(Resolvable, Base):
 class PPOAgentConfig(AgentConfig):
     optimization: PPOOptimization = field(default_factory=PPOOptimization)
 
-    actor_critic: LearnerConfig[ActorCriticUnion] = field(
+    actor_critic: LearnerConfig[PPOActorCriticUnion] = field(
         default_factory=lambda: LearnerConfig(
-            model=ActorCriticSharedConfig(),
+            model=PPOActorCriticSharedConfig(),
             optimizer=PPOActorCriticOptimizer()
         )
     )

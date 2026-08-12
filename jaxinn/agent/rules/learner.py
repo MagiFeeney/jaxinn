@@ -1,10 +1,11 @@
 from typing import Generic, TypeVar, Any
-from collections.abc import Callable
 
 import jax
 from jaxtyping import PRNGKeyArray, PyTree, PyTreeDef
 import equinox as eqx
 import optax
+
+from .schedulers import LearningRateScheduler
 
 ModelType = TypeVar("ModelType", bound=eqx.Module)
 
@@ -23,19 +24,13 @@ class Learner(eqx.Module, Generic[ModelType]):
         self.optimizer_state = self.optimizer.init(self.dynamic_flatten)
 
     @classmethod
-    def create(cls, model_cls, config, lr_scheduler: Callable | None = None, *, key: PRNGKeyArray) -> "Learner":
+    def create(cls, model_cls, config, *, key: PRNGKeyArray) -> "Learner":
         if hasattr(model_cls, "create"): # nested / multiple routes
             model = model_cls.create(config.model, key=key)
         else:                            # primitive
             model = model_cls(**config.model(), key=key)
 
-        has_scheduler_fn = lr_scheduler is not None
-        has_scheduler_cfg = getattr(config.optimizer, "lr_scheduler", None) is not None
-
-        if has_scheduler_fn and has_scheduler_cfg:
-            lr = lr_scheduler(config.optimizer.lr, **config.optimizer.lr_scheduler())
-        else:
-            lr = config.optimizer.lr
+        lr = config.optimizer.lr if config.optimizer.lr_scheduler is None else LearningRateScheduler.create(config.optimizer.lr_scheduler)
 
         transforms = []
         max_norm = getattr(config.optimizer, "max_norm", None)

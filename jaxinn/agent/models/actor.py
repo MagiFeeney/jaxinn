@@ -6,25 +6,28 @@ from jaxtyping import PRNGKeyArray, PyTree
 import equinox as eqx
 
 from jaxinn.common.structs import LatentState
-from jaxinn.configs.model import ActorConfig
+from jaxinn.configs.model import ActorConfig, PerceptionActorConfig
 from jaxinn.configs.head import (
     HeadConfig,
     ComplexHeadConfig,
     HierarchicalHeadConfig
 )
 
-from .utils import make_mlp
+from .base import Model
 from .heads import Head, TreeHead, HierarchicalHead
 from .distributions import DistributionLike
+from .perception import Encoder
+from .utils import make_mlp
 
 
-class Actor(eqx.Module):
+class Actor(Model):
     net: eqx.Module
     head: TreeHead
 
     @classmethod
     def create(cls, config: ActorConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head_config=config.head, key=key)
+        key_model, key_init = jax.random.split(key, 2)
+        return cls(**config(), head_config=config.head, key=key_model).apply_init(config.initializer, key=key_init)
 
     def __init__(
         self,
@@ -66,3 +69,25 @@ class Actor(eqx.Module):
         out = self.net(latent_state)
 
         return self.head(out)
+
+
+class PerceptionActor(Model):
+    encoder: Encoder
+    actor: Actor
+
+    @classmethod
+    def create(cls, config: PerceptionActorConfig, *, key: PRNGKeyArray):
+        key_model, key_init = jax.random.split(key, 2)
+        key_encoder, key_actor = jax.random.split(key_model, 2)
+
+        encoder = Encoder.create(config.encoder, key=key_encoder)
+        actor = Actor.create(
+            config.actor,
+            key=key_actor
+        )
+
+        return cls(encoder=encoder, actor=actor).apply_init(config.initializer, key=key_init)
+
+    def __call__(self, obs: jax.Array) -> DistributionLike:
+        feature = self.encoder(obs)
+        return self.actor(feature)

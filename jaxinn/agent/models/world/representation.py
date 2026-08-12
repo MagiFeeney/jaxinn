@@ -6,13 +6,14 @@ import equinox as eqx
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import RepresentationConfig
 
-from ..utils import make_mlp
+from ..base import Model
 from ..heads import Head
 from ..distributions import DistributionLike
+from ..utils import make_mlp
 
 
 # Representation
-class Representation(eqx.Module):
+class Representation(Model):
     """Representation learning of state, inferred from history and the latest observation: p(s_t | h_t, o_t)
     """
     net: eqx.Module
@@ -20,7 +21,8 @@ class Representation(eqx.Module):
 
     @classmethod
     def create(cls, config: RepresentationConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head_config=config.head, key=key)
+        key_model, key_init = jax.random.split(key, 2)
+        return cls(**config(), head_config=config.head, key=key_model).apply_init(config.initializer, key=key_init)
 
     def __init__(
             self,

@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 
 from jaxinn.configs.base import Base
 from .base import AgentConfig
-from .actor_critic import PerceptionActorConfig, PerceptionCriticConfig
-from ..model import Optimizer, LearnerConfig
+from ..model import Optimizer, LearnerConfig, PerceptionActorConfig, PerceptionCriticConfig
+from ..initializer import Initializer, LecunNormalConfig, ConstantConfig
 
 
 # SAC
@@ -22,13 +22,25 @@ class SACAgentConfig(AgentConfig):
 
     actor: LearnerConfig[PerceptionActorConfig] = field(
         default_factory=lambda: LearnerConfig(
-            model=PerceptionActorConfig(),
+            model=PerceptionActorConfig(
+                initializer=Initializer(
+                    weight_init=LecunNormalConfig(),
+                    bias_init=ConstantConfig(value=0.0),
+                    fused=True
+                )
+            ),
             optimizer=Optimizer()
         )
     )
     critic: LearnerConfig[PerceptionCriticConfig] = field(
         default_factory=lambda: LearnerConfig(
-            model=PerceptionCriticConfig(),
+            model=PerceptionCriticConfig(
+                initializer=Initializer(
+                    weight_init=LecunNormalConfig(),
+                    bias_init=ConstantConfig(value=0.0),
+                    fused=True
+                )
+            ),
             optimizer=Optimizer()
         )
     )

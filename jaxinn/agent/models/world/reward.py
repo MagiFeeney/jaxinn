@@ -9,20 +9,22 @@ from jaxinn.common.structs import LatentState
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import RewardConfig
 
-from ..utils import make_mlp
+from ..base import Model
 from ..perception import ActionEncoder
 from ..heads import Head
 from ..distributions import DistributionLike
+from ..utils import make_mlp
 
 
-class Reward(eqx.Module):
+class Reward(Model):
+    action_encoder: ActionEncoder | None
     net: eqx.Module
     head: Head
-    action_encoder: ActionEncoder | None
 
     @classmethod
     def create(cls, config: RewardConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head_config=config.head, key=key)
+        key_model, key_init = jax.random.split(key, 2)
+        return cls(**config(), head_config=config.head, key=key_model).apply_init(config.initializer, key=key_init)
 
     def __init__(
             self,

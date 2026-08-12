@@ -11,10 +11,10 @@ from jaxinn.common.transforms import Stateless
 from jaxinn.configs.agent.sac import SACAgentConfig
 from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
+from jaxinn.agent.models import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
 from jaxinn.agent.losses import SACLossMixIn
 from jaxinn.agent.memory import Memory, Uniform, Prioritized
 
-from .actor_critic import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
 from ..utils import soft_update
 
 

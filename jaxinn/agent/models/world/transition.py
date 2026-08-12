@@ -9,23 +9,25 @@ from jaxinn.common.structs import LatentState
 from jaxinn.configs.head import HeadConfig
 from jaxinn.configs.model import TransitionConfig
 
-from ..utils import get_activation_fn, StaticCallable
+from ..base import Model
 from ..perception import ActionEncoder
 from ..heads import Head
 from ..distributions import DistributionLike
+from ..utils import get_activation_fn, StaticCallable
 
 
 # Transition
-class Transition(eqx.Module):
+class Transition(Model):
     encoder: eqx.Module
+    action_encoder: ActionEncoder
     core: eqx.nn.GRUCell
     body: eqx.Module
     head: Head
-    action_encoder: ActionEncoder
 
     @classmethod
     def create(cls, config: TransitionConfig, *, key: PRNGKeyArray):
-        return cls(**config(), head_config=config.head, key=key)
+        key_model, key_init = jax.random.split(key, 2)
+        return cls(**config(), head_config=config.head, key=key_model).apply_init(config.initializer, key=key_init)
 
     def __init__(
             self,
