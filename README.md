@@ -67,7 +67,7 @@ uv run jaxinn/main.py \
   --agent.memory.type "batched" \
   --agent.memory.device "gpu" \
   \
-  agent.actor-critic.model:actor-critic-shared-config \
+  agent.actor-critic.model:ppo-actor-critic-shared-config \
   --agent.actor-critic.model.actor.activation-function "tanh" \
   --agent.actor-critic.model.actor.hidden-size 64 64 \
   --agent.actor-critic.model.critic.activation-function "tanh" \
