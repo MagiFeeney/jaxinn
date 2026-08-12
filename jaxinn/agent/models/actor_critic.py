@@ -37,7 +37,8 @@ class ActorCriticDecoupled(ActorCritic):
 
     @classmethod
     def create(cls, config: ActorCriticDecoupledConfig, *, key: PRNGKeyArray):
-        key_actor, key_critic, key_init = jax.random.split(key, 3)
+        key_model, key_init = jax.random.split(key, 2)
+        key_actor, key_critic = jax.random.split(key_model, 2)
 
         actor = PerceptionActor.create(config.perception_actor, key=key_actor)
         critic = PerceptionCritic.create(config.perception_critic, key=key_critic)
@@ -64,7 +65,8 @@ class ActorCriticShared(ActorCritic):
 
     @classmethod
     def create(cls, config: ActorCriticSharedConfig, *, key: PRNGKeyArray):
-        key_encoder, key_actor, key_critic, key_init = jax.random.split(key, 4)
+        key_model, key_init = jax.random.split(key, 2)
+        key_encoder, key_actor, key_critic = jax.random.split(key_model, 3)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
         actor = Actor.create(config.actor, key=key_actor)

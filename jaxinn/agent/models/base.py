@@ -53,7 +53,10 @@ class Model(eqx.Module):
         else:
             is_leaf_primitive = lambda x: is_target(x) or is_child_model(x)
 
-        key, subkey = jax.random.split(key)
+        if not fused and child_models:
+            key, subkey = jax.random.split(key)
+        else:
+            subkey = key
 
         weight_init_cfg = getattr(config, "weight_init", None)
         bias_init_cfg = getattr(config, "bias_init", None)

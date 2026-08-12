@@ -87,7 +87,8 @@ class PerceptionCritic(Model):
 
     @classmethod
     def create(cls, config: PerceptionCriticConfig, *, key: PRNGKeyArray):
-        key_encoder, key_critic, key_init = jax.random.split(key, 3)
+        key_model, key_init = jax.random.split(key, 2)
+        key_encoder, key_critic = jax.random.split(key_model, 2)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
         critic = Critic.create(

@@ -77,7 +77,8 @@ class PerceptionActor(Model):
 
     @classmethod
     def create(cls, config: PerceptionActorConfig, *, key: PRNGKeyArray):
-        key_encoder, key_actor, key_init = jax.random.split(key, 3)
+        key_model, key_init = jax.random.split(key, 2)
+        key_encoder, key_actor = jax.random.split(key_model, 2)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
         actor = Actor.create(

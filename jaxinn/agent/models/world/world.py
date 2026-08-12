@@ -21,7 +21,8 @@ class World(Model):
 
     @classmethod
     def create(cls, config: WorldConfig, *, key: PRNGKeyArray):
-        key_encoder, key_decoder, key_representation, key_transition, key_reward, key_continuation, key_init = jax.random.split(key, 7)
+        key_model, key_init = jax.random.split(key, 2)
+        key_encoder, key_decoder, key_representation, key_transition, key_reward, key_continuation = jax.random.split(key_model, 6)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
         if config.decoder is not None:
