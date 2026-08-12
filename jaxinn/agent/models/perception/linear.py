@@ -35,8 +35,15 @@ class LinearEncoder(Encoder):
             f"but got {obs_shape} with {len(obs_shape)} dimensions."
         )
 
-        if hidden_size is not None and \
-           embedding_size is not None:
+        if hidden_size is None:
+            hidden_size = []
+
+        if hidden_size and embedding_size is None:
+            raise ValueError("Provided `hidden_size` but lacked `embedding_size`, making the final layer undecided.")
+
+        if not hidden_size and embedding_size is None:
+            self.net = eqx.nn.Identity()
+        else:
             self.net = make_mlp(
                 input_size=math.prod(obs_shape),
                 hidden_size=hidden_size,
@@ -44,8 +51,6 @@ class LinearEncoder(Encoder):
                 activation=activation_function,
                 key=key
             )
-        else:
-            self.net = eqx.nn.Identity()
 
     def __call__(
             self,
