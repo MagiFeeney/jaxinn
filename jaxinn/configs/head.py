@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from jaxtyping import Float, Array
 
@@ -64,36 +64,37 @@ class DeterministicHeadConfig(HeadConfig):
 class NormalHeadConfig(HeadConfig):
     state_dependent_std: bool = True
     constant_std: bool = False
-    softplus_std: bool = True
     init_log_std: float = 0.0
     min_std: float = 0.0
+    log_std_scale: float | None = None
+    std_transform: Literal["exp", "softplus", "sigmoid"] = "softplus"
 
 
 @dataclass
 class IsotropicNormalHeadConfig(HeadConfig):
     state_dependent_std: bool = False
     constant_std: bool = True
-    softplus_std: bool = False
     init_log_std: float = 0.0
     min_std: float = 0.0
+    std_transform: Literal["exp", "softplus", "sigmoid"] = "exp"
 
 
 @dataclass
 class ExpNormalHeadConfig(HeadConfig):
     state_dependent_std: bool = True
     constant_std: bool = False
-    softplus_std: bool = False
     init_log_std: float = 0.0
     min_std: float = 0.0
+    std_transform: Literal["exp", "softplus", "sigmoid"] = "exp"
 
 
 @dataclass
 class FreeStdNormalHeadConfig(HeadConfig):
     state_dependent_std: bool = False
     constant_std: bool = False
-    softplus_std: bool = False
     init_log_std: float = 0.0
     min_std: float = 0.0
+    std_transform: Literal["exp", "softplus", "sigmoid"] = "exp"
 
 
 @dataclass

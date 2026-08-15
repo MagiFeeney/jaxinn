@@ -10,6 +10,11 @@ from .utils import differentiable
 
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
+    kl_loss_scale: float = eqx.field(static=True)
+    reward_loss_scale: float = eqx.field(static=True)
+    observation_loss_scale: float = eqx.field(static=True)
+    continuation_loss_scale: float = eqx.field(static=True)
+
     def _compute_kl_loss(self, prior: LatentStateWithDist, posterior: LatentStateWithDist) -> jax.Array:
         if self.kl_balance > 0:
             kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist)
@@ -46,20 +51,20 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
 
         reward_dist = jax.vmap(jax.vmap(self.world.reward))(posterior.latent_state)
         reward_log_prob = reward_dist.log_prob(data.reward)
-        reward_loss = -reward_log_prob.mean()
+        reward_loss = -self.reward_loss_scale * reward_log_prob.mean()
 
         observation_dist = jax.vmap(jax.vmap(self.world.decoder))(posterior.latent_state)
         observation_log_prob = observation_dist.log_prob(data.next_obs)
-        observation_loss = -observation_log_prob.mean()
+        observation_loss = -self.observation_loss_scale * observation_log_prob.mean()
 
         if self.world.continuation is not None:
             continuation_dist = jax.vmap(jax.vmap(self.world.continuation))(posterior.latent_state)
             continuation_log_prob = continuation_dist.log_prob(1 - data.terminated)
-            continuation_loss = -continuation_log_prob.mean()
+            continuation_loss = -self.continuation_loss_scale * continuation_log_prob.mean()
         else:
             continuation_loss = 0
 
-        kl_loss = self._compute_kl_loss(prior, posterior)
+        kl_loss = self._compute_kl_loss(prior, posterior) * self.kl_loss_scale
 
         total_loss = reward_loss + observation_loss + continuation_loss + kl_loss
 

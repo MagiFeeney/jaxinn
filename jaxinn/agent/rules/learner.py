@@ -33,9 +33,16 @@ class Learner(eqx.Module, Generic[ModelType]):
         lr = config.optimizer.lr if config.optimizer.lr_scheduler is None else LearningRateScheduler.create(config.optimizer.lr_scheduler)
 
         transforms = []
+
         max_norm = getattr(config.optimizer, "max_norm", None)
         if max_norm is not None:
             transforms.append(optax.clip_by_global_norm(max_norm))
+
+        weight_decay = getattr(config.optimizer, "weight_decay", 0.0)
+
+        if weight_decay > 0.0:
+            transforms.append(optax.add_decayed_weights(weight_decay))
+
         transforms.append(optax.adam(learning_rate=lr, eps=getattr(config.optimizer, "eps", 1e-8)))
         optimizer = optax.chain(*transforms)
 

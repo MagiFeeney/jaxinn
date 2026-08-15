@@ -122,6 +122,7 @@ class Optimizer(Base):
     b2: float = 0.999
     eps: float = 1e-8
     lr: float = 3e-4
+    weight_decay: float = 0.0
     max_norm: float | None = None
     lr_scheduler: LearningRateSchedulerUnion | None = None
 
@@ -204,7 +205,7 @@ class RepresentationConfig(Resolvable, ModelShared):
 
 @dataclass
 class TransitionConfig(Resolvable, ModelShared):
-    hidden_size: int = 200
+    hidden_size: list[int] = field(default_factory=lambda: [200])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
 

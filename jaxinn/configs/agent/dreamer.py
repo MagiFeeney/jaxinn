@@ -26,6 +26,11 @@ class DreamerOptimization(Base):
     kl_average: bool = False
     kl_balance: float = 0.0
 
+    kl_loss_scale: float = 1.0
+    reward_loss_scale: float = 1.0
+    observation_loss_scale: float = 1.0
+    continuation_loss_scale: float = 1.0
+
 
 @dataclass
 class DreamerAgentConfig(AgentConfig):
@@ -54,11 +59,27 @@ class DreamerAgentConfig(AgentConfig):
 
 @dataclass
 class DreamerV2Optimization(DreamerOptimization):
-    pg_mix: float = 1.0
+    discount_factor: float = 0.999
+    batch_size: int = 16
+    chunk_size: int = 50
+    free_nats: float = 0.0
+    kl_average: bool = True
+    kl_balance: float = 0.8
+
+    kl_loss_scale: float = 0.1
+    reward_loss_scale: float = 1.0
+    observation_loss_scale: float = 1.0
+    continuation_loss_scale: float = 5.0
+
+    pg_mix: float = 0.1
+    entropy_coef: float = 0.001
+    tau: float = 1.0
+    target_update_interval: int = 100
+    momentum: float = 1.0
 
 
 @dataclass
 class DreamerV2AgentConfig(DreamerAgentConfig):
-    memory: MemoryUnion = field(default_factory=EpisodicMemoryConfig)
+    memory: MemoryUnion = field(default_factory=lambda: EpisodicMemoryConfig(max_sequence_length=50, prioritize_ends=True))
 
     optimization: DreamerV2Optimization = field(default_factory=DreamerV2Optimization)

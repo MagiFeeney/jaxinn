@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 import numpy as np
 import jax
@@ -75,18 +75,21 @@ class NormalHead(Head):
     param_size: int = eqx.field(static=True)
     state_dependent_std: bool = eqx.field(static=True)
     constant_std: bool = eqx.field(static=True)
-    softplus_std: bool = eqx.field(static=True)
-    min_std: float = eqx.field(static=True)
     init_log_std: float = eqx.field(static=True)
+    min_std: float = eqx.field(static=True)
+    log_std_scale: float | None = eqx.field(static=True)
+    std_transform: Literal["exp", "softplus", "sigmoid"] = eqx.field(static=True)
+
 
     def __init__(
         self,
         event_size: int,
         state_dependent_std: bool = True,
         constant_std: bool = False,
-        softplus_std: bool = True,
         init_log_std: float = 0.0,
         min_std: float = 0.0,
+        log_std_scale: float | None = None,
+        std_transform: Literal["exp", "softplus", "sigmoid"] = "softplus",
     ):
         if state_dependent_std:
             self.param_size = 2 * event_size
@@ -100,9 +103,11 @@ class NormalHead(Head):
 
         self.state_dependent_std = state_dependent_std
         self.constant_std = constant_std
-        self.softplus_std = softplus_std
         self.min_std = min_std
         self.init_log_std = init_log_std
+
+        self.log_std_scale = log_std_scale
+        self.std_transform = std_transform
 
     def __call__(self, x: jax.Array) -> FixedDistrax:
         if self.state_dependent_std:
@@ -115,10 +120,21 @@ class NormalHead(Head):
             else:
                 log_std = jnp.broadcast_to(self.log_std, mean.shape)
 
-        if self.softplus_std:
-            std = jax.nn.softplus(log_std) + self.min_std
-        else:
+        if self.log_std_scale is not None:
+            log_std = log_std / self.log_std_scale
+
+        if self.std_transform == "exp":
             std = jnp.exp(log_std)
+        elif self.std_transform == "softplus":
+            std = jax.nn.softplus(log_std)
+        elif self.std_transform == "sigmoid":
+            std = jax.nn.sigmoid(log_std)
+
+        if self.log_std_scale is not None:
+            std = self.log_std_scale * std
+
+        if self.min_std > 0:
+            std = std + self.min_std
 
         dist = dx.Independent(
             dx.Normal(loc=mean, scale=std),
@@ -161,7 +177,10 @@ class TanhNormalHead(Head):
             log_std = jnp.clip(log_std, *self.log_std_range)
             std = jnp.exp(log_std)
         else:
-            std = jax.nn.softplus(log_std + self.raw_init_std) + self.min_std
+            std = jax.nn.softplus(log_std + self.raw_init_std)
+
+        if self.min_std > 0:
+            std = std + self.min_std
 
         return dx.Independent(
             dx(TanhNormal)(mean=mean, std=std),

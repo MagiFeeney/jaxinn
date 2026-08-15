@@ -272,6 +272,7 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
                     statistics={"magnitude": lambda x: jnp.mean(jnp.abs(x), axis=0)},
                     aggregation=None,
                     init_ema={"magnitude": 1.0},
+                    momentum=kwargs["momentum"],
                     center=False
                 ),
                 Scale(scale=1.0)
