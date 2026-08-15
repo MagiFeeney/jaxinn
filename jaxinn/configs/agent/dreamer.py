@@ -11,6 +11,7 @@ from jaxinn.configs.model import (
 from jaxinn.configs.head import IsotropicNormalHeadConfig
 
 from .base import AgentConfig
+from .memory import MemoryUnion, EpisodicMemoryConfig
 
 
 # Dreamer
@@ -58,4 +59,6 @@ class DreamerV2Optimization(DreamerOptimization):
 
 @dataclass
 class DreamerV2AgentConfig(DreamerAgentConfig):
+    memory: MemoryUnion = field(default_factory=EpisodicMemoryConfig)
+
     optimization: DreamerV2Optimization = field(default_factory=DreamerV2Optimization)
