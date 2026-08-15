@@ -16,7 +16,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.rules.utils import compute_adv_and_ret, soft_update
 from jaxinn.agent.losses import DreamerLossMixIn, MixedActorGradientLoss
-from jaxinn.agent.memory import Memory, Uniform, Prioritized
+from jaxinn.agent.memory import Memory
 from jaxinn.agent.models import World, Actor, Critic
 from jaxinn.agent.models.distributions import SampleDist
 
@@ -57,19 +57,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         actor = Learner.create(Actor, config.actor, key=key_actor)
         critic = Learner.create(Critic, config.critic, key=key_critic)
 
-        if config.memory.type.lower() == "uniform": # TODO: fix this
-            memory_cls = Uniform
-        else:
-            memory_cls = Prioritized
-        memory = memory_cls(
-            seed_idx=memory_id,
-            capacity=config.memory.capacity,
-            obs_shape=config.memory.obs_shape,
-            obs_dtype=config.memory.obs_dtype,
-            action_shape=config.memory.action_shape,
-            action_dtype=config.memory.action_dtype,
-            num_seeds=config.memory.num_seeds,
-        )
+        memory = Memory.create(config.memory, seed_idx=memory_id)
 
         if config.memory.obs_dtype == jnp.uint8 and len(config.memory.obs_shape) == 3:
             obs_transform = Stateless(

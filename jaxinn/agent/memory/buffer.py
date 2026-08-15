@@ -1,4 +1,5 @@
 import abc
+from typing import ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -6,12 +7,19 @@ from jaxtyping import PRNGKeyArray, PyTree, DTypeLike
 import equinox as eqx
 
 from jaxinn.common.structs import Transition
+from jaxinn.agent.registry import Registrable
+from jaxinn.configs.agent.memory import (
+    UniformMemoryConfig,
+    PrioritizedMemoryConfig,
+    BatchedMemoryConfig,
+    EpisodicMemoryConfig,
+)
 
 from .storage import Storage, CPUStorage, GPUStorage
 
 
 # Base class
-class Memory(eqx.Module):
+class Memory(Registrable, eqx.Module):
     storage: Storage
     seed_idx: jax.Array   # Unique id to anchor data for multiple seeds
     ptr: jax.Array
@@ -64,6 +72,8 @@ class Memory(eqx.Module):
 
 # Memory with uniform sampling
 class Uniform(Memory):
+    config_cls: ClassVar[type] = UniformMemoryConfig
+
     def add(self, transition: Transition, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
@@ -182,6 +192,8 @@ class SumTree(eqx.Module):
 
 # Memory with prioritized sampling
 class Prioritized(Uniform):
+    config_cls: ClassVar[type] = PrioritizedMemoryConfig
+
     sumtree: SumTree
     alpha: float = eqx.field(static=True)
     beta: float = eqx.field(static=True)
@@ -215,6 +227,8 @@ class Prioritized(Uniform):
 
 
 class Batched(Uniform):
+    config_cls: ClassVar[type] = BatchedMemoryConfig
+
     def __init__(
             self,
             seed_idx: jax.Array,
@@ -228,7 +242,7 @@ class Batched(Uniform):
         super().__init__(seed_idx, capacity, obs_shape, obs_dtype, action_shape, action_dtype, num_seeds)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
-        return super().sample_batch_index(batch_size, key, chunk_size=1)
+        return super().sample_batch_index(batch_size, key, chunk_size=1)[0]
 
     def get_all(self) -> Transition:
         read_index = jnp.arange(self.length)
@@ -237,6 +251,8 @@ class Batched(Uniform):
 
 
 class Episodic(Memory):
+    config_cls: ClassVar[type] = EpisodicMemoryConfig
+
     episode_ends: jax.Array
     episode_ptr: jax.Array
     episode_tail: jax.Array

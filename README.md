@@ -64,7 +64,8 @@ uv run jaxinn/main.py \
   agent:ppo-agent-config \
   --agent.optimization.entropy_coef 0.0 \
   --agent.optimization.normalize_adv \
-  --agent.memory.type "batched" \
+  \
+  agent.memory:batched-memory-config \
   --agent.memory.device "gpu" \
   \
   agent.actor-critic.model:ppo-actor-critic-shared-config \
@@ -78,12 +79,12 @@ uv run jaxinn/main.py \
 
 * Running SAC on Brax
 ``` bash
-uv run jaxinn/main.py --num_seeds 10 --logger.log_dir "results/brax/walker2d/sac" --env.env_id "brax/walker2d" --env.wrapper.num_envs 1 --env.wrapper.action_repeat 1 --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.eval_interval 10000 --exploration.train_interval 1 --exploration.episode_length 1 --exploration.train_iterations 1 --exploration.num_prefill_episodes 10000 --exploration.action_noise 0. --exploration.no-restart agent:sac-agent-config --agent.memory.type "uniform" --agent.memory.device "gpu" --agent.actor.optimizer.lr 3e-4 --agent.actor.model.actor.activation-function "relu" --agent.actor.model.actor.hidden-size 256 256 --agent.critic.optimizer.lr 3e-4 --agent.critic.model.critic.activation-function "relu" --agent.critic.model.critic.hidden-size 256 256 --agent.critic.model.critic.use_action --agent.optimization.target_update_interval 1 --agent.optimization.tau 0.005 agent.actor.model.actor.continuous-head:tanh-normal-head-config --agent.actor.model.actor.continuous-head.log-std-range -10 2  --agent.actor.model.actor.continuous-head.mean-scale None
+uv run jaxinn/main.py --num_seeds 10 --logger.log_dir "results/brax/walker2d/sac" --env.env_id "brax/walker2d" --env.wrapper.num_envs 1 --env.wrapper.action_repeat 1 --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.eval_interval 10000 --exploration.train_interval 1 --exploration.episode_length 1 --exploration.train_iterations 1 --exploration.num_prefill_episodes 10000 --exploration.action_noise 0. --exploration.no-restart agent:sac-agent-config agent.memory:uniform-memory-config --agent.memory.device "gpu" --agent.actor.optimizer.lr 3e-4 --agent.actor.model.actor.activation-function "relu" --agent.actor.model.actor.hidden-size 256 256 --agent.critic.optimizer.lr 3e-4 --agent.critic.model.critic.activation-function "relu" --agent.critic.model.critic.hidden-size 256 256 --agent.critic.model.critic.use_action --agent.optimization.target_update_interval 1 --agent.optimization.tau 0.005 agent.actor.model.actor.continuous-head:tanh-normal-head-config --agent.actor.model.actor.continuous-head.log-std-range -10 2  --agent.actor.model.actor.continuous-head.mean-scale None
 ```
 
 * Running Dreamer on DMC
 ``` bash
-uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dreamer" --env.env_id "dmc/walker_walk" --env.wrapper.num_envs 1 --env.creation from_pixels True render_height 64 render_width 64 vectorization_mode "async" --env.separated --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.num_prefill_episodes 5 --exploration.action_noise 0.3 agent:dreamer-agent-config --agent.memory.capacity 1000000 --agent.memory.type "uniform" --agent.memory.device "cpu" --agent.optimization.kl_balance 0.0 --agent.optimization.batch_size 50 --agent.optimization.chunk_size 50 agent.actor.model.continuous_head:tanh-normal-head-config
+uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dreamer" --env.env_id "dmc/walker_walk" --env.wrapper.num_envs 1 --env.creation from_pixels True render_height 64 render_width 64 vectorization_mode "async" --env.separated --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.num_prefill_episodes 5 --exploration.action_noise 0.3 agent:dreamer-agent-config agent.memory:uniform-memory-config --agent.memory.capacity 1000000 --agent.memory.device "cpu" --agent.optimization.kl_balance 0.0 --agent.optimization.batch_size 50 --agent.optimization.chunk_size 50 agent.actor.model.continuous_head:tanh-normal-head-config
 ```
 
 > [!NOTE]

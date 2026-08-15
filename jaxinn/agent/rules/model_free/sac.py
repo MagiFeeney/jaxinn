@@ -13,7 +13,7 @@ from jaxinn.agent.rules.base import Agent
 from jaxinn.agent.rules.learner import Learner
 from jaxinn.agent.models import PerceptionActor, PerceptionCritic, Ensemble, make_ensemble_cls
 from jaxinn.agent.losses import SACLossMixIn
-from jaxinn.agent.memory import Memory, Uniform, Prioritized
+from jaxinn.agent.memory import Memory
 
 from ..utils import soft_update
 
@@ -52,19 +52,7 @@ class SACAgent(SACLossMixIn, Agent):
 
         critic_target = jax.tree.map(lambda x: jnp.copy(x) if eqx.is_inexact_array(x) else x, critic.model)
 
-        if config.memory.type.lower() == "uniform":
-            memory_cls = Uniform
-        else:
-            memory_cls = Prioritized
-        memory = memory_cls(
-            seed_idx=memory_id,
-            capacity=config.memory.capacity,
-            obs_shape=config.memory.obs_shape,
-            obs_dtype=config.memory.obs_dtype,
-            action_shape=config.memory.action_shape,
-            action_dtype=config.memory.action_dtype,
-            num_seeds=config.memory.num_seeds,
-        )
+        memory = Memory.create(config.memory, seed_idx=memory_id)
 
         if config.memory.obs_dtype == jnp.uint8 and len(config.memory.obs_shape) == 3:
             obs_transform = Stateless(
