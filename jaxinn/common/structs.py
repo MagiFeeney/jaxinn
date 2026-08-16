@@ -154,7 +154,10 @@ class LatentStateWithDist(eqx.Module):
 
     @property
     def dist(self):
-        return self.fixed_dist.dist
+        curr = self.fixed_dist
+        while hasattr(curr, "dist"):
+            curr = curr.dist
+        return curr
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.fixed_dist, name)

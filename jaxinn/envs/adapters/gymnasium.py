@@ -13,24 +13,15 @@ from ..vmap import VmapTransformation
 from ..spaces import Discrete, Box, Dict, Tuple
 
 
-def _to_jax_dtype(dtype: Any) -> jnp.dtype:
-    parsed_dtype = jnp.dtype(dtype)
-    if parsed_dtype.name == 'float64':
-        return jnp.float64      # Return concrete dtype to avoid being caught by float dtype
-    elif parsed_dtype.name == 'int64':
-        return jnp.int64
-    return parsed_dtype
-
-
 def gymnasium_space_to_jaxinn_space(space):
     if isinstance(space, gym.spaces.Discrete):
-        return Discrete(n=int(space.n), dtype=_to_jax_dtype(space.dtype))
+        return Discrete(n=int(space.n), dtype=jax.dtypes.canonicalize_dtype(space.dtype))
     elif isinstance(space, gym.spaces.Box):
         return Box(
             low=space.low,
             high=space.high,
             shape=space.shape,
-            dtype=_to_jax_dtype(space.dtype),
+            dtype=jax.dtypes.canonicalize_dtype(space.dtype),
         )
     elif isinstance(space, gym.spaces.Dict):
         converted_spaces = {k: gymnasium_space_to_jaxinn_space(v) for k, v in space.spaces.items()}

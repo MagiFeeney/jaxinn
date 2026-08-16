@@ -51,7 +51,7 @@ class Learner(eqx.Module, Generic[ModelType]):
     def update(self, grads) -> "Learner":
         if isinstance(grads, Learner):
             grads = grads.dynamic_flatten
-        updates, new_optimizer_state = self.optimizer.update(grads, self.optimizer_state)
+        updates, new_optimizer_state = self.optimizer.update(grads, self.optimizer_state, params=self.dynamic_flatten)
         new_dynamic_flatten = eqx.apply_updates(self.dynamic_flatten, updates)
         return eqx.tree_at(
             lambda x: (x.dynamic_flatten, x.optimizer_state),

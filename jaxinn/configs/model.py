@@ -205,7 +205,7 @@ class RepresentationConfig(Resolvable, ModelShared):
 
 @dataclass
 class TransitionConfig(Resolvable, ModelShared):
-    hidden_size: list[int] = field(default_factory=lambda: [200])
+    hidden_size: int = 200
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
 

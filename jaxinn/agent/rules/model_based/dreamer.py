@@ -254,6 +254,7 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
     entropy_coef: float = eqx.field(static=True)
     tau: float = eqx.field(static=True)
     target_update_interval: int = eqx.field(static=True)
+    momentum: float = eqx.field(static=True)
 
     imagined_reward_transform: Callable = eqx.field(static=True)
 
