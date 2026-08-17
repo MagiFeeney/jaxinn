@@ -295,7 +295,6 @@ class Episodic(Memory):
 
         # Get which step is end
         is_end = (transition.terminated | transition.truncated) & mask
-        is_end = jnp.where(jnp.arange(batch_size) == num_data - 1, True, is_end)
 
         INF = jnp.iinfo(jnp.int32).max
         end_batch_idx = jnp.where(is_end, jnp.arange(batch_size), INF)
