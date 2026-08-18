@@ -30,11 +30,12 @@ class CNNEncoder(Encoder):
     def __init__(
             self,
             obs_shape: tuple[int, int, ...],
-            embedding_size: int,
+            embedding_size: int | None = None,
             num_layers: int | None = 4,
             kernel_size: int | Sequence[int] = 4,
             depth: int | Sequence[int] = 32,
             stride: int | Sequence[int] = 2,
+            padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID",
             activation_function: str | Callable = "elu",
             dtype: str = "float32",
             *,
@@ -56,7 +57,7 @@ class CNNEncoder(Encoder):
             depth=depth,
             depth_factor=2,
             stride=stride,
-            padding="SAME",
+            padding=padding,
             dtype=self.dtype,
             num_layers=num_layers,
             key=key_body
@@ -64,9 +65,14 @@ class CNNEncoder(Encoder):
 
         self.feature_map_shape = self.get_feature_map_shape(obs_shape)
         feature_map_size = math.prod(self.feature_map_shape)
-        self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=key_head)
 
-        self.embedding_size = embedding_size
+        if embedding_size is not None:
+            self.head = eqx.nn.Linear(feature_map_size, embedding_size, key=key_head)
+            self.embedding_size = embedding_size
+        else:
+            self.head = eqx.nn.Identity()
+            self.embedding_size = feature_map_size
+
 
     def __call__(
             self,
@@ -95,6 +101,7 @@ class CNNDecoder(Decoder):
     dtype: str = eqx.field(static=True)
 
     feature_map_shape: tuple[int, int, int] = eqx.field(static=True)
+    flatten_embedding: bool = eqx.field(static=True)
 
     def __init__(
             self,
@@ -102,10 +109,12 @@ class CNNDecoder(Decoder):
             state_size: int | tuple[int, ...],
             obs_shape: tuple[int, int, ...],
             feature_map_shape: tuple[int, ...],
+            flatten_embedding: bool = True,
             num_layers: int | None = 4,
             kernel_size: int | Sequence[int] = 4,
             depth: int | Sequence[int] = 32,
             stride: int | Sequence[int] = 2,
+            padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID",
             activation_function: str | Callable = "elu",
             dtype: str = "float32",
             *,
@@ -130,8 +139,13 @@ class CNNDecoder(Decoder):
             StaticCallable(activation),
         ])
 
+        if flatten_embedding:
+            in_channels = feature_map_size
+        else:
+            in_channels = feature_map_shape[0]
+
         self.body = make_cnn_transposed(
-            in_channels=feature_map_shape[0],
+            in_channels=in_channels,
             out_channels=obs_shape[0],
             num_spatial_dims=len(obs_shape) - 1,
             activation=activation,
@@ -139,7 +153,7 @@ class CNNDecoder(Decoder):
             depth=depth,
             depth_factor=2,
             stride=stride,
-            padding="SAME",
+            padding=padding,
             dtype=self.dtype,
             num_layers=num_layers,
             key=key_body
@@ -147,6 +161,7 @@ class CNNDecoder(Decoder):
 
         self.obs_shape = obs_shape
         self.event_ndim = len(obs_shape)
+        self.flatten_embedding = flatten_embedding
 
     def __call__(
             self,
@@ -155,7 +170,12 @@ class CNNDecoder(Decoder):
         if isinstance(latent_state, LatentState):
             latent_state = latent_state.feature
         embedding = self.embedding(latent_state)
-        embedding = embedding.reshape(embedding.shape[:-1] + self.feature_map_shape).astype(self.dtype)
+
+        if self.flatten_embedding:
+            embedding = embedding[..., None, None].astype(self.dtype)
+        else:
+            embedding = embedding.reshape(embedding.shape[:-1] + self.feature_map_shape).astype(self.dtype)
+
         out = eqx.filter_checkpoint(self.body)(embedding)
         out = out.astype(jnp.float32)
 

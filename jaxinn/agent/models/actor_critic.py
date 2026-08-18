@@ -69,6 +69,13 @@ class ActorCriticShared(ActorCritic):
         key_encoder, key_actor, key_critic = jax.random.split(key_model, 3)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
+
+        if config.actor.state_size is None:
+            config.actor.state_size = encoder.embedding_size
+
+        if config.critic.state_size is None:
+            config.critic.state_size = encoder.embedding_size
+
         actor = Actor.create(config.actor, key=key_actor)
         critic = Critic.create(config.critic, key=key_critic)
 

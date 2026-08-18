@@ -91,10 +91,11 @@ class PerceptionCritic(Model):
         key_encoder, key_critic = jax.random.split(key_model, 2)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        critic = Critic.create(
-            config.critic,
-            key=key_critic
-        )
+
+        if config.critic.state_size is None:
+            config.critic.state_size = encoder.embedding_size
+
+        critic = Critic.create(config.critic, key=key_critic)
 
         return cls(encoder=encoder, critic=critic).apply_init(config.initializer, key=key_init)
 

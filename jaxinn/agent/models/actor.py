@@ -81,10 +81,11 @@ class PerceptionActor(Model):
         key_encoder, key_actor = jax.random.split(key_model, 2)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor.create(
-            config.actor,
-            key=key_actor
-        )
+
+        if config.actor.state_size is None:
+            config.actor.state_size = encoder.embedding_size
+
+        actor = Actor.create(config.actor, key=key_actor)
 
         return cls(encoder=encoder, actor=actor).apply_init(config.initializer, key=key_init)
 
