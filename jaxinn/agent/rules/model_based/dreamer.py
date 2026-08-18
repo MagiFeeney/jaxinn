@@ -301,7 +301,7 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         baselines = values
 
         continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).probs if self.world.continuation is not None else jnp.ones_like(rewards)
-        merged_discount = self.discount_factor * continues
+        merged_discount = self.discount_factor * jax.lax.stop_gradient(continues)
 
         advantages, return_predictions = compute_adv_and_ret(
             transformed_rewards,
