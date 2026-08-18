@@ -231,13 +231,13 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         metrics.update(**aux)
 
         # Update actor
-        (loss, (aux, (imagined_latent_states, return_predictions))), grads = agent.actor_loss_fn(posterior, key_actor)
+        (loss, (aux, out)), grads = agent.actor_loss_fn(posterior, key_actor)
         new_actor = agent.actor.update(grads.actor)
         agent = eqx.tree_at(lambda a: a.actor, agent, new_actor)
         metrics.update(**aux)
 
         # Update critic
-        (loss, aux), grads = agent.critic_loss_fn(imagined_latent_states, return_predictions, key_critic)
+        (loss, aux), grads = agent.critic_loss_fn(*out, key_critic)
         new_critic = agent.critic.update(grads.critic)
         agent = eqx.tree_at(lambda a: a.critic, agent, new_critic)
         metrics.update(**aux)

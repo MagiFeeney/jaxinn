@@ -143,4 +143,22 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             "ac/entropy_loss": entropy_loss.mean(),
             **aux
         }
-        return actor_loss, (metrics, (imagined_latent_states, return_predictions))
+        return actor_loss, (metrics, (imagined_latent_states, return_predictions, weights))
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    @differentiable(['critic'])
+    def critic_loss_fn(
+            self,
+            imagined_latent_states: jax.Array,
+            return_prediction: jax.Array,
+            weights: jax.Array,
+            key: PRNGKeyArray,
+    ) -> tuple[jax.Array, dict[str, jax.Array]]:
+        value_dist = jax.vmap(jax.vmap(self.critic))(imagined_latent_states[:-1].detach())
+        critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction))
+        critic_loss = (weights * critic_loss[..., None]).mean()
+
+        metrics = {
+            "ac/critic": critic_loss,
+        }
+        return critic_loss, metrics
