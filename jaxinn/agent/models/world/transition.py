@@ -85,11 +85,3 @@ class Transition(Model):
         out = self.body(belief)
 
         return self.head(out), belief
-
-    def sample(
-            self,
-            dist: DistributionLike,
-            key: PRNGKeyArray,
-    ) -> jax.Array:
-        state = dist.sample(seed=key)
-        return state

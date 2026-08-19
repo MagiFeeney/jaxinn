@@ -106,7 +106,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
     def predict(self, latent_state: LatentState, action: jax.Array, key: PRNGKeyArray) -> LatentStateWithDist:
         """Predict based on the belief without seeing observation."""
         dist, belief = jax.vmap(self.world.transition)(latent_state, action)
-        state = self.world.transition.sample(dist, key)
+        state = dist.sample(seed=key)
         prior = LatentStateWithDist(
             latent_state=LatentState(belief=belief, state=state),
             fixed_dist=dist,
@@ -120,7 +120,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         key_prior, key_posterior = jax.random.split(key, 2)
         prior = self.predict(latent_state, action, key_prior)
         dist, belief = jax.vmap(self.world.representation)(prior.latent_state.belief, observation)
-        state = self.world.representation.sample(dist, key_posterior)
+        state = dist.sample(seed=key_posterior)
         posterior = LatentStateWithDist(
             latent_state=LatentState(belief=belief, state=state),
             fixed_dist=dist,
