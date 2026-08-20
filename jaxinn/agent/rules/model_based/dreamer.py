@@ -188,8 +188,8 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         next_values = all_values[1:]
         baselines = values
 
-        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).mean() if self.world.continuation is not None else jnp.ones_like(rewards)
-        merged_discount = self.discount_factor * jax.lax.stop_gradient(continues)
+        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:].detach()).mean() if self.world.continuation is not None else jnp.ones_like(rewards)
+        merged_discount = self.discount_factor * continues
 
         advantages, return_predictions = compute_adv_and_ret(
             rewards,
@@ -300,8 +300,8 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         next_values = all_values[1:]
         baselines = values
 
-        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:]).mean() if self.world.continuation is not None else jnp.ones_like(rewards)
-        merged_discount = self.discount_factor * jax.lax.stop_gradient(continues)
+        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states.detach()).mean() if self.world.continuation is not None else jnp.ones_like(all_values)
+        merged_discount = self.discount_factor * continues[1:]
 
         advantages, return_predictions = compute_adv_and_ret(
             transformed_rewards,
@@ -317,7 +317,7 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
         entropies = actor_dists.entropy()
 
-        shifted_discount = jnp.concatenate([jnp.ones_like(merged_discount[:1]), merged_discount[:-1]], axis=0)
+        shifted_discount = jnp.concatenate([continues[:1], merged_discount[:-1]], axis=0)
         weights = jnp.cumprod(shifted_discount, axis=0)
 
         out = (advantages, return_predictions, action_log_probs, entropies, weights)
