@@ -1,7 +1,7 @@
 from copy import deepcopy
 from enum import StrEnum
 from dataclasses import dataclass, field
-from typing import ClassVar, Generic, TypeVar
+from typing import ClassVar, Generic, TypeVar, Literal
 from collections.abc import Sequence
 
 from jaxtyping import PyTree
@@ -173,6 +173,7 @@ class TransitionConfig(Resolvable, ModelShared):
     hidden_size: int = 200
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
+    core_arch: Literal["gru", "fused_gru", "lstm"] = "gru"
 
     head: HeadUnion = field(default_factory=NormalHeadConfig)
 

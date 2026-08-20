@@ -1,4 +1,5 @@
 import math
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -11,6 +12,7 @@ from jaxinn.configs.model import TransitionConfig
 
 from ..base import Model
 from ..perception import ActionEncoder
+from ..recurrent import FusedGRUCell
 from ..heads import Head
 from ..distributions import DistributionLike
 from ..utils import get_activation_fn, StaticCallable
@@ -20,9 +22,11 @@ from ..utils import get_activation_fn, StaticCallable
 class Transition(Model):
     encoder: eqx.Module
     action_encoder: ActionEncoder
-    core: eqx.nn.GRUCell
+    core: eqx.nn.GRUCell | FusedGRUCell | eqx.nn.LSTMCell
     body: eqx.Module
     head: Head
+
+    core_arch: Literal["gru", "fused_gru", "lstm"] = eqx.field(static=True)
 
     @classmethod
     def create(cls, config: TransitionConfig, *, key: PRNGKeyArray):
@@ -36,7 +40,8 @@ class Transition(Model):
             action_shape: PyTree[tuple[int, ...]],
             hidden_size: int,
             head_config: HeadConfig,
-            activation_function="elu",
+            core_arch: Literal["gru", "fused_gru", "lstm"] = "gru",
+            activation_function = "elu",
             action_embedding_size: int | None = None,
             *,
             key: PRNGKeyArray,
@@ -60,7 +65,14 @@ class Transition(Model):
         ])
 
         # p(h_t | c_{t - 1}, h_{t - 1})
-        self.core = eqx.nn.GRUCell(hidden_size, belief_size, key=keys[1])
+        if core_arch == "gru":
+            self.core = eqx.nn.GRUCell(hidden_size, belief_size, key=keys[1])
+        elif core_arch == "fused_gru":
+            self.core = FusedGRUCell(hidden_size, belief_size, key=keys[1])
+        elif core_arch == "lstm":
+            raise NotImplementedError("LSTM is planned for future support but is not yet implemented.")
+        else:
+            raise ValueError(f"Unknown core architecture: {core_arch}")
 
         # p(s_t | h_t)
         self.body = eqx.nn.Sequential([
@@ -68,6 +80,8 @@ class Transition(Model):
             StaticCallable(activation),
             eqx.nn.Linear(hidden_size, self.head.param_size, key=keys[3]),
         ])
+
+        self.core_arch = core_arch
 
     def __call__(
             self,
