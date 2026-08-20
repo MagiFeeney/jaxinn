@@ -294,7 +294,7 @@ class Episodic(Memory):
         new_size = jnp.minimum(self.size + num_data, self.length)
 
         # Get which step is end
-        is_end = (transition.terminated | transition.truncated) & mask
+        is_end = (jnp.ravel(transition.terminated) | jnp.ravel(transition.truncated)) & mask
 
         INF = jnp.iinfo(jnp.int32).max
         end_batch_idx = jnp.where(is_end, jnp.arange(batch_size), INF)
