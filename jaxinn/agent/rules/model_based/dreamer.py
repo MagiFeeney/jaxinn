@@ -248,7 +248,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
 class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
     config_cls: ClassVar[type] = DreamerV2AgentConfig
 
-    critic_target: Learner[Critic]
+    critic_target: Critic
 
     pg_mix: float = eqx.field(static=True)
     entropy_coef: float = eqx.field(static=True)
@@ -262,9 +262,11 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
 
     @classmethod
     def _build_kwargs(cls, config: DreamerV2AgentConfig, *, key: PRNGKeyArray, memory_id: jax.Array) -> dict[str, Any]:
+        key, key_target = jax.random.split(key, 2)
+
         kwargs = super()._build_kwargs(config, key=key, memory_id=memory_id)
 
-        critic_target = jax.tree.map(lambda x: jnp.copy(x) if eqx.is_inexact_array(x) else x, kwargs["critic"].model)
+        critic_target = Critic.create(config.critic.model, key=key_target)
 
         imagined_reward_transform = Chain(
             transforms=(
