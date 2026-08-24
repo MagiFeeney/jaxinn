@@ -30,6 +30,7 @@ class FusedGRUCell(eqx.Module):
             eqx.nn.Linear(
                 input_size + hidden_size,
                 3 * hidden_size,
+                use_bias=(not use_layernorm),
                 key=key
             )
         ]
