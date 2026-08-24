@@ -423,7 +423,7 @@ def apply_init(
     if weight_init is None and bias_init is None and output_weight_init is None and output_bias_init is None:
         return model
 
-    is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
+    is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv, eqx.nn.ConvTranspose))
     if is_leaf is None:
         is_leaf = is_target
 
@@ -442,10 +442,20 @@ def apply_init(
         # Init weight
         weight = layer.weight
         if w_fn is not None:
-            if isinstance(layer, eqx.nn.Conv2d):
-                out_c, in_c, height, width = weight.shape
-                hwio = w_fn(kw, (height, width, in_c, out_c), weight.dtype) # JAX's expected layout: HWIO
-                new_w = jnp.transpose(hwio, (3, 2, 0, 1))                   # Equinox's: OIHW
+            ndim = weight.ndim
+
+            if isinstance(layer, eqx.nn.Conv):
+                out_c, in_c, spatial_dims = weight.shape[0], weight.shape[1], weight.shape[2:]
+                spatial_io = w_fn(kw, (*spatial_dims, in_c, out_c), weight.dtype) # JAX's: (*spatial, in_c, out_c)
+                new_w = jnp.transpose(spatial_io, (ndim - 1, ndim - 2) + tuple(range(ndim - 2))) # Equinox's: (out_c, in_c, *spatial)
+            elif isinstance(layer, eqx.nn.ConvTranspose):
+                in_c, out_c, spatial_dims = weight.shape[0], weight.shape[1], weight.shape[2:]
+                spatial_io = w_fn(kw, (*spatial_dims, in_c, out_c), weight.dtype)
+                new_w = jnp.transpose(spatial_io, (ndim - 2, ndim - 1) + tuple(range(ndim - 2))) # Equinox's: (in_c, out_c, *spatial)
+            elif isinstance(layer, eqx.nn.Linear):
+                out_c, in_c = weight.shape
+                io = w_fn(kw, (in_c, out_c), weight.dtype)
+                new_w = jnp.transpose(io, (1, 0)) # Equinox's: (out_c, in_c)
             else:
                 new_w = w_fn(kw, weight.shape, weight.dtype)
         else:

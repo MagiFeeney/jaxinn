@@ -45,7 +45,7 @@ class Model(eqx.Module):
 
                 new_self = jax.tree.map(maybe_replace, self, is_leaf=is_child_model)
 
-        is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
+        is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv, eqx.nn.ConvTranspose))
 
         if fused:
             is_initialized_model = lambda x: is_child_model(x) and getattr(x, "_init_applied", False)
