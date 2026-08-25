@@ -97,7 +97,7 @@ class StraightThroughOneHotCategorical(distrax.OneHotCategorical):
         return sample
 
     def mode(self) -> jax.Array:
-        mode = super().mode
+        mode = super().mode()
         return mode.astype(jnp.float32) # align with sample's dtype
 
 
