@@ -80,7 +80,6 @@ class NormalHead(Head):
     log_std_scale: float | None = eqx.field(static=True)
     std_transform: Literal["exp", "softplus", "sigmoid"] = eqx.field(static=True)
 
-
     def __init__(
         self,
         event_size: int,

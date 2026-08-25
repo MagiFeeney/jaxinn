@@ -441,7 +441,7 @@ def apply_init(
 
         # Init weight
         weight = layer.weight
-        if w_fn is not None:
+        if w_fn is not None:    # TODO: init for gru https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/_rnn.py
             ndim = weight.ndim
 
             if isinstance(layer, eqx.nn.Conv):
