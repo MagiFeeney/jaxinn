@@ -415,8 +415,7 @@ class Episodic(Memory):
 
         # Prioritize sequences near end
         offset = jnp.maximum(0, episode_length - sequence_length)
-        rand_maxval = jnp.where(self.prioritize_ends, offset + chunk_size, offset)
-        rand_maxval = jnp.maximum(1, rand_maxval)
+        rand_maxval = offset + 1 + (chunk_size if self.prioritize_ends else 0)
         rand_idx = jax.random.randint(key_offset, (), minval=0, maxval=rand_maxval)
         offset = jnp.minimum(rand_idx, offset)
 
