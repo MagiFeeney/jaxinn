@@ -367,10 +367,10 @@ class Episodic(Memory):
             # Stitch two parts together
             mask = idx_range < remaining
             out_idx = jnp.where(mask, idx_current, idx_next)
-            is_stitched = (idx_range == remaining - 1) & (remaining < chunk_size)
 
             # Update states
             overshoot = remaining < chunk_size
+            is_stitched = (idx_range == remaining - 1) & overshoot
             next_start = jnp.where(overshoot, new_start, start)
             next_end = jnp.where(overshoot, new_end, end)
             next_offset = jnp.where(overshoot, chunk_size - remaining, offset + chunk_size)
