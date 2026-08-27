@@ -59,8 +59,10 @@ class FlattenedMemoryConfig(MemoryConfig):
                 f"but received a tuple: {self.capacity}"
             )
 
+        num_environment_steps = ctx.get("num_environment_steps", 0)
+        prefill_steps = ctx.get("num_prefill_episodes", 0) * ctx.get("episode_length", 0)
         action_repeat = ctx.get("action_repeat", 1)
-        max_steps = ctx.get("num_environment_steps", 0) // action_repeat
+        max_steps = (num_environment_steps + prefill_steps) // action_repeat
 
         original_capacity = self.capacity
         rectified_capacity = min(original_capacity, max_steps)

@@ -392,15 +392,12 @@ class Trainer(Interactor, eqx.Module):
 def resolve_agent_config(config: Config, env: Environment) -> AgentConfig:
     env_wrapper_config = config.env.wrapper.train() if config.env.separated else config.env.wrapper()
     next_step_autoreset = env.is_wrapped_by(NextStepAutoResetTerminalObs)
-    ctx = {       # TODO: perhaps pass the whole exploration for future compatibility
+    ctx = {
         "observation_space":        env.get("observation_space"),
         "action_space":             env.get("action_space"),
-        "num_environment_steps":    config.exploration.num_environment_steps,
-        "episode_length":           config.exploration.episode_length,
-        "train_iterations":         config.exploration.train_iterations,
-        "train_interval":           config.exploration.train_interval,
         "num_seeds":                config.num_seeds,
         "next_step_autoreset":      next_step_autoreset,
+        **config.exploration(),
         **env_wrapper_config
     }
     return config.agent.resolve(ctx)
