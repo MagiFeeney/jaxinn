@@ -142,7 +142,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             action, obs, done = inputs
             key, key_perceive = jax.random.split(key)
 
-            # Mask the state if the last step is done; action is already zero
+            # Mask the state if the last step is done
             latent_state = latent_state * last_mask
             prior, posterior = self.perceive(latent_state, action, obs, key_perceive)
 

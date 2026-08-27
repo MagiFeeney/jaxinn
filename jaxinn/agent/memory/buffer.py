@@ -333,8 +333,13 @@ class Episodic(Memory):
 
     def sample(self, sample_shape: tuple[int, ...], key: PRNGKeyArray):
         batch_size, chunk_size = sample_shape
-        sample_index = self.sample_batch_index(batch_size, key, chunk_size=chunk_size)
-        return self.storage.read(self.seed_idx, sample_index)
+        sample_index, is_stitched = self.sample_batch_index(batch_size, key, chunk_size=chunk_size)
+        data = self.storage.read(self.seed_idx, sample_index)
+
+        is_stitched = is_stitched.reshape(data.truncated.shape)
+        new_truncated = data.truncated | is_stitched
+
+        return eqx.tree_at(lambda x: x.truncated, data, new_truncated)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
         key, key_init = jax.random.split(key, 2)
@@ -362,6 +367,7 @@ class Episodic(Memory):
             # Stitch two parts together
             mask = idx_range < remaining
             out_idx = jnp.where(mask, idx_current, idx_next)
+            is_stitched = (idx_range == remaining - 1) & (remaining < chunk_size)
 
             # Update states
             overshoot = remaining < chunk_size
@@ -371,13 +377,13 @@ class Episodic(Memory):
 
             next_state = (next_start, next_end, next_offset, key)
 
-            return next_state, out_idx
+            return next_state, (out_idx, is_stitched)
 
-        _, chunk_indices = jax.lax.scan(
+        _, (chunk_indices, chunk_stitches) = jax.lax.scan(
             step_fn, init_state, None, length=batch_size
         )
 
-        return chunk_indices.T % self.length # T x B
+        return chunk_indices.T % self.length, chunk_stitches.T # T x B
 
     def sample_episode_bounds(self, sample_shape: tuple[int, ...], key: PRNGKeyArray, use_absolute: bool = True):
         num_valid = (self.episode_ptr - self.episode_tail) % self.length
