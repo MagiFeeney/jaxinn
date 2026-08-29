@@ -274,10 +274,10 @@ class Episodic(Memory):
             prioritize_ends: bool = True,
     ):
         super().__init__(seed_idx, capacity, obs_shape, obs_dtype, action_shape, action_dtype, num_seeds)
-        self.episode_ends = jnp.full((self.length,), -1, dtype=jnp.int64)
+        self.episode_ends = jnp.full((self.length,), -1, dtype=jnp.int32)
         self.episode_ptr = jnp.array(0, dtype=jnp.int32)
         self.episode_tail = jnp.array(0, dtype=jnp.int32)
-        self.total_steps = jnp.array(0, dtype=jnp.int64)
+        self.total_steps = jnp.array(0, dtype=jnp.int32)
 
         self.max_sequence_length = max_sequence_length
         self.prioritize_ends = prioritize_ends
