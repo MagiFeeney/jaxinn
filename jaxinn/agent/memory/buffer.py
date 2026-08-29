@@ -352,25 +352,41 @@ class Episodic(Memory):
 
             remaining = end - (start + offset)
 
-            key, subkey = jax.random.split(key)
-            new_start, new_end = self.sample_sequence_bounds(subkey, chunk_size)
-
-            idx_range = jnp.arange(chunk_size)
-
             # Consume existing episode
+            idx_range = jnp.arange(chunk_size)
             idx_current = start + offset + idx_range
 
             # Replenish from the new episode
             # Only effective when remaining < chunk_size
-            idx_next = new_start + (idx_range - remaining)
+            init_start, init_end = jnp.array(0), jnp.array(0)
+            init_is_stitched = jnp.zeros(chunk_size, dtype=jnp.bool_)
 
-            # Stitch two parts together
-            mask = idx_range < remaining
-            out_idx = jnp.where(mask, idx_current, idx_next)
+            init_state = (0, key, init_start, init_end, idx_current, remaining, init_is_stitched)
+
+            def cond_fn(state):
+                i, _, seq_start, seq_end, _, remaining, _ = state
+                seq_len = seq_end - seq_start
+                not_enough_to_replenish = seq_len < (chunk_size - remaining)
+                return not_enough_to_replenish & (i < 100)
+
+            def body_fn(state):
+                i, key, seq_start, seq_end, idx_current, remaining, is_stitched = state
+                key, subkey = jax.random.split(key)
+                new_start, new_end = self.sample_sequence_bounds(subkey, chunk_size)
+                seq_len = seq_end - seq_start
+                remaining = remaining + jnp.maximum(0, seq_len)
+                mask = idx_range < remaining
+                idx_next = new_start + (idx_range - remaining)
+                out_idx = jnp.where(mask, idx_current, idx_next)
+                is_stitched = is_stitched | (idx_range == remaining - 1)
+                return i + 1, key, new_start, new_end, out_idx, remaining, is_stitched
+
+            _, key, new_start, new_end, out_idx, remaining, is_stitched = jax.lax.while_loop(
+                cond_fn, body_fn, init_state
+            )
 
             # Update states
             overshoot = remaining < chunk_size
-            is_stitched = (idx_range == remaining - 1) & overshoot
             next_start = jnp.where(overshoot, new_start, start)
             next_end = jnp.where(overshoot, new_end, end)
             next_offset = jnp.where(overshoot, chunk_size - remaining, offset + chunk_size)
@@ -387,7 +403,6 @@ class Episodic(Memory):
 
     def sample_episode_bounds(self, sample_shape: tuple[int, ...], key: PRNGKeyArray, use_absolute: bool = True):
         num_valid = (self.episode_ptr - self.episode_tail) % self.length
-        num_valid = jnp.where((num_valid == 0) & (self.size > 0), self.length, num_valid)
         num_valid = jnp.maximum(1, num_valid)
 
         offsets = jax.random.randint(key, sample_shape, minval=0, maxval=num_valid)
