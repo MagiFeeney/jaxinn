@@ -143,9 +143,40 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         super().__init__(env, env_params)
 
     @classmethod
-    def create(cls, env_name: str, num_envs: int, **kwargs) -> "Gymnasium":
-        env = gym.make_vec(env_name, num_envs=num_envs, **kwargs)
-        return cls(env, env_params={"capacity": num_envs, **kwargs})
+    def create(cls, env_name: str, num_envs: int, vectorization_mode: str, **kwargs) -> "Gymnasium":
+        env_params = {"capacity": num_envs, **kwargs}
+
+        if env_name.split("/")[0] == "ALE":
+            import ale_py
+            gym.register_envs(ale_py)
+
+            max_episode_steps = kwargs.pop("max_episode_steps", 27000)
+            env_params["max_episode_steps"] = max_episode_steps
+
+            frame_skip = kwargs.pop("frame_skip", 4)
+            noop_max = kwargs.pop("noop_max", 30)
+            screen_size = kwargs.pop("screen_size", 64)
+            terminal_on_life_loss = kwargs.pop("terminal_on_life_loss", False)
+            grayscale_obs = kwargs.pop("grayscale_obs", True)
+
+            wrappers = [
+                lambda env: gym.wrappers.AtariPreprocessing(
+                    env,
+                    frame_skip=frame_skip,
+                    noop_max=noop_max,
+                    screen_size=screen_size,
+                    terminal_on_life_loss=terminal_on_life_loss,
+                    grayscale_obs=grayscale_obs,
+                ),
+                lambda env: gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) if max_episode_steps is not None else env
+            ]
+
+            kwargs['wrappers'] = wrappers
+            kwargs["frameskip"] = 1 # override as the wrapper takes care of it
+            kwargs["max_episode_steps"] = None # same as the above
+
+        env = gym.make_vec(env_name, num_envs=num_envs, vectorization_mode=vectorization_mode, **kwargs)
+        return cls(env, env_params=env_params)
 
     def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, jax.Array]:
         obs = self.v_reset(self, key)
