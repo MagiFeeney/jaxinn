@@ -126,8 +126,9 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             posterior: LatentStateWithDist,
             key: PRNGKeyArray,
     ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
-        imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
-        (advantages, return_predictions, action_log_probs, entropies, weights), aux = self.process(imagined_latent_states, actions)
+        key_plan, key_process = jax.random.split(key, 2)
+        imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key_plan)
+        (advantages, return_predictions, action_log_probs, entropies, weights), aux = self.process(imagined_latent_states, actions, key_process)
 
         bptt_loss = -return_predictions
         likelihood_pg_loss = -action_log_probs[..., None] * jax.lax.stop_gradient(advantages)

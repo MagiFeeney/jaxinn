@@ -290,7 +290,7 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
 
         return kwargs
 
-    def process(self, latent_states: LatentState, actions: jax.Array) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
+    def process(self, latent_states: LatentState, actions: jax.Array, key: PRNGKeyArray) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
         # Processing imagined data
         rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states[1:]).mean() # Equivalent to r(s, a, s') instead of r(s, a)
         transformed_rewards = self.imagined_reward_transform(rewards) if self.imagined_reward_transform is not None else rewards
@@ -317,7 +317,12 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
 
         actor_dists = jax.vmap(jax.vmap(self.actor))(latent_states[:-1].detach())
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
-        entropies = actor_dists.entropy()
+
+        # Safe guard on entropy the same way we do for the mode
+        try:
+            entropies = actor_dists.entropy()
+        except (AttributeError, TypeError, NotImplementedError):
+            entropies = SampleDist(actor_dists).entropy(seed=key) # Fall back to sample-based estimates
 
         shifted_discount = jnp.concatenate([continues[:1], merged_discount[:-1]], axis=0)
         weights = jnp.cumprod(shifted_discount, axis=0)
