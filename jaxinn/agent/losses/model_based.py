@@ -133,7 +133,14 @@ class MixedActorGradientLoss(DreamerLossMixIn):
         likelihood_pg_loss = -action_log_probs[..., None] * jax.lax.stop_gradient(advantages)
         entropy_loss = -self.entropy_coef * entropies[..., None]
 
-        actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss + entropy_loss
+        if self.pg_mix == 1.0:
+            actor_loss = bptt_loss
+        elif self.pg_mix == 0.0:
+            actor_loss = likelihood_pg_loss
+        else:
+            actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss
+
+        actor_loss = actor_loss + entropy_loss
         actor_loss = (weights * actor_loss).mean()
 
         metrics = {
