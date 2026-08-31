@@ -133,7 +133,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         Reasoning is on-demand learning, which creates new knowledge and will be offloaded to the offline learning stage, e.g. dreaming
         """
         key_init, key_scan = jax.random.split(key, 2)
-        init_latent_state = self.init_latent_state(key_init, batch_shape=(data.action.shape[1],))
+        init_latent_state = self.init_latent_state(key_init, batch_shape=(data.reward.shape[1],))
         init_mask = jnp.ones_like(data.terminated[0], dtype=jnp.int32)
         next_obs = jax.vmap(jax.vmap(self.world.encoder))(data.next_obs) # Launch kernel once
 
