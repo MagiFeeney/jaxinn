@@ -43,6 +43,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
     kl_balance: float = eqx.field(static=True)
 
     obs_transform: Callable | None = eqx.field(static=True)
+    imagined_reward_transform: Callable | None = eqx.field(static=True)
 
     @classmethod
     def create(cls, config: Any, *, key: PRNGKeyArray, memory_id: jax.Array):
@@ -67,6 +68,8 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         else:
             obs_transform = None
 
+        imagined_reward_transform = None
+
         # For initialization of LatentState
         random_init = config.random_init
         belief_size = config.world.model.transition.belief_size
@@ -81,6 +84,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             belief_size=belief_size,
             state_size=state_size,
             obs_transform=obs_transform,
+            imagined_reward_transform=imagined_reward_transform,
             **config.optimization() # Extra particulars for agent learning
         )
 
@@ -177,22 +181,26 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         )
         return LatentState.concatenate([latent_states_before_last, last_latent_state[None, ...]]), actions
 
-    def process(self, latent_states: LatentState) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
+    def _get_critic(self) -> Critic | Learner[Critic]:
+        return self.critic
+
+    def process(self, latent_states: LatentState) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array], tuple[jax.Array, ...]]:
         # Processing imagined data
         rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states[1:]).mean() # Equivalent to r(s, a, s') instead of r(s, a)
+        transformed_rewards = self.imagined_reward_transform(rewards) if self.imagined_reward_transform is not None else rewards
 
         all_values = jax.vmap(
-            jax.vmap(jax.lax.stop_gradient(self.critic))
+            jax.vmap(jax.lax.stop_gradient(self._get_critic()))
         )(latent_states).mean()
         values = all_values[:-1]
         next_values = all_values[1:]
         baselines = values
 
-        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states[1:].detach()).mean() if self.world.continuation is not None else jnp.ones_like(rewards)
-        merged_discount = self.discount_factor * continues
+        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states.detach()).mean() if self.world.continuation is not None else jnp.ones_like(all_values)
+        merged_discount = self.discount_factor * continues[1:]
 
         advantages, return_predictions = compute_adv_and_ret(
-            rewards,
+            transformed_rewards,
             values,
             next_values,
             baselines,
@@ -200,12 +208,17 @@ class DreamerAgent(DreamerLossMixIn, Agent):
             discount_factor=merged_discount,
             uae_lambda=self.uae_lambda
         )
+
         out = (advantages, return_predictions)
         metrics = {
             "aux/return_prediction": return_predictions.mean(),
             "aux/imagined_rewards": rewards.mean(),
         }
-        return out, metrics
+        if self.imagined_reward_transform is not None:
+            metrics["aux/imagined_rewards_transformed"] = transformed_rewards.mean()
+
+        state = (continues, merged_discount)
+        return out, metrics, state
 
     def make_batch_fn(self) -> callable:
         def step_fn(key: PRNGKeyArray):
@@ -256,8 +269,6 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
     target_update_interval: int = eqx.field(static=True)
     momentum: float = eqx.field(static=True)
 
-    imagined_reward_transform: Callable = eqx.field(static=True)
-
     num_updates: jax.Array
 
     @classmethod
@@ -290,30 +301,13 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
 
         return kwargs
 
-    def process(self, latent_states: LatentState, actions: jax.Array, key: PRNGKeyArray) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array]]:
+    def _get_critic(self) -> Critic | Learner[Critic]:
+        return self.critic_target
+
+    def process(self, latent_states: LatentState, actions: jax.Array, key: PRNGKeyArray) -> tuple[tuple[jax.Array, ...], dict[str, jax.Array], tuple[jax.Array, ...]]:
         # Processing imagined data
-        rewards = jax.vmap(jax.vmap(self.world.reward))(latent_states[1:]).mean() # Equivalent to r(s, a, s') instead of r(s, a)
-        transformed_rewards = self.imagined_reward_transform(rewards) if self.imagined_reward_transform is not None else rewards
-
-        all_values = jax.vmap(
-            jax.vmap(jax.lax.stop_gradient(self.critic_target))
-        )(latent_states).mean()
-        values = all_values[:-1]
-        next_values = all_values[1:]
-        baselines = values
-
-        continues = jax.vmap(jax.vmap(self.world.continuation))(latent_states.detach()).mean() if self.world.continuation is not None else jnp.ones_like(all_values)
-        merged_discount = self.discount_factor * continues[1:]
-
-        advantages, return_predictions = compute_adv_and_ret(
-            transformed_rewards,
-            values,
-            next_values,
-            baselines,
-            terminated=None,
-            discount_factor=merged_discount,
-            uae_lambda=self.uae_lambda
-        )
+        out, metrics, state = super().process(latent_states)
+        continues, merged_discount = state
 
         actor_dists = jax.vmap(jax.vmap(self.actor))(latent_states[:-1].detach())
         action_log_probs = actor_dists.log_prob(jax.lax.stop_gradient(actions))
@@ -327,13 +321,8 @@ class DreamerV2Agent(MixedActorGradientLoss, DreamerAgent):
         shifted_discount = jnp.concatenate([continues[:1], merged_discount[:-1]], axis=0)
         weights = jnp.cumprod(shifted_discount, axis=0)
 
-        out = (advantages, return_predictions, action_log_probs, entropies, weights)
-        metrics = {
-            "aux/return_prediction": return_predictions.mean(),
-            "aux/imagined_rewards": rewards.mean(),
-            "aux/imagined_rewards_transformed": transformed_rewards.mean(),
-        }
-        return out, metrics
+        out = (*out, action_log_probs, entropies, weights)
+        return out, metrics, ()
 
     def learn(self, data: Transition, key: PRNGKeyArray) -> tuple["Agent", dict[str, jax.Array]]:
         agent, metrics = super().learn(data, key)
