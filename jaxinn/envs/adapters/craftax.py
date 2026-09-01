@@ -1,5 +1,6 @@
 import jax
 from craftax.craftax_env import make_craftax_env_from_name
+from craftax.craftax.craftax_state import EnvState as CraftaxEnvState
 
 from .gymnax import Gymnax
 
@@ -29,3 +30,10 @@ class Craftax(Gymnax):
         key = jax.random.PRNGKey(0)
         obs, _ = jax.eval_shape(self.env.reset, key)
         return obs.shape
+
+    @property
+    def max_episode_length(self) -> int:
+        return self.max_timesteps
+
+    def _get_current_time(self, env_state: CraftaxEnvState) -> jax.Array:
+        return env_state.timestep

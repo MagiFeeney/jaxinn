@@ -100,7 +100,8 @@ class Gymnax(Environment):
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> tuple[Transition, EnvInfo, GymnaxEnvState]:
         next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
-        truncated = next_env_state.time >= self.max_episode_length
+        current_time = self._get_current_time(next_env_state)
+        truncated = current_time >= self.max_episode_length
         # Infer termination from the done and truncation flags since gymnax couples the two.
         # Note: Ambiguity remains when truncation is True. However, the probability of
         # false positives (i.e., actual termination coinciding exactly with truncation) is low.
@@ -130,3 +131,6 @@ class Gymnax(Environment):
     @property
     def max_episode_length(self) -> int:
         return self.max_steps_in_episode
+
+    def _get_current_time(self, env_state: GymnaxEnvState) -> jax.Array:
+        return env_state.time
