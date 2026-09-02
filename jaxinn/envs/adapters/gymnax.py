@@ -1,6 +1,3 @@
-from typing import Any
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
@@ -37,41 +34,6 @@ def gymnax_space_to_jaxinn_space(space):
         )
 
 
-class TerminalObservationWrapper:
-    def __init__(self, env):
-        self.env = env
-
-    @partial(jax.jit, static_argnames=("self",))
-    def step(
-        self,
-        key: jax.Array,
-        state: GymnaxEnvState,
-        action: int | float | jax.Array,
-        params: GymnaxEnvParams | None = None,
-    ) -> tuple[jax.Array, GymnaxEnvState, jax.Array, jax.Array, dict[Any, Any]]:
-        if params is None:
-            params = self.default_params
-
-        key_step, key_reset = jax.random.split(key)
-        obs_st, state_st, reward, done, info = self.step_env(
-            key_step, state, action, params
-        )
-        obs_re, state_re = self.reset_env(key_reset, params)
-
-        # Auto-reset environment based on termination
-        state = jax.tree.map(
-            lambda x, y: jax.lax.select(done, x, y), state_re, state_st
-        )
-        obs = jax.lax.select(done, obs_re, obs_st)
-
-        # Get terminal obs
-        info['boundary_obs'] = obs_st
-        return obs, state, reward, done, info
-
-    def __getattr__(self, name):
-        return getattr(self.env, name)
-
-
 class Gymnax(Environment):
     def __init__(
             self,
@@ -83,7 +45,6 @@ class Gymnax(Environment):
     @classmethod
     def create(cls, env_name: str, **kwargs) -> "Gymnax":
         env, env_params = gymnax.make(env_name, **kwargs)
-        env = TerminalObservationWrapper(env)
         return cls(env, env_params)
 
     def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, GymnaxEnvState]:
@@ -99,13 +60,7 @@ class Gymnax(Environment):
         return transition, env_info, env_state
 
     def step(self, key: PRNGKeyArray, env_state: GymnaxEnvState, action: jax.Array) -> tuple[Transition, EnvInfo, GymnaxEnvState]:
-        next_obs, next_env_state, reward, done, info = self.env.step(key, env_state, action, self.env_params)
-        current_time = self._get_current_time(next_env_state)
-        truncated = current_time >= self.max_episode_length
-        # Infer termination from the done and truncation flags since gymnax couples the two.
-        # Note: Ambiguity remains when truncation is True. However, the probability of
-        # false positives (i.e., actual termination coinciding exactly with truncation) is low.
-        terminated = jnp.logical_and(done, jnp.logical_not(truncated))
+        next_obs, next_env_state, reward, terminated, truncated, info = self.env.step(key, env_state, action, self.env_params)
         transition = Transition(
             action=action,
             next_obs=next_obs,
@@ -113,7 +68,7 @@ class Gymnax(Environment):
             terminated=terminated,
             truncated=truncated,
         )
-        env_info = EnvInfo(info=info)
+        env_info = EnvInfo(info=info, boundary_obs=info.get("final_observation", jnp.zeros_like(next_obs)))
         return transition, env_info, next_env_state
 
     @property
@@ -131,6 +86,3 @@ class Gymnax(Environment):
     @property
     def max_episode_length(self) -> int:
         return self.max_steps_in_episode
-
-    def _get_current_time(self, env_state: GymnaxEnvState) -> jax.Array:
-        return env_state.time
