@@ -57,6 +57,7 @@ def replenish_boundary_obs(experiences: Experience) -> tuple[Transition, jax.Arr
         return experiences.transition, None
 
     mask = experiences.transition.terminated | experiences.transition.truncated
+    mask = jnp.ravel(mask)
     N = mask.shape[0]
 
     # Indices for step transitions; we replenish ones at done = True with boundary_obs
