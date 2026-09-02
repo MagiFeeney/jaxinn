@@ -36,16 +36,6 @@ def flatten_time_major(
 
     flattened = swapped_x.reshape(-1, *swapped_x.shape[end_dim:])
 
-    # For storage
-    if flattened.dtype == jnp.float32 and flattened.ndim > 3:
-        is_normalized = flattened.max() <= 1.0
-        flattened = jax.lax.cond(
-            is_normalized,
-            lambda arr: (arr * 255.0).astype(jnp.uint8), # recover for storage
-            lambda arr: arr.astype(jnp.uint8),
-            flattened
-        )
-
     # time-major
     time_axis = num_leading_dims - end_dim
     time_major_x = jnp.moveaxis(flattened, source=time_axis, destination=0)
