@@ -333,7 +333,6 @@ def make_cnn_transposed(
 ) -> eqx.nn.Sequential:
     potential_sequences = [
         ("kernel_size", kernel_size),
-        ("depth", depth),
         ("stride", stride),
         ("padding", padding),
         ("output_padding", output_padding),
@@ -356,7 +355,7 @@ def make_cnn_transposed(
     else:
         if num_layers is None:
             raise ValueError(
-                "`num_layers` must be specified when kernel_size, depth, stride, "
+                "`num_layers` must be specified when kernel_size, stride, "
                 "etc., are all scalar values."
             )
 
@@ -372,6 +371,8 @@ def make_cnn_transposed(
        if depth_factor is None:
            raise ValueError("When `depth` is an integer, the `depth_factor` cannot be None")
        depth = [depth * depth_factor**i for i in reversed(range(num_layers - 1))]
+    else:
+        assert len(depth) == num_layers - 1, f"Expected `depth` length to be {num_layers - 1} for the CNN decoder, but got {len(depth)}."
 
     sizes = [in_channels] + depth + [out_channels]
 
