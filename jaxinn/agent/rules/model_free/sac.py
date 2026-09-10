@@ -54,7 +54,7 @@ class SACAgent(SACLossMixIn, Agent):
 
         memory = Memory.create(config.memory, seed_idx=memory_id)
 
-        if config.memory.obs_dtype == jnp.uint8 and len(config.memory.obs_shape) == 3:
+        if config.memory.obs_dtype == jnp.uint8 and len(config.memory.obs_shape) >= 3:
             obs_transform = Stateless(
                 forward=lambda x: x.astype(jnp.float32) / 255.0 - 0.5,
                 inverse=lambda x: (x + 0.5) * 255.0,

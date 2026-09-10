@@ -84,9 +84,7 @@ class GymnasiumVmapMixIn(VmapTransformation):
 class JaxConverterMixIn:
     @property
     def obs_struct(self):
-        obs_shape = self.observation_space.shape
-        obs_dtype = jnp.uint8 if getattr(self, "from_pixels", False) else jnp.float32
-        return jax.ShapeDtypeStruct((self.capacity,) + obs_shape, obs_dtype)
+        return jax.ShapeDtypeStruct((self.capacity,) + self.observation_space.shape, self.observation_space.dtype)
 
     @property
     def reward_struct(self):
@@ -104,7 +102,7 @@ class JaxConverterMixIn:
         obs, _ = self.env.reset()
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
-        obs = obs.astype(np.uint8) if getattr(self, "from_pixels", False) else obs.astype(np.float32)
+        obs = obs.astype(self.observation_space.dtype)
         return obs
 
     def _python_step(self, action):
@@ -112,7 +110,7 @@ class JaxConverterMixIn:
         obs, reward, term, trunc, _ = self.env.step(action) # TODO: return info
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
-        obs = obs.astype(np.uint8) if getattr(self, "from_pixels", False) else obs.astype(np.float32)
+        obs = obs.astype(self.observation_space.dtype)
         return obs, np.float32(reward), np.bool_(term), np.bool_(trunc)
 
     def _reset(self):

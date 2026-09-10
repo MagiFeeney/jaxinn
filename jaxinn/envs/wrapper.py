@@ -368,7 +368,7 @@ class ResizeImage(Wrapper):
         if obs.shape[-2:] != self.target_shape:
             target_shape = obs.shape[:-2] + self.target_shape
             obs = jax.image.resize(obs, shape=target_shape, method="nearest")
-        return obs.astype(jnp.uint8)
+        return obs.astype(self.observation_space.dtype)
 
     def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
