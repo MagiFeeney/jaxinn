@@ -182,7 +182,7 @@ class TransitionConfig(Resolvable, ModelShared):
 
 
 @dataclass
-class RewardConfig(ModelShared):
+class RewardConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
@@ -198,7 +198,7 @@ class RewardConfig(ModelShared):
 
 
 @dataclass
-class ContinuationConfig(ModelShared):
+class ContinuationConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
