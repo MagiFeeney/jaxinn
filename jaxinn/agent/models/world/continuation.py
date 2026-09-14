@@ -1,3 +1,4 @@
+from typing import Literal
 import math
 
 import jax
@@ -35,6 +36,8 @@ class Continuation(Model):
             activation_function="elu",
             action_shape: PyTree[tuple[int, ...]] | None = None,
             action_embedding_size: int | None = None,
+            norm_type: Literal['layer', 'rms'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray,
     ):
@@ -54,11 +57,13 @@ class Continuation(Model):
         input_size = belief_size + state_size + encoded_action_size
 
         self.net = make_mlp(
-            input_size = input_size,
-            hidden_size = hidden_size,
-            output_size = self.head.param_size,
-            activation = activation_function,
-            key = key
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_size=self.head.param_size,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=norm_where,
+            key=key
         )
 
     def __call__(

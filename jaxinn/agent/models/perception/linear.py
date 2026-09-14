@@ -1,5 +1,5 @@
 import math
-from typing import ClassVar
+from typing import ClassVar, Literal
 from collections.abc import Callable
 
 import jax
@@ -28,6 +28,8 @@ class LinearEncoder(Encoder):
             hidden_size: list[int] | None = None,
             embedding_size: int | None = None,
             activation_function: str | Callable = "elu",
+            norm_type: Literal['layer', 'rms'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray
     ):
@@ -51,6 +53,8 @@ class LinearEncoder(Encoder):
                 hidden_size=hidden_size,
                 output_size=embedding_size,
                 activation=activation_function,
+                norm_type=norm_type,
+                norm_where=norm_where,
                 key=key
             )
             self.embedding_size = embedding_size
@@ -75,6 +79,8 @@ class LinearDecoder(Decoder):
             state_size: int | tuple[int, ...],
             hidden_size: list[int],
             activation_function: str | Callable = "elu",
+            norm_type: Literal['layer', 'rms'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray
     ):
@@ -92,6 +98,8 @@ class LinearDecoder(Decoder):
             hidden_size=hidden_size,
             output_size=math.prod(obs_shape),
             activation=activation_function,
+            norm_type=norm_type,
+            norm_where=norm_where,
             key=key
         )
 

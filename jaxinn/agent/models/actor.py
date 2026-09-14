@@ -1,3 +1,4 @@
+from typing import Literal
 import math
 from collections.abc import Callable
 
@@ -37,6 +38,8 @@ class Actor(Model):
         action_size: PyTree[int],
         head_config: PyTree[HeadConfig],
         activation_function: str | Callable = "elu",
+        norm_type: Literal['layer', 'rms'] | None = None,
+        norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray,
     ):
@@ -52,11 +55,13 @@ class Actor(Model):
 
         # Build network
         self.net = make_mlp(
-            input_size = belief_size + state_size,
-            hidden_size = hidden_size,
-            output_size = self.head.param_size,
-            activation = activation_function,
-            key = key
+            input_size=belief_size + state_size,
+            hidden_size=hidden_size,
+            output_size=self.head.param_size,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=norm_where,
+            key=key
         )
 
     def __call__(

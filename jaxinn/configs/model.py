@@ -28,6 +28,11 @@ from .scheduler import LearningRateSchedulerUnion
 from .initializer import Initializer
 
 
+class LayerNorm(Base):
+    norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None
+    norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None
+
+
 @dataclass
 class Model(Base):
     initializer: Initializer = field(default_factory=Initializer)
@@ -40,7 +45,7 @@ class Model(Base):
 
 
 @dataclass
-class ModelShared(Model, StaticShared):
+class ModelShared(Model, StaticShared, LayerNorm):
     """Shared parameters across different models."""
     belief_size: int = 200
     state_size: int | tuple[int, ...] = 30
@@ -75,7 +80,7 @@ class PerceptionShared(Resolvable, Model):
 
 
 @dataclass
-class EncoderConfig(PerceptionShared):
+class EncoderConfig(PerceptionShared, LayerNorm):
     embedding_size: int | None = None
 
     def _resolve(self, ctx: dict) -> None:
@@ -170,10 +175,12 @@ class RepresentationConfig(Resolvable, ModelShared):
 
 @dataclass
 class TransitionConfig(Resolvable, ModelShared):
-    hidden_size: int = 200
+    encoder_hidden_size: list[int, ...] = field(default_factory=lambda: [200])
+    body_hidden_size: list[int, ...] = field(default_factory=lambda: [200])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
     core_arch: Literal["gru", "fused_gru", "lstm"] = "gru"
+    core_use_layernorm: bool = True
 
     head: HeadUnion = field(default_factory=NormalHeadConfig)
 

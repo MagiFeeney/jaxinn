@@ -15,7 +15,7 @@ from ..perception import ActionEncoder
 from ..recurrent import FusedGRUCell
 from ..heads import Head
 from ..distributions import DistributionLike
-from ..utils import get_activation_fn, StaticCallable
+from ..utils import make_mlp
 
 
 # Transition
@@ -38,48 +38,60 @@ class Transition(Model):
             belief_size: int,
             state_size: int | tuple[int, ...],
             action_shape: PyTree[tuple[int, ...]],
-            hidden_size: int,
+            encoder_hidden_size: int | tuple[int, ...],
+            body_hidden_size: int | tuple[int, ...],
             head_config: HeadConfig,
             core_arch: Literal["gru", "fused_gru", "lstm"] = "gru",
             activation_function = "elu",
             action_embedding_size: int | None = None,
+            norm_type: Literal['layer', 'rms'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
+            core_use_layernorm: bool = True,
             *,
             key: PRNGKeyArray,
     ):
-        key, key_encoder = jax.random.split(key, 2)
-        self.action_encoder = ActionEncoder(action_shape, action_embedding_size, key=key_encoder)
+        key_action_encoder, key_encoder, key_core, key_body = jax.random.split(key, 4)
+        self.action_encoder = ActionEncoder(action_shape, action_embedding_size, key=key_action_encoder)
         encoded_action_size = self.action_encoder.output_size
 
         self.head = Head.create(head_config, event_size=state_size)
 
         input_size = (math.prod(state_size) if isinstance(state_size, tuple) else state_size) + encoded_action_size
 
-        activation = get_activation_fn(activation_function)
-
-        keys = jax.random.split(key, 4)
-
         # p(c_{t - 1} | s_{t - 1}, a_{t - 1})
-        self.encoder = eqx.nn.Sequential([
-            eqx.nn.Linear(input_size, hidden_size, key=keys[0]),
-            StaticCallable(activation),
-        ])
+        encoder_norm_where = norm_where if norm_where in ['all', 'input', 'first'] else None
+        self.encoder = make_mlp(
+            input_size=input_size,
+            hidden_size=encoder_hidden_size,
+            output_size=None,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=encoder_norm_where,
+            key=key_encoder
+        )
 
         # p(h_t | c_{t - 1}, h_{t - 1})
+        core_input_size = encoder_hidden_size[-1]
         if core_arch == "gru":
-            self.core = eqx.nn.GRUCell(hidden_size, belief_size, key=keys[1])
+            self.core = eqx.nn.GRUCell(core_input_size, belief_size, key=key_core)
         elif core_arch == "fused_gru":
-            self.core = FusedGRUCell(hidden_size, belief_size, key=keys[1])
+            self.core = FusedGRUCell(core_input_size, belief_size, use_layernorm=core_use_layernorm or (norm_where == "all"), key=key_core)
         elif core_arch == "lstm":
             raise NotImplementedError("LSTM is planned for future support but is not yet implemented.")
         else:
             raise ValueError(f"Unknown core architecture: {core_arch}")
 
         # p(s_t | h_t)
-        self.body = eqx.nn.Sequential([
-            eqx.nn.Linear(belief_size, hidden_size, key=keys[2]),
-            StaticCallable(activation),
-            eqx.nn.Linear(hidden_size, self.head.param_size, key=keys[3]),
-        ])
+        body_norm_where = norm_where if norm_where in ['all', 'output', 'last'] else None
+        self.body = make_mlp(
+            input_size=belief_size,
+            hidden_size=body_hidden_size,
+            output_size=self.head.param_size,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=body_norm_where,
+            key=key_body
+        )
 
         self.core_arch = core_arch
 

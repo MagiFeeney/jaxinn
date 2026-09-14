@@ -162,13 +162,49 @@ class ProxyDistrax:
 dx = ProxyDistrax()
 
 
+class SpatialNormWrapper(eqx.Module):
+    norm: eqx.Module
+    num_spatial_dims: int = eqx.field(static=True)
+
+    def __init__(self, norm_module: eqx.Module, num_spatial_dims: int):
+        self.norm = norm_module
+        self.num_spatial_dims = num_spatial_dims
+
+    def __call__(self, x):
+        f = self.norm
+        for _ in range(self.num_spatial_dims):
+            f = jax.vmap(f, in_axes=1, out_axes=1)
+        return f(x)
+
+
+def get_norm_layer(norm_type: str, num_channels: int, num_groups: int = 32, num_spatial_dims: int = 0):
+    if norm_type == "none" or norm_type is None:
+        return eqx.nn.Identity()
+    elif norm_type == "layer":
+        base_norm = eqx.nn.LayerNorm(num_channels)
+        return SpatialNormWrapper(base_norm, num_spatial_dims) if num_spatial_dims > 0 else base_norm
+    elif norm_type == "rms":
+        base_norm = eqx.nn.RMSNorm(num_channels)
+        return SpatialNormWrapper(base_norm, num_spatial_dims) if num_spatial_dims > 0 else base_norm
+    elif norm_type == "group":
+        return eqx.nn.GroupNorm(num_groups, num_channels)
+    elif norm_type == "batch":
+        raise NotImplementedError(
+            "BatchNorm is stateful and not yet supported. "
+            "Please use 'layer', 'rms', or 'group' instead."
+        )
+    else:
+        raise ValueError(f"Unknown norm type: {norm_type}.")
+
+
 def make_mlp(
         input_size: int,
         hidden_size: int | list[int],
-        output_size: int,
+        output_size: int | None,
         activation: str | Callable | StaticCallable,
         num_layers: int | None = None,
-        layer_norm: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
+        norm_type: Literal['layer', 'rms'] | None = None,
+        norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -179,19 +215,25 @@ def make_mlp(
         )
         hidden_size = [hidden_size] * num_layers
 
-    sizes = [input_size] + hidden_size + [output_size]
+    sizes = [input_size] + hidden_size
+    if output_size is not None:
+        sizes += [output_size]
+
     layer_norms = [False] * len(sizes)
 
-    if layer_norm == "all":
-        layer_norms[1:-1] = [True] * (len(sizes) - 2)
-    elif layer_norm == "input":
-        layer_norms[0] = True
-    elif layer_norm == "output":
-        layer_norms[-1] = True
-    elif layer_norm == "first":
-        layer_norms[1] = True
-    elif layer_norm == "last":
-        layer_norms[-2] = True
+    if norm_type is not None:
+        if norm_where == "all":
+            layer_norms[1:-1] = [True] * (len(sizes) - 2)
+            if output_size is None:
+                layer_norms[-1] = True
+        elif norm_where == "input":
+            layer_norms[0] = True
+        elif norm_where == "output":
+            layer_norms[-1] = True
+        elif norm_where == "first":
+            layer_norms[1] = True
+        elif norm_where == "last":
+            layer_norms[-2] = True
 
     layers = []
     keys = jax.random.split(key, len(sizes) - 1)
@@ -202,15 +244,15 @@ def make_mlp(
         activation = StaticCallable(activation)
 
     if layer_norms[0]:          # Pre-norm
-        layers.append(eqx.nn.LayerNorm(sizes[0]))
+        layers.append(get_norm_layer(norm_type, sizes[0]))
 
     for i in range(len(sizes) - 1):
         layers.append(eqx.nn.Linear(sizes[i], sizes[i+1], key=keys[i]))
 
         if layer_norms[i+1]:    # Pre-activation norm
-            layers.append(eqx.nn.LayerNorm(sizes[i+1]))
+            layers.append(get_norm_layer(norm_type, sizes[i+1]))
 
-        if i < len(sizes) - 2:
+        if i < len(sizes) - 2 or output_size is None:
             layers.append(activation)
 
     return eqx.nn.Sequential(layers)
@@ -231,6 +273,8 @@ def make_cnn(
         padding_mode: str = 'ZEROS',
         dtype: str = "float32",
         num_layers: int | None = None,
+        norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None,
+        norm_where: Literal['all', 'input', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -276,12 +320,29 @@ def make_cnn(
 
     sizes = [in_channels] + depth
 
+    layer_norms = [False] * (len(sizes) + 1)
+
+    if norm_type is not None:
+        if norm_where == "all":
+            layer_norms[1:-1] = [True] * (len(sizes) - 1)
+        elif norm_where == "input":
+            layer_norms[0] = True
+        elif norm_where == "first":
+            layer_norms[1] = True
+        elif norm_where == "last":
+            layer_norms[-2] = True
+        else:
+            raise ValueError(f"Unknown or inapplicable norm position: {norm_where}.")
+
     if isinstance(activation, str):
         activation = get_activation_fn(activation)
     if not isinstance(activation, StaticCallable):
         activation = StaticCallable(activation)
 
     layers = []
+
+    if layer_norms[0]:          # Pre-norm
+        layers.append(get_norm_layer(norm_type, sizes[0], groups, num_spatial_dims=num_spatial_dims))
 
     # Conv layers
     keys = jax.random.split(key, len(sizes) - 1)
@@ -302,6 +363,9 @@ def make_cnn(
                 key=keys[i]
             )
         )
+
+        if layer_norms[i+1]:    # Pre-activation norm
+            layers.append(get_norm_layer(norm_type, sizes[i+1], groups, num_spatial_dims=num_spatial_dims)) # TODO: fix GroupNorm param groups
 
         layers.append(activation)
 
@@ -328,6 +392,8 @@ def make_cnn_transposed(
         padding_mode: str = 'ZEROS',
         dtype: str = "float32",
         num_layers: int | None = None,
+        norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None,
+        norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -376,12 +442,29 @@ def make_cnn_transposed(
 
     sizes = [in_channels] + depth + [out_channels]
 
+    layer_norms = [False] * len(sizes)
+
+    if norm_type is not None:
+        if norm_where == "all":
+            layer_norms[1:-1] = [True] * (len(sizes) - 2)
+        elif norm_where == "input":
+            layer_norms[0] = True
+        elif norm_where == "output":
+            layer_norms[-1] = True
+        elif norm_where == "first":
+            layer_norms[1] = True
+        elif norm_where == "last":
+            layer_norms[-2] = True
+
     if isinstance(activation, str):
         activation = get_activation_fn(activation)
     if not isinstance(activation, StaticCallable):
         activation = StaticCallable(activation)
 
     layers = []
+
+    if layer_norms[0]:          # Pre-norm
+        layers.append(get_norm_layer(norm_type, sizes[0], groups, num_spatial_dims=num_spatial_dims))
 
     # Conv layers
     keys = jax.random.split(key, len(sizes) - 1)
@@ -403,6 +486,9 @@ def make_cnn_transposed(
                 key=keys[i]
             )
         )
+
+        if layer_norms[i+1]:    # Pre-activation norm
+            layers.append(get_norm_layer(norm_type, sizes[i+1], groups, num_spatial_dims=num_spatial_dims))
 
         if i < len(sizes) - 2:
             layers.append(activation)

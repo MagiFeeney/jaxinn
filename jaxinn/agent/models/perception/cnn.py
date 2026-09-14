@@ -1,5 +1,5 @@
 import math
-from typing import ClassVar
+from typing import ClassVar, Literal
 from collections.abc import Callable, Sequence
 
 import jax
@@ -38,6 +38,8 @@ class CNNEncoder(Encoder):
             padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID",
             activation_function: str | Callable = "elu",
             dtype: str = "float32",
+            norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None,
+            norm_where: Literal['all', 'input', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray
     ):
@@ -60,6 +62,8 @@ class CNNEncoder(Encoder):
             padding=padding,
             dtype=self.dtype,
             num_layers=num_layers,
+            norm_type=norm_type,
+            norm_where=norm_where,
             key=key_body
         )
 
@@ -117,6 +121,8 @@ class CNNDecoder(Decoder):
             padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID",
             activation_function: str | Callable = "elu",
             dtype: str = "float32",
+            norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray
     ):
@@ -156,6 +162,8 @@ class CNNDecoder(Decoder):
             padding=padding,
             dtype=self.dtype,
             num_layers=num_layers,
+            norm_type=norm_type,
+            norm_where=norm_where,
             key=key_body
         )
 

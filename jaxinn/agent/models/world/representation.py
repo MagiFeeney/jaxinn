@@ -1,3 +1,5 @@
+from typing import Literal
+
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
@@ -32,17 +34,21 @@ class Representation(Model):
             hidden_size: list[int],
             head_config: HeadConfig,
             activation_function="elu",
+            norm_type: Literal['layer', 'rms'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray,
     ):
         self.head = Head.create(head_config, event_size=state_size)
 
         self.net = make_mlp(
-            input_size = belief_size + embedding_size,
-            hidden_size = hidden_size,
-            output_size = self.head.param_size,
-            activation = activation_function,
-            key = key
+            input_size=belief_size + embedding_size,
+            hidden_size=hidden_size,
+            output_size=self.head.param_size,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=norm_where,
+            key=key
         )
 
     def __call__(
