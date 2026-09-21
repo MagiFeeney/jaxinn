@@ -81,8 +81,8 @@ class PiecewiseConstantScheduleConfig(LearningRateSchedulerConfig):
 
 @dataclass
 class JoinSchedulesConfig(LearningRateSchedulerConfig):
-    schedules: list[LearningRateSchedulerConfig, ...] = field(default_factory=list)
-    boundaries: list[int, ...] = field(default_factory=list)
+    schedules: list[LearningRateSchedulerConfig] = field(default_factory=list)
+    boundaries: list[int] = field(default_factory=list)
 
 
 LearningRateSchedulerUnion = ConstantScheduleConfig | LinearScheduleConfig | StaircaseScheduleConfig | CosineDecayScheduleConfig | CosineOnecycleScheduleConfig | ExponentialDecayScheduleConfig | PolynomialScheduleConfig | WarmupCosineDecayScheduleConfig | PiecewiseConstantScheduleConfig | JoinSchedulesConfig

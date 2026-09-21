@@ -175,8 +175,8 @@ class RepresentationConfig(Resolvable, ModelShared):
 
 @dataclass
 class TransitionConfig(Resolvable, ModelShared):
-    encoder_hidden_size: list[int, ...] = field(default_factory=lambda: [200])
-    body_hidden_size: list[int, ...] = field(default_factory=lambda: [200])
+    encoder_hidden_size: list[int] = field(default_factory=lambda: [200])
+    body_hidden_size: list[int] = field(default_factory=lambda: [200])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
     core_arch: Literal["gru", "fused_gru", "lstm"] = "gru"
