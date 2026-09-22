@@ -67,7 +67,7 @@ class Transition(eqx.Module, ArrayLikeOps):
             is_leaf=lambda x: isinstance(x, tuple)
         )
         next_obs = jax.tree.map(
-            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=jnp.uint8 if len(shape) >= 3 else dtype),
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=dtype),
             obs_shape,
             obs_dtype,
             is_leaf=lambda x: isinstance(x, tuple)
@@ -154,7 +154,10 @@ class LatentStateWithDist(eqx.Module):
 
     @property
     def dist(self):
-        return self.fixed_dist.dist
+        curr = self.fixed_dist
+        while hasattr(curr, "dist"):
+            curr = curr.dist
+        return curr
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.fixed_dist, name)

@@ -1,3 +1,4 @@
+from typing import Literal
 import math
 from collections.abc import Callable
 
@@ -36,6 +37,8 @@ class Critic(Model):
             activation_function: str | Callable = "elu",
             action_shape: PyTree[tuple[int, ...]] | None = None,
             action_embedding_size: int | None = None,
+            norm_type: Literal['layer', 'rms'] | None = None,
+            norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
             *,
             key: PRNGKeyArray,
     ):  # if action_shape is not None, use Q fn
@@ -55,11 +58,13 @@ class Critic(Model):
         input_size = belief_size + state_size + encoded_action_size
 
         self.net = make_mlp(
-            input_size = input_size,
-            hidden_size = hidden_size,
-            output_size = self.head.param_size,
-            activation = activation_function,
-            key = key
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_size=self.head.param_size,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=norm_where,
+            key=key
         )
 
     def __call__(
@@ -91,10 +96,11 @@ class PerceptionCritic(Model):
         key_encoder, key_critic = jax.random.split(key_model, 2)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        critic = Critic.create(
-            config.critic,
-            key=key_critic
-        )
+
+        if config.critic.state_size is None:
+            config.critic.state_size = encoder.embedding_size
+
+        critic = Critic.create(config.critic, key=key_critic)
 
         return cls(encoder=encoder, critic=critic).apply_init(config.initializer, key=key_init)
 

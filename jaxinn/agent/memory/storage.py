@@ -20,7 +20,7 @@ class HostRAM:
             is_leaf=lambda x: isinstance(x, tuple)
         )
         next_obs = jax.tree.map(
-            lambda shape, dtype: np.zeros((num_seeds, *capacity, *shape), dtype=np.uint8 if len(shape) >= 3 else np.dtype(dtype)),
+            lambda shape, dtype: np.zeros((num_seeds, *capacity, *shape), dtype=np.dtype(dtype)),
             obs_shape,
             obs_dtype,
             is_leaf=lambda x: isinstance(x, tuple)
@@ -112,7 +112,7 @@ class GPUStorage(Storage):
             is_leaf=lambda x: isinstance(x, tuple)
         )
         next_obs = jax.tree.map(
-            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=jnp.uint8 if len(shape) >= 3 else dtype),
+            lambda shape, dtype: jnp.zeros((*capacity, *shape), dtype=dtype),
             obs_shape,
             obs_dtype,
             is_leaf=lambda x: isinstance(x, tuple)

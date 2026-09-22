@@ -1,7 +1,7 @@
 from copy import deepcopy
 from enum import StrEnum
 from dataclasses import dataclass, field
-from typing import ClassVar, Generic, TypeVar
+from typing import ClassVar, Generic, TypeVar, Literal
 from collections.abc import Sequence
 
 from jaxtyping import PyTree
@@ -28,28 +28,9 @@ from .scheduler import LearningRateSchedulerUnion
 from .initializer import Initializer
 
 
-def _resolve_input_size(ctx: dict, *modules) -> None:
-    if "embedding_size" not in ctx:
-        return
-
-    obs_shape = ctx["observation_space"].shape
-    embedding_size = ctx.get("embedding_size", None)
-
-    if embedding_size is not None:
-        state_size = embedding_size
-    elif len(obs_shape) == 1:
-        state_size = obs_shape[0]
-    else:
-        raise ValueError(
-            f"Cannot determine state_size from obs_shape {obs_shape} "
-            f"and embedding_size {embedding_size}."
-        )
-
-    for module in modules:
-        if hasattr(module, "state_size"):
-            module.state_size = state_size
-        if hasattr(module, "belief_size"):
-            module.belief_size = 0
+class LayerNorm(Base):
+    norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None
+    norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None
 
 
 @dataclass
@@ -64,7 +45,7 @@ class Model(Base):
 
 
 @dataclass
-class ModelShared(Model, StaticShared):
+class ModelShared(Model, StaticShared, LayerNorm):
     """Shared parameters across different models."""
     belief_size: int = 200
     state_size: int | tuple[int, ...] = 30
@@ -99,7 +80,7 @@ class PerceptionShared(Resolvable, Model):
 
 
 @dataclass
-class EncoderConfig(PerceptionShared):
+class EncoderConfig(PerceptionShared, LayerNorm):
     embedding_size: int | None = None
 
     def _resolve(self, ctx: dict) -> None:
@@ -122,6 +103,7 @@ class Optimizer(Base):
     b2: float = 0.999
     eps: float = 1e-8
     lr: float = 3e-4
+    weight_decay: float = 0.0
     max_norm: float | None = None
     lr_scheduler: LearningRateSchedulerUnion | None = None
 
@@ -140,11 +122,12 @@ class LearnerConfig(Resolvable, Base, Generic[T]):
 @dataclass
 class CNNEncoderConfig(EncoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
-    embedding_size: int = 1024
+    embedding_size: int | None = None
     num_layers: int | None = 4
-    kernel_size: int | Sequence[int] = 4
+    kernel_size: int | Sequence[int] = field(default_factory=lambda: [4, 4, 4, 4])
     depth: int | Sequence[int] = 32
     stride: int | Sequence[int] = 2
+    padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID"
     dtype: str = "bfloat16"
 
 
@@ -152,10 +135,12 @@ class CNNEncoderConfig(EncoderConfig):
 class CNNDecoderConfig(DecoderConfig):
     DOMAIN: ClassVar[Domain] = Domain.PIXEL
     num_layers: int | None = 4
-    kernel_size: int | Sequence[int] = 4
+    kernel_size: int | Sequence[int] = field(default_factory=lambda: [5, 5, 6, 6])
     depth: int | Sequence[int] = 32
     stride: int | Sequence[int] = 2
+    padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID"
     dtype: str = "bfloat16"
+    flatten_embedding: bool = True
 
 
 ## For state-based tasks
@@ -185,28 +170,17 @@ class RepresentationConfig(Resolvable, ModelShared):
     head: HeadUnion = field(default_factory=NormalHeadConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        if "embedding_size" not in ctx:
-            return
-
-        obs_shape = ctx["observation_space"].shape
-        embedding_size = ctx["embedding_size"]
-
-        if embedding_size is not None:
-            self.embedding_size = embedding_size
-        elif len(obs_shape) == 1:
-            self.embedding_size = obs_shape[0]
-        else:
-            raise ValueError(
-                f"Cannot infer embedding_size for 2D+ obs_shape {obs_shape} "
-                "without an explicit size provided by the encoder."
-            )
+        self.embedding_size = ctx.get("embedding_size", None)
 
 
 @dataclass
 class TransitionConfig(Resolvable, ModelShared):
-    hidden_size: int = 200
+    encoder_hidden_size: list[int] = field(default_factory=lambda: [200])
+    body_hidden_size: list[int] = field(default_factory=lambda: [200])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     activation_function: str = "elu"
+    core_arch: Literal["gru", "fused_gru", "lstm"] = "gru"
+    core_use_layernorm: bool = True
 
     head: HeadUnion = field(default_factory=NormalHeadConfig)
 
@@ -215,7 +189,7 @@ class TransitionConfig(Resolvable, ModelShared):
 
 
 @dataclass
-class RewardConfig(ModelShared):
+class RewardConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
@@ -231,7 +205,7 @@ class RewardConfig(ModelShared):
 
 
 @dataclass
-class ContinuationConfig(ModelShared):
+class ContinuationConfig(Resolvable, ModelShared):
     hidden_size: list[int] = field(default_factory=lambda: [300, 300, 300])
     action_shape: PyTree[tuple[int, ...]] | None = field(default=None, init=False)
     use_action: bool = field(default=False, metadata={"transient": True}) # will be discarded after resolve
@@ -307,7 +281,8 @@ class PerceptionActorConfig(Resolvable, Model):
     actor: ActorConfig = field(default_factory=ActorConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        _resolve_input_size(ctx, self.actor)
+        self.actor.state_size = ctx.get("embedding_size", None)
+        self.actor.belief_size = 0
 
 
 @dataclass
@@ -332,7 +307,8 @@ class PerceptionCriticConfig(Resolvable, Model):
     critic: CriticConfig = field(default_factory=CriticConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        _resolve_input_size(ctx, self.critic)
+        self.critic.state_size = ctx.get("embedding_size", None)
+        self.critic.belief_size = 0
 
 
 @dataclass
@@ -348,7 +324,11 @@ class ActorCriticSharedConfig(Resolvable, Model):
     critic: CriticConfig = field(default_factory=CriticConfig)
 
     def _resolve(self, ctx: dict) -> None:
-        _resolve_input_size(ctx, self.actor, self.critic)
+        state_size = ctx.get("embedding_size", None)
+
+        for module in (self.actor, self.critic):
+            module.state_size = state_size
+            module.belief_size = 0
 
 
 ActorCriticUnion = ActorCriticDecoupledConfig | ActorCriticSharedConfig

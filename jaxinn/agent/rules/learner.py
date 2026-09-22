@@ -33,9 +33,16 @@ class Learner(eqx.Module, Generic[ModelType]):
         lr = config.optimizer.lr if config.optimizer.lr_scheduler is None else LearningRateScheduler.create(config.optimizer.lr_scheduler)
 
         transforms = []
+
         max_norm = getattr(config.optimizer, "max_norm", None)
         if max_norm is not None:
             transforms.append(optax.clip_by_global_norm(max_norm))
+
+        weight_decay = getattr(config.optimizer, "weight_decay", 0.0)
+
+        if weight_decay > 0.0:
+            transforms.append(optax.add_decayed_weights(weight_decay))
+
         transforms.append(optax.adam(learning_rate=lr, eps=getattr(config.optimizer, "eps", 1e-8)))
         optimizer = optax.chain(*transforms)
 
@@ -44,7 +51,7 @@ class Learner(eqx.Module, Generic[ModelType]):
     def update(self, grads) -> "Learner":
         if isinstance(grads, Learner):
             grads = grads.dynamic_flatten
-        updates, new_optimizer_state = self.optimizer.update(grads, self.optimizer_state)
+        updates, new_optimizer_state = self.optimizer.update(grads, self.optimizer_state, params=self.dynamic_flatten)
         new_dynamic_flatten = eqx.apply_updates(self.dynamic_flatten, updates)
         return eqx.tree_at(
             lambda x: (x.dynamic_flatten, x.optimizer_state),

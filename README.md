@@ -33,7 +33,7 @@ pip install uv
 ``` bash
 uv pip install -e .[gymnax] # Install Gymnax
 
-uv pip install -e .[envpool] # Install EnvPool
+uv pip install -e .[gymnasium] # Install Gymnasium
 
 uv pip install -e .[all] # Install all environments
 ```
@@ -64,7 +64,8 @@ uv run jaxinn/main.py \
   agent:ppo-agent-config \
   --agent.optimization.entropy_coef 0.0 \
   --agent.optimization.normalize_adv \
-  --agent.memory.type "batched" \
+  \
+  agent.memory:batched-memory-config \
   --agent.memory.device "gpu" \
   \
   agent.actor-critic.model:ppo-actor-critic-shared-config \
@@ -78,13 +79,21 @@ uv run jaxinn/main.py \
 
 * Running SAC on Brax
 ``` bash
-uv run jaxinn/main.py --num_seeds 10 --logger.log_dir "results/brax/walker2d/sac" --env.env_id "brax/walker2d" --env.wrapper.num_envs 1 --env.wrapper.action_repeat 1 --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.eval_interval 10000 --exploration.train_interval 1 --exploration.episode_length 1 --exploration.train_iterations 1 --exploration.num_prefill_episodes 10000 --exploration.action_noise 0. --exploration.no-restart agent:sac-agent-config --agent.memory.type "uniform" --agent.memory.device "gpu" --agent.actor.optimizer.lr 3e-4 --agent.actor.model.actor.activation-function "relu" --agent.actor.model.actor.hidden-size 256 256 --agent.critic.optimizer.lr 3e-4 --agent.critic.model.critic.activation-function "relu" --agent.critic.model.critic.hidden-size 256 256 --agent.critic.model.critic.use_action --agent.optimization.target_update_interval 1 --agent.optimization.tau 0.005 agent.actor.model.actor.continuous-head:tanh-normal-head-config --agent.actor.model.actor.continuous-head.log-std-range -10 2  --agent.actor.model.actor.continuous-head.mean-scale None
+uv run jaxinn/main.py --num_seeds 10 --logger.log_dir "results/brax/walker2d/sac" --env.env_id "brax/walker2d" --env.wrapper.num_envs 1 --env.wrapper.action_repeat 1 --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.eval_interval 10000 --exploration.train_interval 1 --exploration.episode_length 1 --exploration.train_iterations 1 --exploration.num_prefill_episodes 10000 --exploration.action_noise 0. --exploration.no-restart agent:sac-agent-config --agent.actor.optimizer.lr 3e-4 --agent.actor.model.actor.activation-function "relu" --agent.actor.model.actor.hidden-size 256 256 --agent.critic.optimizer.lr 3e-4 --agent.critic.model.critic.activation-function "relu" --agent.critic.model.critic.hidden-size 256 256 --agent.critic.model.critic.use_action --agent.optimization.target_update_interval 1 --agent.optimization.tau 0.005 agent.memory:uniform-memory-config --agent.memory.device "gpu" agent.actor.model.actor.continuous-head:tanh-normal-head-config --agent.actor.model.actor.continuous-head.log-std-range -10 2  --agent.actor.model.actor.continuous-head.mean-scale None --agent.actor.model.actor.continuous-head.min_std 0.
 ```
 
 * Running Dreamer on DMC
 ``` bash
-uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dreamer" --env.env_id "dmc/walker_walk" --env.wrapper.num_envs 1 --env.creation from_pixels True render_height 64 render_width 64 vectorization_mode "async" --env.separated --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.num_prefill_episodes 5 --exploration.action_noise 0.3 agent:dreamer-agent-config --agent.memory.capacity 1000000 --agent.memory.type "uniform" --agent.memory.device "cpu" --agent.optimization.kl_balance 0.0 --agent.optimization.batch_size 50 --agent.optimization.chunk_size 50 agent.actor.model.continuous_head:tanh-normal-head-config
+uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/dmc/walker_walk/dreamer" --env.env_id "dmc/walker_walk" --env.wrapper.num_envs 1 --env.creation from_pixels True render_height 64 render_width 64 vectorization_mode "async" --env.separated --exploration.num_environment_steps 1000000 --exploration.num_eval_episodes 10 --exploration.num_prefill_episodes 5 --exploration.action_noise 0.3 agent:dreamer-agent-config --agent.optimization.kl_balance 0.0 --agent.optimization.batch_size 50 --agent.optimization.chunk_size 50 agent.memory:uniform-memory-config --agent.memory.capacity 1000000 --agent.memory.device "cpu" agent.actor.model.continuous_head:tanh-normal-head-config
 ```
+
+* Running DreamerV2 on Atari
+``` bash
+uv run jaxinn/main.py --num_seeds 5 --logger.log_dir "results/gymnasium/Boxing-v5/dreamerV2" --env.env_id "gymnasium/ALE/Boxing-v5" --env.wrapper.num_envs 1 --env.wrapper.action_repeat 1 --env.wrapper.reward_transform "tanh" --env.wrapper.use_one_hot_action --env.creation max_episode_steps 27000 frame_skip 4 noop_max 30 screen_size 64 terminal_on_life_loss False grayscale_obs True repeat_action_probability 0.25 full_action_space False vectorization_mode "async" --env.separated --exploration.num_environment_steps 500000 --exploration.num_eval_episodes 10 --exploration.eval_interval 50000 --exploration.train_interval 16 --exploration.episode_length 16 --exploration.train_iterations 1 --exploration.num_prefill_episodes 3125 --exploration.pretrain_iterations 1 --exploration.action_noise 0. agent:dreamer-v2-agent-config --agent.optimization.pg_mix 0.0 --agent.optimization.kl_balance 0.8 --agent.optimization.batch_size 16 --agent.optimization.chunk_size 50 --agent.actor.optimizer.lr 4e-5 --agent.actor.optimizer.eps 1e-5 --agent.actor.optimizer.weight_decay 1e-6 --agent.actor.model.hidden-size 400 400 400 400 --agent.critic.optimizer.lr 1e-4 --agent.critic.optimizer.eps 1e-5 --agent.critic.optimizer.weight_decay 1e-6 --agent.critic.model.hidden-size 400 400 400 400 --agent.world.optimizer.lr 2e-4 --agent.world.optimizer.eps 1e-5 --agent.world.optimizer.weight_decay 1e-6 --agent.world.model.reward.hidden-size 400 400 400 400 --agent.world.model.transition.belief-size 600 --agent.world.model.transition.state-size 32 32 --agent.world.model.transition.hidden-size 600 --agent.world.model.transition.core-arch "fused_gru" --agent.world.model.representation.hidden-size 600 agent.world.model.initializer.weight-init:xavier-uniform-config agent.world.model.initializer.bias-init:constant-config --agent.world.model.initializer.bias-init.value 0.0 agent.world.model.transition.head:one-hot-categorical-head-config agent.world.model.representation.head:one-hot-categorical-head-config agent.world.model.encoder:cnn-encoder-config --agent.world.model.encoder.activation-function "elu" --agent.world.model.encoder.depth 48 --agent.world.model.encoder.kernel_size 4 4 4 4 --agent.world.model.encoder.padding "VALID" agent.world.model.decoder:cnn-decoder-config --agent.world.model.decoder.activation-function "elu" --agent.world.model.decoder.depth 48 --agent.world.model.decoder.kernel_size 5 5 6 6 --agent.world.model.decoder.flatten-embedding --agent.world.model.decoder.padding "VALID" agent.world.model.continuation:continuation-config --agent.world.model.continuation.hidden-size 400 400 400 400 agent.actor.model.initializer.weight-init:xavier-uniform-config agent.actor.model.initializer.bias-init:constant-config --agent.actor.model.initializer.bias-init.value 0.0 agent.critic.model.initializer.weight-init:xavier-uniform-config agent.critic.model.initializer.bias-init:constant-config --agent.critic.model.initializer.bias-init.value 0.0 agent.memory:episodic-memory-config --agent.memory.capacity 2000000 --agent.memory.device "cpu"
+```
+
+> [!IMPORTANT]
+> We replace the standard action repeat wrapper with our own, except for Atari, which couples specific nuances (e.g., max-pooling) with the action repeat. As a result, policy steps are used as the reference frame rather than environment steps.
 
 > [!NOTE]
 > For pixel-based tasks and algorithms that require long sequence processing, JAX can easily become memory-bound, hindering efficiency. Therefore, we recommend using the CPU memory option to sidestep this issue.

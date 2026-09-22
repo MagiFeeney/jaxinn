@@ -10,6 +10,11 @@ from .utils import differentiable
 
 
 class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
+    kl_loss_scale: float = eqx.field(static=True)
+    reward_loss_scale: float = eqx.field(static=True)
+    observation_loss_scale: float = eqx.field(static=True)
+    continuation_loss_scale: float = eqx.field(static=True)
+
     def _compute_kl_loss(self, prior: LatentStateWithDist, posterior: LatentStateWithDist) -> jax.Array:
         if self.kl_balance > 0:
             kl_loss_post = posterior.kl_divergence(jax.lax.stop_gradient(prior).dist)
@@ -46,20 +51,20 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
 
         reward_dist = jax.vmap(jax.vmap(self.world.reward))(posterior.latent_state)
         reward_log_prob = reward_dist.log_prob(data.reward)
-        reward_loss = -reward_log_prob.mean()
+        reward_loss = -self.reward_loss_scale * reward_log_prob.mean()
 
         observation_dist = jax.vmap(jax.vmap(self.world.decoder))(posterior.latent_state)
         observation_log_prob = observation_dist.log_prob(data.next_obs)
-        observation_loss = -observation_log_prob.mean()
+        observation_loss = -self.observation_loss_scale * observation_log_prob.mean()
 
         if self.world.continuation is not None:
             continuation_dist = jax.vmap(jax.vmap(self.world.continuation))(posterior.latent_state)
             continuation_log_prob = continuation_dist.log_prob(1 - data.terminated)
-            continuation_loss = -continuation_log_prob.mean()
+            continuation_loss = -self.continuation_loss_scale * continuation_log_prob.mean()
         else:
             continuation_loss = 0
 
-        kl_loss = self._compute_kl_loss(prior, posterior)
+        kl_loss = self._compute_kl_loss(prior, posterior) * self.kl_loss_scale
 
         total_loss = reward_loss + observation_loss + continuation_loss + kl_loss
 
@@ -86,7 +91,7 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             key: PRNGKeyArray,
     ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
         imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
-        (advantages, return_predictions), aux = self.process(imagined_latent_states)
+        (advantages, return_predictions), aux, _ = self.process(imagined_latent_states)
 
         actor_loss = -return_predictions.mean()
         metrics = {
@@ -102,9 +107,14 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             imagined_latent_states: jax.Array,
             return_prediction: jax.Array,
             key: PRNGKeyArray,
+            weights: jax.Array | None = None,
     ) -> tuple[jax.Array, dict[str, jax.Array]]:
         value_dist = jax.vmap(jax.vmap(self.critic))(imagined_latent_states[:-1].detach())
         critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction))
+
+        if weights is not None:
+            critic_loss = weights * critic_loss[..., None]
+
         critic_loss = critic_loss.mean()
 
         metrics = {
@@ -121,14 +131,22 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             posterior: LatentStateWithDist,
             key: PRNGKeyArray,
     ) -> tuple[jax.Array, tuple[dict[str, jax.Array], jax.Array, jax.Array]]:
-        imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key)
-        (advantages, return_predictions, action_log_probs, entropies, weights), aux = self.process(imagined_latent_states, actions)
+        key_plan, key_process = jax.random.split(key, 2)
+        imagined_latent_states, actions = self.plan(posterior.latent_state.flatten(), key_plan)
+        (advantages, return_predictions, action_log_probs, entropies, weights), aux, _ = self.process(imagined_latent_states, actions, key_process)
 
         bptt_loss = -return_predictions
-        likelihood_pg_loss = -action_log_probs * jax.lax.stop_gradient(advantages)
-        entropy_loss = -self.entropy_coef * entropies
+        likelihood_pg_loss = -action_log_probs[..., None] * jax.lax.stop_gradient(advantages)
+        entropy_loss = -self.entropy_coef * entropies[..., None]
 
-        actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss + entropy_loss
+        if self.pg_mix == 1.0:
+            actor_loss = bptt_loss
+        elif self.pg_mix == 0.0:
+            actor_loss = likelihood_pg_loss
+        else:
+            actor_loss = self.pg_mix * bptt_loss + (1 - self.pg_mix) * likelihood_pg_loss
+
+        actor_loss = actor_loss + entropy_loss
         actor_loss = (weights * actor_loss).mean()
 
         metrics = {
@@ -138,4 +156,4 @@ class MixedActorGradientLoss(DreamerLossMixIn):
             "ac/entropy_loss": entropy_loss.mean(),
             **aux
         }
-        return actor_loss, (metrics, (imagined_latent_states, return_predictions))
+        return actor_loss, (metrics, (imagined_latent_states, return_predictions, weights))

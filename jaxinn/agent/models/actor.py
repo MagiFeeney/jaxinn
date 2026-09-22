@@ -1,3 +1,4 @@
+from typing import Literal
 import math
 from collections.abc import Callable
 
@@ -37,6 +38,8 @@ class Actor(Model):
         action_size: PyTree[int],
         head_config: PyTree[HeadConfig],
         activation_function: str | Callable = "elu",
+        norm_type: Literal['layer', 'rms'] | None = None,
+        norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray,
     ):
@@ -52,11 +55,13 @@ class Actor(Model):
 
         # Build network
         self.net = make_mlp(
-            input_size = belief_size + state_size,
-            hidden_size = hidden_size,
-            output_size = self.head.param_size,
-            activation = activation_function,
-            key = key
+            input_size=belief_size + state_size,
+            hidden_size=hidden_size,
+            output_size=self.head.param_size,
+            activation=activation_function,
+            norm_type=norm_type,
+            norm_where=norm_where,
+            key=key
         )
 
     def __call__(
@@ -81,10 +86,11 @@ class PerceptionActor(Model):
         key_encoder, key_actor = jax.random.split(key_model, 2)
 
         encoder = Encoder.create(config.encoder, key=key_encoder)
-        actor = Actor.create(
-            config.actor,
-            key=key_actor
-        )
+
+        if config.actor.state_size is None:
+            config.actor.state_size = encoder.embedding_size
+
+        actor = Actor.create(config.actor, key=key_actor)
 
         return cls(encoder=encoder, actor=actor).apply_init(config.initializer, key=key_init)
 

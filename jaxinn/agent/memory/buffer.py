@@ -1,4 +1,5 @@
 import abc
+from typing import ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -6,12 +7,19 @@ from jaxtyping import PRNGKeyArray, PyTree, DTypeLike
 import equinox as eqx
 
 from jaxinn.common.structs import Transition
+from jaxinn.agent.registry import Registrable
+from jaxinn.configs.agent.memory import (
+    UniformMemoryConfig,
+    PrioritizedMemoryConfig,
+    BatchedMemoryConfig,
+    EpisodicMemoryConfig,
+)
 
 from .storage import Storage, CPUStorage, GPUStorage
 
 
 # Base class
-class Memory(eqx.Module):
+class Memory(Registrable, eqx.Module):
     storage: Storage
     seed_idx: jax.Array   # Unique id to anchor data for multiple seeds
     ptr: jax.Array
@@ -64,6 +72,8 @@ class Memory(eqx.Module):
 
 # Memory with uniform sampling
 class Uniform(Memory):
+    config_cls: ClassVar[type] = UniformMemoryConfig
+
     def add(self, transition: Transition, valid_length: jax.Array | None = None):
         """Adds a single or a batch of transitions to the buffer."""
         batch_size = jax.tree.leaves(transition)[0].shape[0]
@@ -155,7 +165,7 @@ class SumTree(eqx.Module):
 
         return eqx.tree_at(lambda t: (t.tree, t.masked_priorities), self, (new_tree, new_masked_priorities))
 
-    def sample(self, batch_size: int, key: jax.Array) -> tuple[jax.Array, jax.Array]:
+    def sample(self, batch_size: int, key: PRNGKeyArray) -> tuple[jax.Array, jax.Array]:
         total_priority = self.tree[0]
         queries = jax.random.uniform(key, shape=(batch_size,)) * total_priority
         return jax.vmap(self._retrieve)(queries)
@@ -182,6 +192,8 @@ class SumTree(eqx.Module):
 
 # Memory with prioritized sampling
 class Prioritized(Uniform):
+    config_cls: ClassVar[type] = PrioritizedMemoryConfig
+
     sumtree: SumTree
     alpha: float = eqx.field(static=True)
     beta: float = eqx.field(static=True)
@@ -215,6 +227,8 @@ class Prioritized(Uniform):
 
 
 class Batched(Uniform):
+    config_cls: ClassVar[type] = BatchedMemoryConfig
+
     def __init__(
             self,
             seed_idx: jax.Array,
@@ -228,9 +242,199 @@ class Batched(Uniform):
         super().__init__(seed_idx, capacity, obs_shape, obs_dtype, action_shape, action_dtype, num_seeds)
 
     def sample_batch_index(self, batch_size: int, key: PRNGKeyArray):
-        return super().sample_batch_index(batch_size, key, chunk_size=1)
+        return super().sample_batch_index(batch_size, key, chunk_size=1)[0]
 
     def get_all(self) -> Transition:
         read_index = jnp.arange(self.length)
         batch = self.storage.read(self.seed_idx, read_index)
         return batch
+
+
+class Episodic(Memory):
+    config_cls: ClassVar[type] = EpisodicMemoryConfig
+
+    episode_ends: jax.Array
+    episode_ptr: jax.Array
+    episode_tail: jax.Array
+    total_steps: jax.Array
+
+    max_sequence_length: int = eqx.field(static=True, default=0) # Use full episode if 0, otherwise cap sequence by the value
+    prioritize_ends: bool = eqx.field(static=True, default=True)
+
+    def __init__(
+            self,
+            seed_idx: jax.Array,
+            capacity: int | tuple[int, ...],
+            obs_shape: PyTree[tuple[int, ...]],
+            obs_dtype: PyTree[DTypeLike],
+            action_shape: PyTree[tuple[int, ...]],
+            action_dtype: PyTree[DTypeLike],
+            num_seeds: int | None = None,
+            max_sequence_length: int = 0,
+            prioritize_ends: bool = True,
+    ):
+        super().__init__(seed_idx, capacity, obs_shape, obs_dtype, action_shape, action_dtype, num_seeds)
+        self.episode_ends = jnp.full((self.length,), -1, dtype=jnp.int32)
+        self.episode_ptr = jnp.array(0, dtype=jnp.int32)
+        self.episode_tail = jnp.array(0, dtype=jnp.int32)
+        self.total_steps = jnp.array(0, dtype=jnp.int32)
+
+        self.max_sequence_length = max_sequence_length
+        self.prioritize_ends = prioritize_ends
+
+    def add(self, transition: Transition, valid_length: jax.Array | None = None):
+        # Adding data, the same as Uniform
+        batch_size = jax.tree.leaves(transition)[0].shape[0]
+        num_data = batch_size if valid_length is None else valid_length
+        mask = jnp.arange(batch_size) < num_data
+        index = (self.ptr + jnp.arange(batch_size)) % self.length
+        valid_index = jnp.where(mask, index, self.length)
+        new_storage, token = self.storage.write(self.seed_idx, valid_index, transition)
+        new_ptr = (self.ptr + num_data + token) % self.length
+        new_size = jnp.minimum(self.size + num_data, self.length)
+
+        # Get which step is end
+        is_end = (jnp.ravel(transition.terminated) | jnp.ravel(transition.truncated)) & mask
+
+        INF = jnp.iinfo(jnp.int32).max
+        end_batch_idx = jnp.where(is_end, jnp.arange(batch_size), INF)
+        sorted_ends = jnp.sort(end_batch_idx)
+        num_episodes = is_end.sum()
+
+        absolute_ends = self.total_steps + sorted_ends
+
+        episode_index = (self.episode_ptr + jnp.arange(batch_size)) % self.length
+        episode_mask = jnp.arange(batch_size) < num_episodes
+
+        new_episode_ends = jnp.where(episode_mask, absolute_ends, self.episode_ends[episode_index]) # Replace INF with the placeholder value
+        updated_episode_ends = self.episode_ends.at[episode_index].set(new_episode_ends)
+        new_episode_ptr = (self.episode_ptr + num_episodes) % self.length
+
+        # Prune corrupted episodes
+        new_total_steps = self.total_steps + num_data
+        oldest_valid_step = new_total_steps - new_size
+
+        def cond_fn(tail):
+            is_empty = tail == new_episode_ptr
+            ep_start = updated_episode_ends[(tail - 1) % self.length] + 1
+            is_valid = ep_start >= oldest_valid_step
+            return ~(is_empty | is_valid)
+
+        def body_fn(tail):
+            return (tail + 1) % self.length
+
+        new_episode_tail = jax.lax.while_loop(cond_fn, body_fn, self.episode_tail)
+
+        return eqx.tree_at(
+            lambda m: (m.storage, m.ptr, m.size, m.episode_ends, m.episode_ptr, m.episode_tail, m.total_steps),
+            self,
+            (new_storage, new_ptr, new_size, updated_episode_ends, new_episode_ptr, new_episode_tail, new_total_steps)
+        )
+
+    def sample(self, sample_shape: tuple[int, ...], key: PRNGKeyArray):
+        batch_size, chunk_size = sample_shape
+        sample_index, is_stitched = self.sample_batch_index(batch_size, key, chunk_size=chunk_size)
+        data = self.storage.read(self.seed_idx, sample_index)
+
+        is_stitched = is_stitched.reshape(data.truncated.shape)
+        new_truncated = data.truncated | is_stitched
+
+        return eqx.tree_at(lambda x: x.truncated, data, new_truncated)
+
+    def sample_batch_index(self, batch_size: int, key: PRNGKeyArray, *, chunk_size: int):
+        key, key_init = jax.random.split(key, 2)
+        init_start, init_end = self.sample_sequence_bounds(key_init, chunk_size)
+        init_offset = 0
+        init_state = (init_start, init_end, init_offset, key)
+
+        def step_fn(state, _):
+            start, end, offset, key = state
+
+            remaining = end - (start + offset)
+
+            # Consume existing episode
+            idx_range = jnp.arange(chunk_size)
+            idx_current = start + offset + idx_range
+
+            # Replenish from the new episode
+            # Only effective when remaining < chunk_size
+            init_start, init_end = jnp.array(0), jnp.array(0)
+            init_is_stitched = jnp.zeros(chunk_size, dtype=jnp.bool_)
+
+            init_state = (0, key, init_start, init_end, idx_current, remaining, init_is_stitched)
+
+            def cond_fn(state):
+                i, _, seq_start, seq_end, _, remaining, _ = state
+                seq_len = seq_end - seq_start
+                not_enough_to_replenish = seq_len < (chunk_size - remaining)
+                return not_enough_to_replenish & (i < 100)
+
+            def body_fn(state):
+                i, key, seq_start, seq_end, idx_current, remaining, is_stitched = state
+                key, subkey = jax.random.split(key)
+                new_start, new_end = self.sample_sequence_bounds(subkey, chunk_size)
+                seq_len = seq_end - seq_start
+                remaining = remaining + jnp.maximum(0, seq_len)
+                mask = idx_range < remaining
+                idx_next = new_start + (idx_range - remaining)
+                out_idx = jnp.where(mask, idx_current, idx_next)
+                is_stitched = is_stitched | (idx_range == remaining - 1)
+                return i + 1, key, new_start, new_end, out_idx, remaining, is_stitched
+
+            _, key, new_start, new_end, out_idx, remaining, is_stitched = jax.lax.while_loop(
+                cond_fn, body_fn, init_state
+            )
+
+            # Update states
+            overshoot = remaining < chunk_size
+            next_start = jnp.where(overshoot, new_start, start)
+            next_end = jnp.where(overshoot, new_end, end)
+            next_offset = jnp.where(overshoot, chunk_size - remaining, offset + chunk_size)
+
+            next_state = (next_start, next_end, next_offset, key)
+
+            return next_state, (out_idx, is_stitched)
+
+        _, (chunk_indices, chunk_stitches) = jax.lax.scan(
+            step_fn, init_state, None, length=batch_size
+        )
+
+        return chunk_indices.T % self.length, chunk_stitches.T # T x B
+
+    def sample_episode_bounds(self, sample_shape: tuple[int, ...], key: PRNGKeyArray, use_absolute: bool = True):
+        num_valid = (self.episode_ptr - self.episode_tail) % self.length
+        num_valid = jnp.maximum(1, num_valid)
+
+        offsets = jax.random.randint(key, sample_shape, minval=0, maxval=num_valid)
+        episode_indices = (self.episode_tail + offsets) % self.length
+
+        absolute_starts = self.episode_ends[(episode_indices - 1) % self.length] + 1
+        absolute_ends = self.episode_ends[episode_indices]
+
+        if not use_absolute:
+            return absolute_starts % self.length, absolute_ends % self.length
+        return absolute_starts, absolute_ends
+
+    def sample_sequence_bounds(self, key: PRNGKeyArray, chunk_size: int):
+        key_episode, key_desync, key_offset = jax.random.split(key, 3)
+        episode_start, episode_end = self.sample_episode_bounds(sample_shape=(), key=key_episode, use_absolute=True)
+        episode_length = episode_end - episode_start + 1
+
+        # Desynchronize episodes by randomizing length
+        sequence_length = episode_length
+        if self.max_sequence_length > 0:
+            sequence_length = jnp.minimum(sequence_length, self.max_sequence_length)
+
+        sequence_length -= jax.random.randint(key_desync, (), minval=0, maxval=chunk_size)
+        sequence_length = jnp.maximum(chunk_size, sequence_length)
+
+        # Prioritize sequences near end
+        offset = jnp.maximum(0, episode_length - sequence_length)
+        rand_maxval = offset + 1 + (chunk_size if self.prioritize_ends else 0)
+        rand_idx = jax.random.randint(key_offset, (), minval=0, maxval=rand_maxval)
+        offset = jnp.minimum(rand_idx, offset)
+
+        seq_start = episode_start + offset
+        seq_end = seq_start + jnp.minimum(sequence_length, episode_length)
+
+        return seq_start, seq_end

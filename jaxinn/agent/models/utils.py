@@ -162,13 +162,49 @@ class ProxyDistrax:
 dx = ProxyDistrax()
 
 
+class SpatialNormWrapper(eqx.Module):
+    norm: eqx.Module
+    num_spatial_dims: int = eqx.field(static=True)
+
+    def __init__(self, norm_module: eqx.Module, num_spatial_dims: int):
+        self.norm = norm_module
+        self.num_spatial_dims = num_spatial_dims
+
+    def __call__(self, x):
+        f = self.norm
+        for _ in range(self.num_spatial_dims):
+            f = jax.vmap(f, in_axes=1, out_axes=1)
+        return f(x)
+
+
+def get_norm_layer(norm_type: str, num_channels: int, num_groups: int = 32, num_spatial_dims: int = 0):
+    if norm_type == "none" or norm_type is None:
+        return eqx.nn.Identity()
+    elif norm_type == "layer":
+        base_norm = eqx.nn.LayerNorm(num_channels)
+        return SpatialNormWrapper(base_norm, num_spatial_dims) if num_spatial_dims > 0 else base_norm
+    elif norm_type == "rms":
+        base_norm = eqx.nn.RMSNorm(num_channels)
+        return SpatialNormWrapper(base_norm, num_spatial_dims) if num_spatial_dims > 0 else base_norm
+    elif norm_type == "group":
+        return eqx.nn.GroupNorm(num_groups, num_channels)
+    elif norm_type == "batch":
+        raise NotImplementedError(
+            "BatchNorm is stateful and not yet supported. "
+            "Please use 'layer', 'rms', or 'group' instead."
+        )
+    else:
+        raise ValueError(f"Unknown norm type: {norm_type}.")
+
+
 def make_mlp(
         input_size: int,
         hidden_size: int | list[int],
-        output_size: int,
+        output_size: int | None,
         activation: str | Callable | StaticCallable,
         num_layers: int | None = None,
-        layer_norm: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
+        norm_type: Literal['layer', 'rms'] | None = None,
+        norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -179,19 +215,25 @@ def make_mlp(
         )
         hidden_size = [hidden_size] * num_layers
 
-    sizes = [input_size] + hidden_size + [output_size]
+    sizes = [input_size] + hidden_size
+    if output_size is not None:
+        sizes += [output_size]
+
     layer_norms = [False] * len(sizes)
 
-    if layer_norm == "all":
-        layer_norms[1:-1] = [True] * (len(sizes) - 2)
-    elif layer_norm == "input":
-        layer_norms[0] = True
-    elif layer_norm == "output":
-        layer_norms[-1] = True
-    elif layer_norm == "first":
-        layer_norms[1] = True
-    elif layer_norm == "last":
-        layer_norms[-2] = True
+    if norm_type is not None:
+        if norm_where == "all":
+            layer_norms[1:-1] = [True] * (len(sizes) - 2)
+            if output_size is None:
+                layer_norms[-1] = True
+        elif norm_where == "input":
+            layer_norms[0] = True
+        elif norm_where == "output":
+            layer_norms[-1] = True
+        elif norm_where == "first":
+            layer_norms[1] = True
+        elif norm_where == "last":
+            layer_norms[-2] = True
 
     layers = []
     keys = jax.random.split(key, len(sizes) - 1)
@@ -202,15 +244,15 @@ def make_mlp(
         activation = StaticCallable(activation)
 
     if layer_norms[0]:          # Pre-norm
-        layers.append(eqx.nn.LayerNorm(sizes[0]))
+        layers.append(get_norm_layer(norm_type, sizes[0]))
 
     for i in range(len(sizes) - 1):
         layers.append(eqx.nn.Linear(sizes[i], sizes[i+1], key=keys[i]))
 
         if layer_norms[i+1]:    # Pre-activation norm
-            layers.append(eqx.nn.LayerNorm(sizes[i+1]))
+            layers.append(get_norm_layer(norm_type, sizes[i+1]))
 
-        if i < len(sizes) - 2:
+        if i < len(sizes) - 2 or output_size is None:
             layers.append(activation)
 
     return eqx.nn.Sequential(layers)
@@ -224,13 +266,15 @@ def make_cnn(
         depth: int | Sequence[int] = 32,
         depth_factor: int | None = 2,
         stride: int | Sequence[int] = 2,
-        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "SAME",
+        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID",
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
         padding_mode: str = 'ZEROS',
         dtype: str = "float32",
         num_layers: int | None = None,
+        norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None,
+        norm_where: Literal['all', 'input', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
@@ -276,12 +320,29 @@ def make_cnn(
 
     sizes = [in_channels] + depth
 
+    layer_norms = [False] * (len(sizes) + 1)
+
+    if norm_type is not None:
+        if norm_where == "all":
+            layer_norms[1:-1] = [True] * (len(sizes) - 1)
+        elif norm_where == "input":
+            layer_norms[0] = True
+        elif norm_where == "first":
+            layer_norms[1] = True
+        elif norm_where == "last":
+            layer_norms[-2] = True
+        else:
+            raise ValueError(f"Unknown or inapplicable norm position: {norm_where}.")
+
     if isinstance(activation, str):
         activation = get_activation_fn(activation)
     if not isinstance(activation, StaticCallable):
         activation = StaticCallable(activation)
 
     layers = []
+
+    if layer_norms[0]:          # Pre-norm
+        layers.append(get_norm_layer(norm_type, sizes[0], groups, num_spatial_dims=num_spatial_dims))
 
     # Conv layers
     keys = jax.random.split(key, len(sizes) - 1)
@@ -303,6 +364,9 @@ def make_cnn(
             )
         )
 
+        if layer_norms[i+1]:    # Pre-activation norm
+            layers.append(get_norm_layer(norm_type, sizes[i+1], groups, num_spatial_dims=num_spatial_dims)) # TODO: fix GroupNorm param groups
+
         layers.append(activation)
 
     # Flatten it
@@ -320,7 +384,7 @@ def make_cnn_transposed(
         depth: int | Sequence[int] = 32,
         depth_factor: int | None = 2,
         stride: int | Sequence[int] = 2,
-        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "SAME",
+        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = "VALID",
         output_padding: int | Sequence[int] = 0,
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
@@ -328,12 +392,13 @@ def make_cnn_transposed(
         padding_mode: str = 'ZEROS',
         dtype: str = "float32",
         num_layers: int | None = None,
+        norm_type: Literal['layer', 'group', 'rms', 'batch'] | None = None,
+        norm_where: Literal['all', 'input', 'output', 'first', 'last'] | None = None,
         *,
         key: PRNGKeyArray
 ) -> eqx.nn.Sequential:
     potential_sequences = [
         ("kernel_size", kernel_size),
-        ("depth", depth),
         ("stride", stride),
         ("padding", padding),
         ("output_padding", output_padding),
@@ -356,7 +421,7 @@ def make_cnn_transposed(
     else:
         if num_layers is None:
             raise ValueError(
-                "`num_layers` must be specified when kernel_size, depth, stride, "
+                "`num_layers` must be specified when kernel_size, stride, "
                 "etc., are all scalar values."
             )
 
@@ -372,8 +437,24 @@ def make_cnn_transposed(
        if depth_factor is None:
            raise ValueError("When `depth` is an integer, the `depth_factor` cannot be None")
        depth = [depth * depth_factor**i for i in reversed(range(num_layers - 1))]
+    else:
+        assert len(depth) == num_layers - 1, f"Expected `depth` length to be {num_layers - 1} for the CNN decoder, but got {len(depth)}."
 
     sizes = [in_channels] + depth + [out_channels]
+
+    layer_norms = [False] * len(sizes)
+
+    if norm_type is not None:
+        if norm_where == "all":
+            layer_norms[1:-1] = [True] * (len(sizes) - 2)
+        elif norm_where == "input":
+            layer_norms[0] = True
+        elif norm_where == "output":
+            layer_norms[-1] = True
+        elif norm_where == "first":
+            layer_norms[1] = True
+        elif norm_where == "last":
+            layer_norms[-2] = True
 
     if isinstance(activation, str):
         activation = get_activation_fn(activation)
@@ -381,6 +462,9 @@ def make_cnn_transposed(
         activation = StaticCallable(activation)
 
     layers = []
+
+    if layer_norms[0]:          # Pre-norm
+        layers.append(get_norm_layer(norm_type, sizes[0], groups, num_spatial_dims=num_spatial_dims))
 
     # Conv layers
     keys = jax.random.split(key, len(sizes) - 1)
@@ -403,6 +487,9 @@ def make_cnn_transposed(
             )
         )
 
+        if layer_norms[i+1]:    # Pre-activation norm
+            layers.append(get_norm_layer(norm_type, sizes[i+1], groups, num_spatial_dims=num_spatial_dims))
+
         if i < len(sizes) - 2:
             layers.append(activation)
 
@@ -423,7 +510,7 @@ def apply_init(
     if weight_init is None and bias_init is None and output_weight_init is None and output_bias_init is None:
         return model
 
-    is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv2d))
+    is_target = lambda x: isinstance(x, (eqx.nn.Linear, eqx.nn.Conv, eqx.nn.ConvTranspose))
     if is_leaf is None:
         is_leaf = is_target
 
@@ -441,11 +528,21 @@ def apply_init(
 
         # Init weight
         weight = layer.weight
-        if w_fn is not None:
-            if isinstance(layer, eqx.nn.Conv2d):
-                out_c, in_c, height, width = weight.shape
-                hwio = w_fn(kw, (height, width, in_c, out_c), weight.dtype) # JAX's expected layout: HWIO
-                new_w = jnp.transpose(hwio, (3, 2, 0, 1))                   # Equinox's: OIHW
+        if w_fn is not None:    # TODO: init for gru https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/_rnn.py
+            ndim = weight.ndim
+
+            if isinstance(layer, eqx.nn.Conv):
+                out_c, in_c, spatial_dims = weight.shape[0], weight.shape[1], weight.shape[2:]
+                spatial_io = w_fn(kw, (*spatial_dims, in_c, out_c), weight.dtype) # JAX's: (*spatial, in_c, out_c)
+                new_w = jnp.transpose(spatial_io, (ndim - 1, ndim - 2) + tuple(range(ndim - 2))) # Equinox's: (out_c, in_c, *spatial)
+            elif isinstance(layer, eqx.nn.ConvTranspose):
+                in_c, out_c, spatial_dims = weight.shape[0], weight.shape[1], weight.shape[2:]
+                spatial_io = w_fn(kw, (*spatial_dims, in_c, out_c), weight.dtype)
+                new_w = jnp.transpose(spatial_io, (ndim - 2, ndim - 1) + tuple(range(ndim - 2))) # Equinox's: (in_c, out_c, *spatial)
+            elif isinstance(layer, eqx.nn.Linear):
+                out_c, in_c = weight.shape
+                io = w_fn(kw, (in_c, out_c), weight.dtype)
+                new_w = jnp.transpose(io, (1, 0)) # Equinox's: (out_c, in_c)
             else:
                 new_w = w_fn(kw, weight.shape, weight.dtype)
         else:

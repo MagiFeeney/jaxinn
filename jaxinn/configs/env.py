@@ -9,7 +9,7 @@ from .base import Base
 class Wrapper(Base):
     num_envs: int = 1                # num. of envs for collecting data
     action_repeat: int = 2
-    use_one_hot_action: bool = False
+    use_one_hot_action: bool = True
     target_shape: tuple[int, int] | None = None
     normalize_obs: bool = False
     normalize_reward: bool = False

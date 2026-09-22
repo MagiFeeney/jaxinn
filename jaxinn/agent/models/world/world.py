@@ -33,6 +33,9 @@ class World(Model):
         else:
             decoder = None
 
+        if config.representation.embedding_size is None:
+            config.representation.embedding_size = encoder.embedding_size
+
         representation = Representation.create(config.representation, key=key_representation)
         transition = Transition.create(config.transition, key=key_transition)
         reward = Reward.create(config.reward, key=key_reward)

@@ -126,4 +126,4 @@ class EnvPool(Environment, EnvPoolVmapMixIn):
 
     @property
     def max_episode_length(self) -> int:
-        return self.max_episode_steps
+        return self.spec.config.max_episode_steps

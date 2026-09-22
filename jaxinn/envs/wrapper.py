@@ -347,7 +347,7 @@ class NextStepAutoResetTerminalObs(Wrapper):
             ),
             action
         )
-        transition, env_info, next_env_state = self.env.step(key, env_state, action)
+        transition, env_info, next_env_state = self.env.step(key, env_state.state, action)
         env_info = EnvInfo(**env_info.data, boundary_obs=None) # Gymnasium vectorized env autoresets at next step, resulting a dummy transition while the previous transition is preserved, so we don't have to manually extract the terminal observation
         next_env_state = EnvState(
             state=next_env_state,
@@ -368,7 +368,7 @@ class ResizeImage(Wrapper):
         if obs.shape[-2:] != self.target_shape:
             target_shape = obs.shape[:-2] + self.target_shape
             obs = jax.image.resize(obs, shape=target_shape, method="nearest")
-        return obs.astype(jnp.uint8)
+        return obs.astype(self.observation_space.dtype)
 
     def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)

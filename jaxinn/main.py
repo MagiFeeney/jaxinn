@@ -101,7 +101,7 @@ def main(config):
     trainer.close()
 
 
-if __name__ == "__main__":
+def make_config():
     # Grab the env id
     env_selector, _ = tyro.cli(
         EnvSelector,
@@ -121,5 +121,9 @@ if __name__ == "__main__":
     # Post processing
     config = post_process(env_id, config)
 
-    # Run
+    return config
+
+
+if __name__ == "__main__":
+    config = make_config()
     main(config)

@@ -13,24 +13,15 @@ from ..vmap import VmapTransformation
 from ..spaces import Discrete, Box, Dict, Tuple
 
 
-def _to_jax_dtype(dtype: Any) -> jnp.dtype:
-    parsed_dtype = jnp.dtype(dtype)
-    if parsed_dtype.name == 'float64':
-        return jnp.float64      # Return concrete dtype to avoid being caught by float dtype
-    elif parsed_dtype.name == 'int64':
-        return jnp.int64
-    return parsed_dtype
-
-
 def gymnasium_space_to_jaxinn_space(space):
     if isinstance(space, gym.spaces.Discrete):
-        return Discrete(n=int(space.n), dtype=_to_jax_dtype(space.dtype))
+        return Discrete(n=int(space.n), dtype=jax.dtypes.canonicalize_dtype(space.dtype))
     elif isinstance(space, gym.spaces.Box):
         return Box(
             low=space.low,
             high=space.high,
             shape=space.shape,
-            dtype=_to_jax_dtype(space.dtype),
+            dtype=jax.dtypes.canonicalize_dtype(space.dtype),
         )
     elif isinstance(space, gym.spaces.Dict):
         converted_spaces = {k: gymnasium_space_to_jaxinn_space(v) for k, v in space.spaces.items()}
@@ -93,9 +84,7 @@ class GymnasiumVmapMixIn(VmapTransformation):
 class JaxConverterMixIn:
     @property
     def obs_struct(self):
-        obs_shape = self.observation_space.shape
-        obs_dtype = jnp.uint8 if getattr(self, "from_pixels", False) else jnp.float32
-        return jax.ShapeDtypeStruct((self.capacity,) + obs_shape, obs_dtype)
+        return jax.ShapeDtypeStruct((self.capacity,) + self.observation_space.shape, self.observation_space.dtype)
 
     @property
     def reward_struct(self):
@@ -113,7 +102,7 @@ class JaxConverterMixIn:
         obs, _ = self.env.reset()
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
-        obs = obs.astype(np.uint8) if getattr(self, "from_pixels", False) else obs.astype(np.float32)
+        obs = obs.astype(self.observation_space.dtype)
         return obs
 
     def _python_step(self, action):
@@ -121,7 +110,7 @@ class JaxConverterMixIn:
         obs, reward, term, trunc, _ = self.env.step(action) # TODO: return info
         if isinstance(obs, (tuple, list)):
             obs = np.stack(obs)
-        obs = obs.astype(np.uint8) if getattr(self, "from_pixels", False) else obs.astype(np.float32)
+        obs = obs.astype(self.observation_space.dtype)
         return obs, np.float32(reward), np.bool_(term), np.bool_(trunc)
 
     def _reset(self):
@@ -152,9 +141,40 @@ class Gymnasium(JaxConverterMixIn, GymnasiumVmapMixIn, Environment):
         super().__init__(env, env_params)
 
     @classmethod
-    def create(cls, env_name: str, num_envs: int, **kwargs) -> "Gymnasium":
-        env = gym.make_vec(env_name, num_envs=num_envs, **kwargs)
-        return cls(env, env_params={"capacity": num_envs, **kwargs})
+    def create(cls, env_name: str, num_envs: int, vectorization_mode: str, **kwargs) -> "Gymnasium":
+        env_params = {"capacity": num_envs, **kwargs}
+
+        if env_name.split("/")[0] == "ALE":
+            import ale_py
+            gym.register_envs(ale_py)
+
+            max_episode_steps = kwargs.pop("max_episode_steps", 27000)
+            env_params["max_episode_steps"] = max_episode_steps
+
+            frame_skip = kwargs.pop("frame_skip", 4)
+            noop_max = kwargs.pop("noop_max", 30)
+            screen_size = kwargs.pop("screen_size", 64)
+            terminal_on_life_loss = kwargs.pop("terminal_on_life_loss", False)
+            grayscale_obs = kwargs.pop("grayscale_obs", True)
+
+            wrappers = [
+                lambda env: gym.wrappers.AtariPreprocessing(
+                    env,
+                    frame_skip=frame_skip,
+                    noop_max=noop_max,
+                    screen_size=screen_size,
+                    terminal_on_life_loss=terminal_on_life_loss,
+                    grayscale_obs=grayscale_obs,
+                ),
+                lambda env: gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps) if max_episode_steps is not None else env
+            ]
+
+            kwargs['wrappers'] = wrappers
+            kwargs["frameskip"] = 1 # override as the wrapper takes care of it
+            kwargs["max_episode_steps"] = None # same as the above
+
+        env = gym.make_vec(env_name, num_envs=num_envs, vectorization_mode=vectorization_mode, **kwargs)
+        return cls(env, env_params=env_params)
 
     def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, jax.Array]:
         obs = self.v_reset(self, key)
