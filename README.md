@@ -232,10 +232,15 @@ jaxinn/
 │  │  │  ├─ transition.py
 │  │  │  └─ world.py
 │  │  ├─ __init__.py
+│  │  ├─ actor_critic.py
 │  │  ├─ actor.py
+│  │  ├─ base.py
 │  │  ├─ critic.py
 │  │  ├─ distributions.py
+│  │  ├─ ensemble.py
 │  │  ├─ heads.py
+│  │  ├─ initializers.py
+│  │  ├─ recurrent.py
 │  │  └─ utils.py
 │  ├─ rules/
 │  │  ├─ model_based/
@@ -243,12 +248,12 @@ jaxinn/
 │  │  │  └─ dreamer.py
 │  │  ├─ model_free/
 │  │  │  ├─ __init__.py
-│  │  │  ├─ actor_critic.py
 │  │  │  ├─ ppo.py
 │  │  │  └─ sac.py
 │  │  ├─ __init__.py
 │  │  ├─ base.py
 │  │  ├─ learner.py
+│  │  ├─ schedulers.py
 │  │  └─ utils.py
 │  ├─ __init__.py
 │  └─ registry.py
@@ -258,7 +263,6 @@ jaxinn/
 ├─ configs/
 │  ├─ agent/
 │  │  ├─ __init__.py
-│  │  ├─ actor_critic.py
 │  │  ├─ base.py
 │  │  ├─ dreamer.py
 │  │  ├─ memory.py
@@ -270,7 +274,9 @@ jaxinn/
 │  ├─ custom.py
 │  ├─ env.py
 │  ├─ head.py
-│  └─ model.py
+│  ├─ initializer.py
+│  ├─ model.py
+│  └─ scheduler.py
 ├─ envs/
 │  ├─ adapters/
 │  │  ├─ __init__.py
