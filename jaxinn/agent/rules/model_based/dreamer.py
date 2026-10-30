@@ -250,7 +250,7 @@ class DreamerAgent(DreamerLossMixIn, Agent):
         metrics.update(**aux)
 
         # Update critic
-        (loss, aux), grads = agent.critic_loss_fn(*out, key_critic)
+        (loss, aux), grads = agent.critic_loss_fn(*out, key=key_critic)
         new_critic = agent.critic.update(grads.critic)
         agent = eqx.tree_at(lambda a: a.critic, agent, new_critic)
         metrics.update(**aux)

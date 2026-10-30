@@ -106,8 +106,9 @@ class DreamerLossMixIn(Loss, WorldLoss, ActorLoss, CriticLoss):
             self,
             imagined_latent_states: jax.Array,
             return_prediction: jax.Array,
-            key: PRNGKeyArray,
             weights: jax.Array | None = None,
+            *,
+            key: PRNGKeyArray,
     ) -> tuple[jax.Array, dict[str, jax.Array]]:
         value_dist = jax.vmap(jax.vmap(self.critic))(imagined_latent_states[:-1].detach())
         critic_loss = -value_dist.log_prob(jax.lax.stop_gradient(return_prediction))
