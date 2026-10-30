@@ -373,13 +373,13 @@ class ResizeImage(Wrapper):
     def reset(self, key: PRNGKeyArray) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, state = self.env.reset(key)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
-        info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self._upscale))
         return transition, info, state
 
     def step(self, key: PRNGKeyArray, env_state: EnvState, action: jax.Array) -> tuple[Transition, EnvInfo, EnvState]:
         transition, info, next_state = self.env.step(key, env_state, action)
         transition = eqx.tree_at(lambda t: t.next_obs, transition, self._upscale(transition.next_obs))
-        info = eqx.tree_at(lambda x: x.data, info, walk_and_scale(info.data, self._upscale))
+        info = eqx.tree_at(lambda x: x.data, info, walk_and_apply(info.data, self._upscale))
         return transition, info, next_state
 
     @property
