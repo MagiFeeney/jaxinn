@@ -12,6 +12,7 @@ from jaxinn.envs.wrapper import NextStepAutoResetTerminalObs, NormalizeObservati
 from jaxinn.envs.spaces import Space, ComplexSpace, Discrete, OneHotDiscrete
 from jaxinn.configs import AgentConfig, Config
 from jaxinn.logger import JaxLogger as Logger
+from jaxinn._compat import check_device
 
 
 EnvState = TypeVar("EnvState")
@@ -215,6 +216,7 @@ class Trainer(Interactor, eqx.Module):
 
     @classmethod
     def create(cls, config: Config):
+        check_device()
         env = make_env(**config.env(), wrapper=config.env.wrapper())
         logger = Logger.create(**config.logger(), axis_name=config.axis_name) if config.logger.log_dir else None
         return cls(env=env, logger=logger, **config.exploration())

@@ -9,19 +9,18 @@ readme = "README.md"
 authors = [
     {name = "Magi Feeney", email = "matrixfeeney@gmail.com"},
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dynamic = ["description"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "jax[cuda]<0.10.1",
+    "jax[cuda]>=0.11.1",
     "equinox",
     "distrax",
     "optax",
