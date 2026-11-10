@@ -37,7 +37,7 @@ atari = ["envpool", "ale-py"]
 dm_control = ["dm-control"]
 gymnasium = ["gymnasium"]
 envpool = ["envpool"]
-gymnax = ["gymnax"]
+gymnax = ["gymnax>=1.0.1"]
 playground = [
     "playground",
     "mujoco",
