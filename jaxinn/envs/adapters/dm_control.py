@@ -10,6 +10,13 @@ from dm_env import specs
 from .gymnasium import Gymnasium
 
 
+def _get_domain_task(env_name: str) -> tuple[str, str]:
+    matched = [(domain, task) for domain, task in suite.ALL_TASKS if f"{domain}_{task}" == env_name]
+    if not matched:
+        raise ValueError(f"Unknown DMC task '{env_name}'. Expected '<domain>_<task>' from dm_control.suite.ALL_TASKS.")
+    return matched[0]
+
+
 class DMControl(Gymnasium):
     def __init__(
         self,
@@ -20,7 +27,7 @@ class DMControl(Gymnasium):
 
     @classmethod
     def create(cls, env_name: str, num_envs: int, **kwargs) -> "DMControl":
-        domain_name, task_name = env_name.split("_")
+        domain_name, task_name = _get_domain_task(env_name)
         env = make(domain_name, task_name, num_envs=num_envs, **kwargs)
         return cls(env, env_params={"capacity": num_envs, **kwargs})
 
