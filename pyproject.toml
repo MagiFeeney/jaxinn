@@ -51,7 +51,7 @@ maniskill = [
     "torch",
     "ninja",
     "mani_skill",
-    "torch2jax @ git+https://github.com/rdyro/torch2jax.git",
+    "torch2jax",
 ]
 all = [
     "jaxinn[atari]",
@@ -77,10 +77,9 @@ url = "https://pypi.nvidia.com"
 explicit = true
 
 [tool.uv.sources]
-mujoco = { index = "mujoco" }
 warp-lang = { index = "nvidia" }
-mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", subdirectory = "mjx" }
 brax = { git = "https://github.com/google/brax", rev = "main" }
+torch2jax = { git = "https://github.com/rdyro/torch2jax.git" }
 
 [project.urls]
 Homepage = "https://github.com/MagiFeeney/jaxinn"
